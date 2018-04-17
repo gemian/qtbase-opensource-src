@@ -72,13 +72,13 @@ ifeq ($(DEB_HOST_ARCH_CPU),i386)
 endif
 
 ifeq ($(DEB_HOST_ARCH_OS),linux)
-  ifneq (,$(filter $(DEB_HOST_ARCH),alpha ia64 mips64 mips64el arm64))
+#  ifneq (,$(filter $(DEB_HOST_ARCH),alpha ia64 mips64 mips64el arm64))
 	platform_arg = linux-g++
-  else ifeq ($(DEB_HOST_ARCH_BITS),64)
-	platform_arg = linux-g++-64
-  else
-	platform_arg = linux-g++
-  endif
+#  else ifeq ($(DEB_HOST_ARCH_BITS),64)
+#	platform_arg = linux-g++-64
+#  else
+#	platform_arg = linux-g++
+#  endif
 else ifeq ($(DEB_HOST_ARCH_OS),hurd)
 	platform_arg = hurd-g++
 else ifeq ($(DEB_HOST_ARCH_OS),kfreebsd)
@@ -94,7 +94,7 @@ else
 endif
 
 %:
-	dh $@ --parallel --with pkgkde_symbolshelper
+	dh $@ --with pkgkde_symbolshelper
 
 override_dh_auto_configure:
 	MAKEFLAGS="-j$(NUMJOBS)" ./configure \

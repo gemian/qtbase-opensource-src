@@ -49,6 +49,7 @@
 // source and binary incompatible with future versions of Qt.
 //
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/QtGlobal>
 #include <QtCore/QObject>
 #include <QtCore/QList>
@@ -71,6 +72,8 @@ class QColorDialogOptionsPrivate;
 class QFontDialogOptionsPrivate;
 class QFileDialogOptionsPrivate;
 class QMessageDialogOptionsPrivate;
+
+#define QPLATFORMDIALOGHELPERS_HAS_CREATE
 
 class Q_GUI_EXPORT QPlatformDialogHelper : public QObject
 {
@@ -138,13 +141,14 @@ public:
     Q_ENUM(ButtonRole)
 
     enum ButtonLayout {
-        // keep this in sync with QDialogButtonBox::ButtonLayout and QMessageBox::ButtonLayout
+        // keep this in sync with QDialogButtonBox::ButtonLayout
         UnknownLayout = -1,
         WinLayout,
         MacLayout,
         KdeLayout,
         GnomeLayout,
-        MacModelessLayout
+        MacModelessLayout,
+        AndroidLayout
     };
 
     QPlatformDialogHelper();
@@ -176,6 +180,10 @@ QT_BEGIN_NAMESPACE
 class Q_GUI_EXPORT QColorDialogOptions
 {
     Q_GADGET
+    Q_DISABLE_COPY(QColorDialogOptions)
+protected:
+    explicit QColorDialogOptions(QColorDialogOptionsPrivate *dd);
+    ~QColorDialogOptions();
 public:
     enum ColorDialogOption {
         ShowAlphaChannel    = 0x00000001,
@@ -186,12 +194,8 @@ public:
     Q_DECLARE_FLAGS(ColorDialogOptions, ColorDialogOption)
     Q_FLAG(ColorDialogOptions)
 
-    QColorDialogOptions();
-    QColorDialogOptions(const QColorDialogOptions &rhs);
-    QColorDialogOptions &operator=(const QColorDialogOptions &rhs);
-    ~QColorDialogOptions();
-
-    void swap(QColorDialogOptions &other) { qSwap(d, other.d); }
+    static QSharedPointer<QColorDialogOptions> create();
+    QSharedPointer<QColorDialogOptions> clone() const;
 
     QString windowTitle() const;
     void setWindowTitle(const QString &);
@@ -211,10 +215,8 @@ public:
     static void setStandardColor(int index, QRgb color);
 
 private:
-    QSharedDataPointer<QColorDialogOptionsPrivate> d;
+    QColorDialogOptionsPrivate *d;
 };
-
-Q_DECLARE_SHARED(QColorDialogOptions)
 
 class Q_GUI_EXPORT QPlatformColorDialogHelper : public QPlatformDialogHelper
 {
@@ -237,6 +239,11 @@ private:
 class Q_GUI_EXPORT QFontDialogOptions
 {
     Q_GADGET
+    Q_DISABLE_COPY(QFontDialogOptions)
+protected:
+    explicit QFontDialogOptions(QFontDialogOptionsPrivate *dd);
+    ~QFontDialogOptions();
+
 public:
     enum FontDialogOption {
         NoButtons           = 0x00000001,
@@ -250,12 +257,8 @@ public:
     Q_DECLARE_FLAGS(FontDialogOptions, FontDialogOption)
     Q_FLAG(FontDialogOptions)
 
-    QFontDialogOptions();
-    QFontDialogOptions(const QFontDialogOptions &rhs);
-    QFontDialogOptions &operator=(const QFontDialogOptions &rhs);
-    ~QFontDialogOptions();
-
-    void swap(QFontDialogOptions &other) { qSwap(d, other.d); }
+    static QSharedPointer<QFontDialogOptions> create();
+    QSharedPointer<QFontDialogOptions> clone() const;
 
     QString windowTitle() const;
     void setWindowTitle(const QString &);
@@ -266,10 +269,8 @@ public:
     FontDialogOptions options() const;
 
 private:
-    QSharedDataPointer<QFontDialogOptionsPrivate> d;
+    QFontDialogOptionsPrivate *d;
 };
-
-Q_DECLARE_SHARED(QFontDialogOptions)
 
 class Q_GUI_EXPORT QPlatformFontDialogHelper : public QPlatformDialogHelper
 {
@@ -292,6 +293,11 @@ private:
 class Q_GUI_EXPORT QFileDialogOptions
 {
     Q_GADGET
+    Q_DISABLE_COPY(QFileDialogOptions)
+protected:
+    QFileDialogOptions(QFileDialogOptionsPrivate *dd);
+    ~QFileDialogOptions();
+
 public:
     enum ViewMode { Detail, List };
     Q_ENUM(ViewMode)
@@ -319,12 +325,8 @@ public:
     Q_DECLARE_FLAGS(FileDialogOptions, FileDialogOption)
     Q_FLAG(FileDialogOptions)
 
-    QFileDialogOptions();
-    QFileDialogOptions(const QFileDialogOptions &rhs);
-    QFileDialogOptions &operator=(const QFileDialogOptions &rhs);
-    ~QFileDialogOptions();
-
-    void swap(QFileDialogOptions &other) { qSwap(d, other.d); }
+    static QSharedPointer<QFileDialogOptions> create();
+    QSharedPointer<QFileDialogOptions> clone() const;
 
     QString windowTitle() const;
     void setWindowTitle(const QString &);
@@ -371,6 +373,9 @@ public:
     QUrl initialDirectory() const;
     void setInitialDirectory(const QUrl &);
 
+    QString initiallySelectedMimeTypeFilter() const;
+    void setInitiallySelectedMimeTypeFilter(const QString &);
+
     QString initiallySelectedNameFilter() const;
     void setInitiallySelectedNameFilter(const QString &);
 
@@ -383,10 +388,8 @@ public:
     static QString defaultNameFilterString();
 
 private:
-    QSharedDataPointer<QFileDialogOptionsPrivate> d;
+    QFileDialogOptionsPrivate *d;
 };
-
-Q_DECLARE_SHARED(QFileDialogOptions)
 
 class Q_GUI_EXPORT QPlatformFileDialogHelper : public QPlatformDialogHelper
 {
@@ -398,7 +401,9 @@ public:
     virtual void selectFile(const QUrl &filename) = 0;
     virtual QList<QUrl> selectedFiles() const = 0;
     virtual void setFilter() = 0;
+    virtual void selectMimeTypeFilter(const QString &filter);
     virtual void selectNameFilter(const QString &filter) = 0;
+    virtual QString selectedMimeTypeFilter() const;
     virtual QString selectedNameFilter() const = 0;
 
     virtual bool isSupportedUrl(const QUrl &url) const;
@@ -423,17 +428,18 @@ private:
 class Q_GUI_EXPORT QMessageDialogOptions
 {
     Q_GADGET
+    Q_DISABLE_COPY(QMessageDialogOptions)
+protected:
+    QMessageDialogOptions(QMessageDialogOptionsPrivate *dd);
+    ~QMessageDialogOptions();
+
 public:
     // Keep in sync with QMessageBox::Icon
     enum Icon { NoIcon, Information, Warning, Critical, Question };
     Q_ENUM(Icon)
 
-    QMessageDialogOptions();
-    QMessageDialogOptions(const QMessageDialogOptions &rhs);
-    QMessageDialogOptions &operator=(const QMessageDialogOptions &rhs);
-    ~QMessageDialogOptions();
-
-    void swap(QMessageDialogOptions &other) { qSwap(d, other.d); }
+    static QSharedPointer<QMessageDialogOptions> create();
+    QSharedPointer<QMessageDialogOptions> clone() const;
 
     QString windowTitle() const;
     void setWindowTitle(const QString &);
@@ -454,10 +460,8 @@ public:
     QPlatformDialogHelper::StandardButtons standardButtons() const;
 
 private:
-    QSharedDataPointer<QMessageDialogOptionsPrivate> d;
+    QMessageDialogOptionsPrivate *d;
 };
-
-Q_DECLARE_SHARED(QMessageDialogOptions)
 
 class Q_GUI_EXPORT QPlatformMessageDialogHelper : public QPlatformDialogHelper
 {

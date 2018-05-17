@@ -1227,6 +1227,10 @@ void tst_QMatrixNxN::multiply4x4()
     QMatrix4x4 m5;
     m5 = m1 * m2;
     QVERIFY(isSame(m5, (const float *)m3Values));
+
+    QMatrix4x4 m1xm1 = m1 * m1;
+    m1 *= m1;
+    QCOMPARE(m1, m1xm1);
 }
 
 // Test matrix multiplication for 4x3 matrices.
@@ -2274,8 +2278,8 @@ void tst_QMatrixNxN::rotate4x4_data()
     float y = 2.0f;
     float z = -6.0f;
     float angle = -45.0f;
-    float c = std::cos(angle * M_PI / 180.0f);
-    float s = std::sin(angle * M_PI / 180.0f);
+    float c = std::cos(qDegreesToRadians(angle));
+    float s = std::sin(qDegreesToRadians(angle));
     float len = std::sqrt(x * x + y * y + z * z);
     float xu = x / len;
     float yu = y / len;

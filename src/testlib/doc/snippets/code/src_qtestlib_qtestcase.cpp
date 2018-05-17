@@ -208,6 +208,17 @@ void myTestFunction_data()
 //! [20]
 
 
+//! [addRow]
+void myTestFunction_data()
+{
+    QTest::addColumn<int>("input");
+    QTest::addColumn<QString>("output");
+    QTest::addRow("%d", 0) << 0 << QString("0");
+    QTest::addRow("%d", 1) << 1 << QString("1");
+}
+//! [addRow]
+
+
 //! [21]
 void myTestFunction_data() {
     QTest::addColumn<int>("intval");
@@ -241,17 +252,18 @@ QTest::qWaitForWindowShown(&widget);
 //! [24]
 
 //! [25]
+QTouchDevice *dev = QTest::createTouchDevice();
 QWidget widget;
 
-QTest::touchEvent(&widget)
+QTest::touchEvent(&widget, dev)
     .press(0, QPoint(10, 10));
-QTest::touchEvent(&widget)
+QTest::touchEvent(&widget, dev)
     .stationary(0)
     .press(1, QPoint(40, 10));
-QTest::touchEvent(&widget)
+QTest::touchEvent(&widget, dev)
     .move(0, QPoint(12, 12))
     .move(1, QPoint(45, 5));
-QTest::touchEvent(&widget)
+QTest::touchEvent(&widget, dev)
     .release(0, QPoint(12, 12))
     .release(1, QPoint(45, 5));
 //! [25]
@@ -293,6 +305,14 @@ QTest::keyClick(myWindow, Qt::Key_Escape);
 
 QTest::keyClick(myWindow, Qt::Key_Escape, Qt::ShiftModifier, 200);
 //! [29]
+
+//! [30]
+MyObject obj;
+obj.startup();
+QTest::qWaitFor([&]() {
+    return obj.isReady();
+}, 3000);
+//! [30]
 
 }
 

@@ -60,13 +60,24 @@ QPlatformWindow::QPlatformWindow(QWindow *window)
     , d_ptr(new QPlatformWindowPrivate)
 {
     Q_D(QPlatformWindow);
-    d->rect = window->geometry();
+    d->rect = QHighDpi::toNativePixels(window->geometry(), window);
 }
 
 /*!
     Virtual destructor does not delete its top level window.
 */
 QPlatformWindow::~QPlatformWindow()
+{
+}
+
+/*!
+    Called as part of QWindow::create(), after constructing
+    the window. Platforms should prefer to do initialization
+    here instead of in the constructor, as the platform window
+    object will be fully constructed, and associated to the
+    corresponding QWindow, allowing synchronous event delivery.
+*/
+void QPlatformWindow::initialize()
 {
 }
 
@@ -105,10 +116,18 @@ QSurfaceFormat QPlatformWindow::format() const
 }
 
 /*!
-    This function is called by Qt whenever a window is moved or the window is resized. The resize
-    can happen programatically(from ie. user application) or by the window manager. This means that
-    there is no need to call this function specifically from the window manager callback, instead
-    call QWindowSystemInterface::handleGeometryChange(QWindow *w, const QRect &newRect);
+    This function is called by Qt whenever a window is moved or resized using the QWindow API.
+
+    Unless you also override QPlatformWindow::geometry(), you need to call the baseclass
+    implementation of this function in any override of QPlatformWindow::setGeometry(), as
+    QWindow::geometry() is expected to report back the set geometry until a confirmation
+    (or rejection) of the new geometry comes back from the window manager and is reported
+    via QWindowSystemInterface::handleGeometryChange().
+
+    Window move/resizes can also be triggered spontaneously by the window manager, or as a
+    response to an earlier requested move/resize via the Qt APIs. There is no need to call
+    this function from the window manager callback, instead call
+    QWindowSystemInterface::handleGeometryChange().
 
     The position(x, y) part of the rect might be inclusive or exclusive of the window frame
     as returned by frameMargins(). You can detect this in the plugin by checking
@@ -142,6 +161,16 @@ QRect QPlatformWindow::normalGeometry() const
 }
 
 QMargins QPlatformWindow::frameMargins() const
+{
+    return QMargins();
+}
+
+/*!
+    The safe area margins of a window represent the area that is safe to
+    place content within, without intersecting areas of the screen where
+    system UI is placed, or where a screen bezel may cover the content.
+*/
+QMargins QPlatformWindow::safeAreaMargins() const
 {
     return QMargins();
 }
@@ -192,15 +221,30 @@ bool QPlatformWindow::isActive() const
 }
 
 /*!
-    Returns \c true if the window is a descendant of an embedded non-Qt window.
-    Example of an embedded non-Qt window is the parent window of an in-process QAxServer.
+    Returns \c true if the window is an ancestor of the given \a child.
 
-    If \a parentWindow is nonzero, only check if the window is embedded in the
-    specified \a parentWindow.
+    Platform overrides should iterate the native window hierarchy of the child,
+    to ensure that ancestary is reflected even with native windows in the window
+    hierarchy.
 */
-bool QPlatformWindow::isEmbedded(const QPlatformWindow *parentWindow) const
+bool QPlatformWindow::isAncestorOf(const QPlatformWindow *child) const
 {
-    Q_UNUSED(parentWindow);
+    for (const QPlatformWindow *parent = child->parent(); parent; parent = child->parent()) {
+        if (parent == this)
+            return true;
+    }
+
+    return false;
+}
+
+/*!
+    Returns \c true if the window is a child of a non-Qt window.
+
+    A embedded window has no parent platform window as reflected
+    though parent(), but will have a native parent window.
+*/
+bool QPlatformWindow::isEmbedded() const
+{
     return false;
 }
 
@@ -246,7 +290,7 @@ QPoint QPlatformWindow::mapFromGlobal(const QPoint &pos) const
 
     Qt::WindowActive can be ignored.
 */
-void QPlatformWindow::setWindowState(Qt::WindowState)
+void QPlatformWindow::setWindowState(Qt::WindowStates)
 {
 }
 
@@ -262,13 +306,13 @@ WId QPlatformWindow::winId() const
     return WId(1);
 }
 
+//jl: It would be useful to have a property on the platform window which indicated if the sub-class
+// supported the setParent. If not, then geometry would be in screen coordinates.
 /*!
     This function is called to enable native child window in QPA. It is common not to support this
     feature in Window systems, but can be faked. When this function is called all geometry of this
     platform window will be relative to the parent.
 */
-//jl: It would be useful to have a property on the platform window which indicated if the sub-class
-// supported the setParent. If not, then geometry would be in screen coordinates.
 void QPlatformWindow::setParent(const QPlatformWindow *parent)
 {
     Q_UNUSED(parent);
@@ -493,7 +537,7 @@ QPlatformScreen *QPlatformWindow::screenForGeometry(const QRect &newGeometry) co
     // QRect::center can return a value outside the rectangle if it's empty.
     // Apply mapToGlobal() in case it is a foreign/embedded window.
     QPoint center = newGeometry.isEmpty() ? newGeometry.topLeft() : newGeometry.center();
-    if (window()->type() == Qt::ForeignWindow)
+    if (isForeignWindow())
         center = mapToGlobal(center - newGeometry.topLeft());
 
     if (!parent() && currentScreen && !currentScreen->geometry().contains(center)) {
@@ -546,7 +590,8 @@ bool QPlatformWindow::isAlertState() const
 // Return the effective screen for the initial geometry of a window. In a
 // multimonitor-setup, try to find the right screen by checking the transient
 // parent or the mouse cursor for parentless windows (cf QTBUG-34204,
-// QDialog::adjustPosition()).
+// QDialog::adjustPosition()), unless a non-primary screen has been set,
+// in which case we try to respect that.
 static inline const QScreen *effectiveScreen(const QWindow *window)
 {
     if (!window)
@@ -554,6 +599,8 @@ static inline const QScreen *effectiveScreen(const QWindow *window)
     const QScreen *screen = window->screen();
     if (!screen)
         return QGuiApplication::primaryScreen();
+    if (screen != QGuiApplication::primaryScreen())
+        return screen;
 #ifndef QT_NO_CURSOR
     const QList<QScreen *> siblings = screen->virtualSiblings();
     if (siblings.size() > 1) {

@@ -111,7 +111,7 @@
     \value EmailAddress The email address associated with the certificate
 */
 
-#include <QtCore/qglobal.h>
+#include <QtNetwork/qtnetworkglobal.h>
 #ifndef QT_NO_OPENSSL
 #include "qsslsocket_openssl_symbols_p.h"
 #endif
@@ -143,7 +143,7 @@ QSslCertificate::QSslCertificate(QIODevice *device, QSsl::EncodingFormat format)
     : d(new QSslCertificatePrivate)
 {
     QSslSocketPrivate::ensureInitialized();
-    if (device)
+    if (device && QSslSocket::supportsSsl())
         d->init(device->readAll(), format);
 }
 
@@ -157,7 +157,8 @@ QSslCertificate::QSslCertificate(const QByteArray &data, QSsl::EncodingFormat fo
     : d(new QSslCertificatePrivate)
 {
     QSslSocketPrivate::ensureInitialized();
-    d->init(data, format);
+    if (QSslSocket::supportsSsl())
+        d->init(data, format);
 }
 
 /*!

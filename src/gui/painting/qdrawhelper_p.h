@@ -51,7 +51,7 @@
 // We mean it.
 //
 
-#include "QtCore/qglobal.h"
+#include <QtGui/private/qtguiglobal_p.h>
 #include "QtCore/qmath.h"
 #include "QtGui/qcolor.h"
 #include "QtGui/qpainter.h"
@@ -63,6 +63,8 @@
 #endif
 #include "private/qrasterdefs_p.h"
 #include <private/qsimd_p.h>
+
+#include <QtCore/qsharedpointer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -111,13 +113,13 @@ typedef void (*AlphamapBlitFunc)(QRasterBuffer *rasterBuffer,
                                  int x, int y, const QRgba64 &color,
                                  const uchar *bitmap,
                                  int mapWidth, int mapHeight, int mapStride,
-                                 const QClipData *clip);
+                                 const QClipData *clip, bool useGammaCorrection);
 
 typedef void (*AlphaRGBBlitFunc)(QRasterBuffer *rasterBuffer,
                                  int x, int y, const QRgba64 &color,
                                  const uint *rgbmask,
                                  int mapWidth, int mapHeight, int mapStride,
-                                 const QClipData *clip);
+                                 const QClipData *clip, bool useGammaCorrection);
 
 typedef void (*RectFillFunc)(QRasterBuffer *rasterBuffer,
                              int x, int y, int width, int height,
@@ -157,7 +159,6 @@ struct DrawHelper {
 extern SrcOverBlendFunc qBlendFunctions[QImage::NImageFormats][QImage::NImageFormats];
 extern SrcOverScaleFunc qScaleFunctions[QImage::NImageFormats][QImage::NImageFormats];
 extern SrcOverTransformFunc qTransformFunctions[QImage::NImageFormats][QImage::NImageFormats];
-extern MemRotateFunc qMemRotateFunctions[QImage::NImageFormats][3];
 
 extern DrawHelper qDrawHelper[QImage::NImageFormats];
 
@@ -292,7 +293,7 @@ struct QTextureData
     int y1;
     int x2;
     int y2;
-    int bytesPerLine;
+    qsizetype bytesPerLine;
     QImage::Format format;
     const QVector<QRgb> *colorTable;
     bool hasAlpha;
@@ -335,24 +336,18 @@ struct QSpanData
         QGradientData gradient;
         QTextureData texture;
     };
+    class Pinnable {
+    protected:
+        ~Pinnable() {}
+    }; // QSharedPointer<const void> is not supported
+    QSharedPointer<const Pinnable> cachedGradient;
+
 
     void init(QRasterBuffer *rb, const QRasterPaintEngine *pe);
     void setup(const QBrush &brush, int alpha, QPainter::CompositionMode compositionMode);
     void setupMatrix(const QTransform &matrix, int bilinear);
     void initTexture(const QImage *image, int alpha, QTextureData::Type = QTextureData::Plain, const QRect &sourceRect = QRect());
     void adjustSpanMethods();
-};
-
-struct QDrawHelperGammaTables
-{
-    explicit QDrawHelperGammaTables(qreal smoothing);
-
-    void refresh(qreal smoothing);
-
-    uchar qt_pow_rgb_gamma[256];
-    uchar qt_pow_rgb_invgamma[256];
-    uint qt_pow_gamma[256];
-    uchar qt_pow_invgamma[2048];
 };
 
 static inline uint qt_gradient_clamp(const QGradientData *data, int ipos)
@@ -636,6 +631,22 @@ static Q_ALWAYS_INLINE uint BYTE_MUL(uint x, uint a) {
 }
 #endif
 
+static Q_ALWAYS_INLINE void blend_pixel(quint32 &dst, const quint32 src)
+{
+    if (src >= 0xff000000)
+        dst = src;
+    else if (src != 0)
+        dst = src + BYTE_MUL(dst, qAlpha(~src));
+}
+
+static Q_ALWAYS_INLINE void blend_pixel(quint32 &dst, const quint32 src, const int const_alpha)
+{
+    if (src != 0) {
+        const quint32 s = BYTE_MUL(src, const_alpha);
+        dst = s + BYTE_MUL(dst, qAlpha(~s));
+    }
+}
+
 #if defined(__SSE2__)
 static Q_ALWAYS_INLINE uint interpolate_4_pixels_sse2(__m128i vt, __m128i vb, uint distx, uint disty)
 {
@@ -822,13 +833,13 @@ inline void qt_memfill(T *dest, T value, int count)
     int n = (count + 7) / 8;
     switch (count & 0x07)
     {
-    case 0: do { *dest++ = value;
-    case 7:      *dest++ = value;
-    case 6:      *dest++ = value;
-    case 5:      *dest++ = value;
-    case 4:      *dest++ = value;
-    case 3:      *dest++ = value;
-    case 2:      *dest++ = value;
+    case 0: do { *dest++ = value; Q_FALLTHROUGH();
+    case 7:      *dest++ = value; Q_FALLTHROUGH();
+    case 6:      *dest++ = value; Q_FALLTHROUGH();
+    case 5:      *dest++ = value; Q_FALLTHROUGH();
+    case 4:      *dest++ = value; Q_FALLTHROUGH();
+    case 3:      *dest++ = value; Q_FALLTHROUGH();
+    case 2:      *dest++ = value; Q_FALLTHROUGH();
     case 1:      *dest++ = value;
     } while (--n > 0);
     }
@@ -836,7 +847,7 @@ inline void qt_memfill(T *dest, T value, int count)
 
 template <class T> Q_STATIC_TEMPLATE_FUNCTION
 inline void qt_rectfill(T *dest, T value,
-                        int x, int y, int width, int height, int stride)
+                        int x, int y, int width, int height, qsizetype stride)
 {
     char *d = reinterpret_cast<char*>(dest + x) + y * stride;
     if (uint(stride) == (width * sizeof(T))) {
@@ -864,17 +875,17 @@ do {                                          \
     int n = ((length) + 7) / 8;               \
     switch ((length) & 0x07)                  \
     {                                         \
-    case 0: do { *--_d = *--_s;                 \
-    case 7:      *--_d = *--_s;                 \
-    case 6:      *--_d = *--_s;                 \
-    case 5:      *--_d = *--_s;                 \
-    case 4:      *--_d = *--_s;                 \
-    case 3:      *--_d = *--_s;                 \
-    case 2:      *--_d = *--_s;                 \
+    case 0: do { *--_d = *--_s; Q_FALLTHROUGH(); \
+    case 7:      *--_d = *--_s; Q_FALLTHROUGH(); \
+    case 6:      *--_d = *--_s; Q_FALLTHROUGH(); \
+    case 5:      *--_d = *--_s; Q_FALLTHROUGH(); \
+    case 4:      *--_d = *--_s; Q_FALLTHROUGH(); \
+    case 3:      *--_d = *--_s; Q_FALLTHROUGH(); \
+    case 2:      *--_d = *--_s; Q_FALLTHROUGH(); \
     case 1:      *--_d = *--_s;                 \
     } while (--n > 0);                        \
     }                                         \
-} while (0)
+} while (false)
 
 #define QT_MEMCPY_USHORT(dest, src, length) \
 do {                                          \
@@ -884,17 +895,17 @@ do {                                          \
     int n = ((length) + 7) / 8;               \
     switch ((length) & 0x07)                  \
     {                                         \
-    case 0: do { *_d++ = *_s++;                 \
-    case 7:      *_d++ = *_s++;                 \
-    case 6:      *_d++ = *_s++;                 \
-    case 5:      *_d++ = *_s++;                 \
-    case 4:      *_d++ = *_s++;                 \
-    case 3:      *_d++ = *_s++;                 \
-    case 2:      *_d++ = *_s++;                 \
+    case 0: do { *_d++ = *_s++; Q_FALLTHROUGH(); \
+    case 7:      *_d++ = *_s++; Q_FALLTHROUGH(); \
+    case 6:      *_d++ = *_s++; Q_FALLTHROUGH(); \
+    case 5:      *_d++ = *_s++; Q_FALLTHROUGH(); \
+    case 4:      *_d++ = *_s++; Q_FALLTHROUGH(); \
+    case 3:      *_d++ = *_s++; Q_FALLTHROUGH(); \
+    case 2:      *_d++ = *_s++; Q_FALLTHROUGH(); \
     case 1:      *_d++ = *_s++;                 \
     } while (--n > 0);                        \
     }                                         \
-} while (0)
+} while (false)
 
 inline ushort qConvertRgb32To16(uint c)
 {
@@ -1172,11 +1183,15 @@ inline int comp_func_Plus_one_pixel(uint d, const uint s)
 #undef MIX
 #undef AMIX
 
-struct QPixelLayout;
+struct QDitherInfo {
+    int x;
+    int y;
+};
+
 typedef const uint *(QT_FASTCALL *ConvertFunc)(uint *buffer, const uint *src, int count,
-                                               const QPixelLayout *layout, const QRgb *clut);
+                                               const QVector<QRgb> *clut, QDitherInfo *dither);
 typedef const QRgba64 *(QT_FASTCALL *ConvertFunc64)(QRgba64 *buffer, const uint *src, int count,
-                                                    const QPixelLayout *layout, const QRgb *clut);
+                                                    const QVector<QRgb> *clut, QDitherInfo *dither);
 
 struct QPixelLayout
 {
@@ -1216,6 +1231,7 @@ extern QPixelLayout qPixelLayouts[QImage::NImageFormats];
 extern const FetchPixelsFunc qFetchPixels[QPixelLayout::BPPCount];
 extern StorePixelsFunc qStorePixels[QPixelLayout::BPPCount];
 
+extern MemRotateFunc qMemRotateFunctions[QPixelLayout::BPPCount][3];
 
 
 QT_END_NAMESPACE

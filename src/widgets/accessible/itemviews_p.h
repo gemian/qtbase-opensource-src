@@ -51,18 +51,18 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtCore/qpointer.h"
 #include <QtGui/qaccessible.h>
 #include <QtWidgets/qaccessiblewidget.h>
 #include <QtWidgets/qabstractitemview.h>
 #include <QtWidgets/qheaderview.h>
 
+QT_REQUIRE_CONFIG(itemviews);
 
 QT_BEGIN_NAMESPACE
 
 #ifndef QT_NO_ACCESSIBILITY
-
-#ifndef QT_NO_ITEMVIEWS
 
 class QAccessibleTableCell;
 class QAccessibleTableHeaderCell;
@@ -144,6 +144,7 @@ private:
     QAccessible::Role m_role;
 };
 
+#if QT_CONFIG(treeview)
 class QAccessibleTree :public QAccessibleTable
 {
 public:
@@ -171,6 +172,7 @@ private:
 
     inline int logicalIndex(const QModelIndex &index) const;
 };
+#endif
 
 class QAccessibleTableCell: public QAccessibleInterface, public QAccessibleTableCellInterface, public QAccessibleActionInterface
 {
@@ -220,7 +222,9 @@ private:
     void unselectCell();
 
 friend class QAccessibleTable;
+#if QT_CONFIG(treeview)
 friend class QAccessibleTree;
+#endif
 };
 
 
@@ -254,7 +258,9 @@ private:
     Qt::Orientation orientation;
 
 friend class QAccessibleTable;
+#if QT_CONFIG(treeview)
 friend class QAccessibleTree;
+#endif
 };
 
 // This is the corner button on the top left of a table.
@@ -291,8 +297,6 @@ private:
     QPointer<QAbstractItemView> view;
 };
 
-
-#endif
 
 #endif // QT_NO_ACCESSIBILITY
 

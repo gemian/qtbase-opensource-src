@@ -40,6 +40,7 @@
 #ifndef QVECTOR3D_H
 #define QVECTOR3D_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qmetatype.h>
 
@@ -153,7 +154,7 @@ Q_DECL_CONSTEXPR inline QVector3D::QVector3D() : xp(0.0f), yp(0.0f), zp(0.0f) {}
 
 Q_DECL_CONSTEXPR inline QVector3D::QVector3D(const QPoint& point) : xp(point.x()), yp(point.y()), zp(0.0f) {}
 
-Q_DECL_CONSTEXPR inline QVector3D::QVector3D(const QPointF& point) : xp(point.x()), yp(point.y()), zp(0.0f) {}
+Q_DECL_CONSTEXPR inline QVector3D::QVector3D(const QPointF& point) : xp(float(point.x())), yp(float(point.y())), zp(0.0f) {}
 
 inline bool QVector3D::isNull() const
 {
@@ -228,6 +229,9 @@ inline QVector3D &QVector3D::operator/=(const QVector3D &vector)
     return *this;
 }
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_CLANG("-Wfloat-equal")
+QT_WARNING_DISABLE_GCC("-Wfloat-equal")
 Q_DECL_CONSTEXPR inline bool operator==(const QVector3D &v1, const QVector3D &v2)
 {
     return v1.xp == v2.xp && v1.yp == v2.yp && v1.zp == v2.zp;
@@ -237,6 +241,7 @@ Q_DECL_CONSTEXPR inline bool operator!=(const QVector3D &v1, const QVector3D &v2
 {
     return v1.xp != v2.xp || v1.yp != v2.yp || v1.zp != v2.zp;
 }
+QT_WARNING_POP
 
 Q_DECL_CONSTEXPR inline const QVector3D operator+(const QVector3D &v1, const QVector3D &v2)
 {

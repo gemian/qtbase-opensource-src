@@ -40,7 +40,9 @@
 #include "qplatformprintdevice.h"
 
 #include "qprintdevice_p.h"
+#if QT_CONFIG(printdialog)
 #include "qprintdialog.h"
+#endif
 
 #include <QtGui/qpagelayout.h>
 
@@ -59,7 +61,7 @@ QPlatformPrintDevice::QPlatformPrintDevice()
       m_haveOutputBins(false),
       m_haveDuplexModes(false),
       m_haveColorModes(false)
-#ifndef QT_NO_MIMETYPES
+#ifndef QT_NO_MIMETYPE
     , m_haveMimeTypes(false)
 #endif
 {
@@ -77,7 +79,7 @@ QPlatformPrintDevice::QPlatformPrintDevice(const QString &id)
       m_haveOutputBins(false),
       m_haveDuplexModes(false),
       m_haveColorModes(false)
-#ifndef QT_NO_MIMETYPES
+#ifndef QT_NO_MIMETYPE
     , m_haveMimeTypes(false)
 #endif
 {
@@ -302,7 +304,11 @@ QPrint::InputSlot QPlatformPrintDevice::defaultInputSlot() const
 {
     QPrint::InputSlot input;
     input.key = QByteArrayLiteral("Auto");
+#if QT_CONFIG(printdialog)
     input.name = QPrintDialog::tr("Automatic");
+#else
+    input.name = QString::fromLatin1("Automatic");
+#endif
     input.id = QPrint::Auto;
     return input;
 }
@@ -322,7 +328,11 @@ QPrint::OutputBin QPlatformPrintDevice::defaultOutputBin() const
 {
     QPrint::OutputBin output;
     output.key = QByteArrayLiteral("Auto");
+#if QT_CONFIG(printdialog)
     output.name = QPrintDialog::tr("Automatic");
+#else
+    output.name = QString::fromLatin1("Automatic");
+#endif
     output.id = QPrint::AutoOutputBin;
     return output;
 }

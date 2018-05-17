@@ -37,6 +37,7 @@
 **
 ****************************************************************************/
 
+#include "qiosglobal.h"
 #import "qiosviewcontroller.h"
 
 #include <QtCore/qscopedvaluerollback.h>
@@ -57,7 +58,7 @@
 
 @interface QIOSViewController () {
   @public
-    QPointer<QIOSScreen> m_screen;
+    QPointer<QT_PREPEND_NAMESPACE(QIOSScreen)> m_screen;
     BOOL m_updatingProperties;
     QMetaObject::Connection m_focusWindowChangeConnection;
 }
@@ -76,8 +77,7 @@
     if (!(self = [super init]))
         return nil;
 
-    QIOSIntegration *iosIntegration = QIOSIntegration::instance();
-    if (iosIntegration && iosIntegration->debugWindowManagement()) {
+    if (qEnvironmentVariableIntValue("QT_IOS_DEBUG_WINDOW_MANAGEMENT")) {
         static UIImage *gridPattern = nil;
         static dispatch_once_t onceToken;
         dispatch_once(&onceToken, ^{
@@ -125,7 +125,7 @@
 {
     Q_UNUSED(subview);
 
-    QIOSScreen *screen = self.qtViewController->m_screen;
+    QT_PREPEND_NAMESPACE(QIOSScreen) *screen = self.qtViewController->m_screen;
 
     // The 'window' property of our view is not valid until the window
     // has been shown, so we have to access it through the QIOSScreen.
@@ -156,6 +156,26 @@
 
 - (void)layoutSubviews
 {
+    if (QGuiApplication::applicationState() == Qt::ApplicationSuspended) {
+        // Despite the OpenGL ES Programming Guide telling us to avoid all
+        // use of OpenGL while in the background, iOS will perform its view
+        // snapshotting for the app switcher after the application has been
+        // backgrounded; once for each orientation. Presumably the expectation
+        // is that no rendering needs to be done to provide an alternate
+        // orientation snapshot, just relayouting of views. But in our case,
+        // or any non-stretchable content case such as a OpenGL based game,
+        // this is not true. Instead of continuing layout, which will send
+        // potentially expensive geometry changes (with isExposed false,
+        // since we're in the background), we short-circuit the snapshotting
+        // here. iOS will still use the latest rendered frame to create the
+        // application switcher thumbnail, but it will be based on the last
+        // active orientation of the application.
+        QIOSScreen *screen = self.qtViewController->m_screen;
+        qCDebug(lcQpaWindow) << "ignoring layout of subviews while suspended,"
+            << "likely system snapshot of" << screen->screen()->primaryOrientation();
+        return;
+    }
+
     for (int i = int(self.subviews.count) - 1; i >= 0; --i) {
         UIView *view = static_cast<UIView *>([self.subviews objectAtIndex:i]);
         if (![view isKindOfClass:[QUIView class]])
@@ -175,8 +195,8 @@
         return;
 
     // Re-apply window states to update geometry
-    if (window->windowState() & (Qt::WindowFullScreen | Qt::WindowMaximized))
-        window->handle()->setWindowState(window->windowState());
+    if (window->windowStates() & (Qt::WindowFullScreen | Qt::WindowMaximized))
+        window->handle()->setWindowState(window->windowStates());
 }
 
 // Even if the root view controller has both wantsFullScreenLayout and
@@ -228,42 +248,27 @@
 
 @implementation QIOSViewController
 
+#ifndef Q_OS_TVOS
 @synthesize prefersStatusBarHidden;
 @synthesize preferredStatusBarUpdateAnimation;
 @synthesize preferredStatusBarStyle;
+#endif
 
-- (id)initWithQIOSScreen:(QIOSScreen *)screen
+- (id)initWithQIOSScreen:(QT_PREPEND_NAMESPACE(QIOSScreen) *)screen
 {
     if (self = [self init]) {
         m_screen = screen;
 
-#if QT_IOS_DEPLOYMENT_TARGET_BELOW(__IPHONE_7_0)
-        QSysInfo::MacVersion iosVersion = QSysInfo::MacintoshVersion;
 
-        // We prefer to keep the root viewcontroller in fullscreen layout, so that
-        // we don't have to compensate for the viewcontroller position. This also
-        // gives us the same behavior on iOS 5/6 as on iOS 7, where full screen layout
-        // is the only way.
-        if (iosVersion < QSysInfo::MV_IOS_7_0)
-            self.wantsFullScreenLayout = YES;
-
-        // Use translucent statusbar by default on iOS6 iPhones (unless the user changed
-        // the default in the Info.plist), so that windows placed under the stausbar are
-        // still visible, just like on iOS7.
-        if (screen->uiScreen() == [UIScreen mainScreen]
-            && iosVersion >= QSysInfo::MV_IOS_6_0 && iosVersion < QSysInfo::MV_IOS_7_0
-            && [UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPhone
-            && [UIApplication sharedApplication].statusBarStyle == UIStatusBarStyleDefault)
-            [[UIApplication sharedApplication] setStatusBarStyle:UIStatusBarStyleBlackTranslucent];
-#endif
-
-        self.lockedOrientation = UIInterfaceOrientationUnknown;
         self.changingOrientation = NO;
+#ifndef Q_OS_TVOS
+        self.lockedOrientation = UIInterfaceOrientationUnknown;
 
         // Status bar may be initially hidden at startup through Info.plist
         self.prefersStatusBarHidden = infoPlistValue(@"UIStatusBarHidden", false);
         self.preferredStatusBarUpdateAnimation = UIStatusBarAnimationNone;
         self.preferredStatusBarStyle = UIStatusBarStyle(infoPlistValue(@"UIStatusBarStyle", UIStatusBarStyleDefault));
+#endif
 
         m_focusWindowChangeConnection = QObject::connect(qApp, &QGuiApplication::focusWindowChanged, [self]() {
             [self updateProperties];
@@ -288,6 +293,7 @@
 {
     [super viewDidLoad];
 
+#ifndef Q_OS_TVOS
     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
     [center addObserver:self selector:@selector(willChangeStatusBarFrame:)
             name:UIApplicationWillChangeStatusBarFrameNotification
@@ -296,6 +302,7 @@
     [center addObserver:self selector:@selector(didChangeStatusBarOrientation:)
             name:UIApplicationDidChangeStatusBarOrientationNotification
             object:[UIApplication sharedApplication]];
+#endif
 }
 
 - (void)viewDidUnload
@@ -308,10 +315,13 @@
 
 - (BOOL)shouldAutorotate
 {
+#ifndef Q_OS_TVOS
     return m_screen && m_screen->uiScreen() == [UIScreen mainScreen] && !self.lockedOrientation;
+#else
+    return NO;
+#endif
 }
 
-#if QT_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__IPHONE_6_0)
 - (NSUInteger)supportedInterfaceOrientations
 {
     // As documented by Apple in the iOS 6.0 release notes, setStatusBarOrientation:animated:
@@ -322,15 +332,6 @@
     // supportedInterfaceOrientations says, which states that the method should not return 0.
     return [self shouldAutorotate] ? UIInterfaceOrientationMaskAll : 0;
 }
-#endif
-
-#if QT_IOS_DEPLOYMENT_TARGET_BELOW(__IPHONE_6_0)
-- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation
-{
-    Q_UNUSED(interfaceOrientation);
-    return [self shouldAutorotate];
-}
-#endif
 
 - (void)willRotateToInterfaceOrientation:(UIInterfaceOrientation)orientation duration:(NSTimeInterval)duration
 {
@@ -439,6 +440,7 @@
     // All decisions are based on the the top level window
     focusWindow = qt_window_private(focusWindow)->topLevelWindow();
 
+#ifndef Q_OS_TVOS
     UIApplication *uiApplication = [UIApplication sharedApplication];
 
     // -------------- Status bar style and visbility ---------------
@@ -447,30 +449,16 @@
     if (focusWindow->flags() & Qt::MaximizeUsingFullscreenGeometryHint)
         self.preferredStatusBarStyle = UIStatusBarStyleDefault;
     else
-        self.preferredStatusBarStyle = QSysInfo::MacintoshVersion >= QSysInfo::MV_IOS_7_0 ?
-            UIStatusBarStyleLightContent : UIStatusBarStyleBlackTranslucent;
+        self.preferredStatusBarStyle = UIStatusBarStyleLightContent;
 
-    if (self.preferredStatusBarStyle != oldStatusBarStyle) {
-        if (QSysInfo::MacintoshVersion >= QSysInfo::MV_IOS_7_0)
-            [self setNeedsStatusBarAppearanceUpdate];
-        else
-            [uiApplication setStatusBarStyle:self.preferredStatusBarStyle];
-    }
+    if (self.preferredStatusBarStyle != oldStatusBarStyle)
+        [self setNeedsStatusBarAppearanceUpdate];
 
     bool currentStatusBarVisibility = self.prefersStatusBarHidden;
     self.prefersStatusBarHidden = focusWindow->windowState() == Qt::WindowFullScreen;
 
     if (self.prefersStatusBarHidden != currentStatusBarVisibility) {
-#if QT_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__IPHONE_7_0)
-        if (QSysInfo::MacintoshVersion >= QSysInfo::MV_IOS_7_0) {
-            [self setNeedsStatusBarAppearanceUpdate];
-        } else
-#endif
-        {
-            [uiApplication setStatusBarHidden:self.prefersStatusBarHidden
-                withAnimation:self.preferredStatusBarUpdateAnimation];
-        }
-
+        [self setNeedsStatusBarAppearanceUpdate];
         [self.view setNeedsLayout];
     }
 
@@ -516,6 +504,7 @@
             [UIViewController attemptRotationToDeviceOrientation];
         }
     }
+#endif
 }
 
 @end

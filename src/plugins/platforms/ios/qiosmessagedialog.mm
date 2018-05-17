@@ -108,8 +108,7 @@ bool QIOSMessageDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality win
     Q_UNUSED(windowFlags);
     if (m_alertController // Ensure that the dialog is not showing already
             || !options() // Some message dialogs don't have options (QErrorMessage)
-            || windowModality == Qt::NonModal // We can only do modal dialogs
-            || QSysInfo::MacintoshVersion < QSysInfo::MV_IOS_8_0) // API limitation
+            || windowModality == Qt::NonModal) // We can only do modal dialogs
         return false;
 
     m_alertController = [[UIAlertController

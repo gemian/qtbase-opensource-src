@@ -138,7 +138,8 @@ void tst_NetworkStressTest::init()
 void tst_NetworkStressTest::clearManager()
 {
 #ifdef QT_BUILD_INTERNAL
-    QNetworkAccessManagerPrivate::clearCache(&manager);
+    QNetworkAccessManagerPrivate::clearAuthenticationCache(&manager);
+    QNetworkAccessManagerPrivate::clearConnectionCache(&manager);
     manager.setProxy(QNetworkProxy());
     manager.setCache(0);
 #endif
@@ -146,7 +147,7 @@ void tst_NetworkStressTest::clearManager()
 
 bool nativeLookup(const char *hostname, int port, QByteArray &buf)
 {
-#if !defined(QT_NO_GETADDRINFO) && 0
+#if 0
     addrinfo *res = 0;
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));

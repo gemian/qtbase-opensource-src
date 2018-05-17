@@ -39,21 +39,51 @@
 
 #include "qeglfskmsegldevicescreen.h"
 #include "qeglfskmsegldevice.h"
+#include <QGuiApplication>
+#include <QLoggingCategory>
+#include <errno.h>
 
-QEglFSKmsEglDeviceScreen::QEglFSKmsEglDeviceScreen(QEglFSKmsIntegration *integration, QEglFSKmsDevice *device, QEglFSKmsOutput output, QPoint position)
-    : QEglFSKmsScreen(integration, device, output, position)
+QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(qLcEglfsKmsDebug)
+
+QEglFSKmsEglDeviceScreen::QEglFSKmsEglDeviceScreen(QKmsDevice *device, const QKmsOutput &output)
+    : QEglFSKmsScreen(device, output)
 {
+}
+
+QEglFSKmsEglDeviceScreen::~QEglFSKmsEglDeviceScreen()
+{
+    const int remainingScreenCount = qGuiApp->screens().count();
+    qCDebug(qLcEglfsKmsDebug, "Screen dtor. Remaining screens: %d", remainingScreenCount);
+    if (!remainingScreenCount && !device()->screenConfig()->separateScreens())
+        static_cast<QEglFSKmsEglDevice *>(device())->destroyGlobalCursor();
+}
+
+QPlatformCursor *QEglFSKmsEglDeviceScreen::cursor() const
+{
+    // The base class creates a cursor via integration->createCursor()
+    // in its ctor. With separateScreens just use that. Otherwise
+    // there's a virtual desktop and the device has a global cursor
+    // and the base class has no dedicated cursor at all.
+    // config->hwCursor() is ignored for now, just use the standard OpenGL cursor.
+    return device()->screenConfig()->separateScreens()
+        ? QEglFSScreen::cursor()
+        : static_cast<QEglFSKmsEglDevice *>(device())->globalCursor();
 }
 
 void QEglFSKmsEglDeviceScreen::waitForFlip()
 {
-    if (!output().mode_set) {
-        output().mode_set = true;
+    QKmsOutput &op(output());
+    const int fd = device()->fd();
+    const uint32_t w = op.modes[op.mode].hdisplay;
+    const uint32_t h = op.modes[op.mode].vdisplay;
 
-        drmModeCrtcPtr currentMode = drmModeGetCrtc(device()->fd(), output().crtc_id);
-        const bool alreadySet = currentMode
-            && currentMode->width == output().modes[output().mode].hdisplay
-            && currentMode->height == output().modes[output().mode].vdisplay;
+    if (!op.mode_set) {
+        op.mode_set = true;
+
+        drmModeCrtcPtr currentMode = drmModeGetCrtc(fd, op.crtc_id);
+        const bool alreadySet = currentMode && currentMode->width == w && currentMode->height == h;
         if (currentMode)
             drmModeFreeCrtc(currentMode);
         if (alreadySet) {
@@ -67,12 +97,26 @@ void QEglFSKmsEglDeviceScreen::waitForFlip()
         }
 
         qCDebug(qLcEglfsKmsDebug, "Setting mode");
-        int ret = drmModeSetCrtc(device()->fd(), output().crtc_id,
-                                 -1, 0, 0,
-                                 &output().connector_id, 1,
-                                 &output().modes[output().mode]);
+        int ret = drmModeSetCrtc(fd, op.crtc_id,
+                                 uint32_t(-1), 0, 0,
+                                 &op.connector_id, 1,
+                                 &op.modes[op.mode]);
         if (ret)
-            qFatal("drmModeSetCrtc failed");
+            qErrnoWarning(errno, "drmModeSetCrtc failed");
     }
 
+    if (!op.plane_set) {
+        op.plane_set = true;
+
+        if (op.wants_plane) {
+            qCDebug(qLcEglfsKmsDebug, "Setting plane %u", op.plane_id);
+            int ret = drmModeSetPlane(fd, op.plane_id, op.crtc_id, uint32_t(-1), 0,
+                                      0, 0, w, h,
+                                      0 << 16, 0 << 16, w << 16, h << 16);
+            if (ret == -1)
+                qErrnoWarning(errno, "drmModeSetPlane failed");
+        }
+    }
 }
+
+QT_END_NAMESPACE

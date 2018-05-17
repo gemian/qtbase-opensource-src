@@ -37,7 +37,7 @@
 **
 ****************************************************************************/
 
-#ifndef QT_NO_PRINTDIALOG
+#include <QtPrintSupport/qtprintsupportglobal.h>
 
 #include "qprintdialog.h"
 
@@ -306,5 +306,3 @@ void QPrintDialog::setVisible(bool visible)
 QT_END_NAMESPACE
 
 #include "moc_qprintdialog.cpp"
-
-#endif // QT_NO_PRINTDIALOG

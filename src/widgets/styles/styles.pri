@@ -33,87 +33,16 @@ SOURCES += \
         styles/qstylesheetstyle_default.cpp \
         styles/qpixmapstyle.cpp
 
-wince* {
-    RESOURCES += styles/qstyle_wince.qrc
-} else {
-    RESOURCES += styles/qstyle.qrc
-}
+RESOURCES += styles/qstyle.qrc
 
-contains( styles, all ) {
-    styles = fusion mac windows windowsxp windowsvista
-}
+include($$OUT_PWD/qtwidgets-config.pri)
 
-!macx:styles -= mac
-
-contains( styles, mac ) {
-    HEADERS += \
-        styles/qmacstyle_mac_p.h \
-        styles/qmacstyle_mac_p_p.h
-    OBJECTIVE_SOURCES += styles/qmacstyle_mac.mm
-    LIBS_PRIVATE += -framework Carbon
-} else {
-    DEFINES += QT_NO_STYLE_MAC
-}
-
-contains( styles, windowsvista ) {
-    HEADERS += styles/qwindowsvistastyle_p.h
-    HEADERS += styles/qwindowsvistastyle_p_p.h
-    SOURCES += styles/qwindowsvistastyle.cpp
-    !contains( styles, windowsxp ) {
-        message( windowsvista requires windowsxp )
-        styles += windowsxp
-    }
-} else {
-    DEFINES += QT_NO_STYLE_WINDOWSVISTA
-}
-
-contains( styles, windowsxp ) {
-    HEADERS += styles/qwindowsxpstyle_p.h
-    HEADERS += styles/qwindowsxpstyle_p_p.h
-    SOURCES += styles/qwindowsxpstyle.cpp
-    !contains( styles, windows ) {
-        message( windowsxp requires windows )
-        styles  += windows
-    }
-} else {
-    DEFINES += QT_NO_STYLE_WINDOWSXP
-}
-
-contains( styles, windows ) {
-    HEADERS += styles/qwindowsstyle_p.h
-    HEADERS += styles/qwindowsstyle_p_p.h
+qtConfig(style-windows) {
+    HEADERS += styles/qwindowsstyle_p.h styles/qwindowsstyle_p_p.h
     SOURCES += styles/qwindowsstyle.cpp
-} else {
-    DEFINES += QT_NO_STYLE_WINDOWS
 }
 
-contains( styles, fusion ) {
-        HEADERS += styles/qfusionstyle_p.h
-        HEADERS += styles/qfusionstyle_p_p.h
-        SOURCES += styles/qfusionstyle.cpp
-} else {
-    DEFINES += QT_NO_STYLE_FUSION
-}
-
-contains( styles, windowsce ) {
-    HEADERS += styles/qwindowscestyle_p.h
-    HEADERS += styles/qwindowscestyle_p_p.h
-    SOURCES += styles/qwindowscestyle.cpp
-} else {
-    DEFINES += QT_NO_STYLE_WINDOWSCE
-}
-
-contains( styles, windowsmobile ) {
-    HEADERS += styles/qwindowsmobilestyle_p.h
-    HEADERS += styles/qwindowsmobilestyle_p_p.h
-    SOURCES += styles/qwindowsmobilestyle.cpp
-} else {
-    DEFINES += QT_NO_STYLE_WINDOWSMOBILE
-}
-
-contains( styles, android ) {
-    HEADERS += styles/qandroidstyle_p.h
-    SOURCES += styles/qandroidstyle.cpp
-} else {
-    DEFINES += QT_NO_STYLE_ANDROID
+qtConfig(style-fusion) {
+    HEADERS += styles/qfusionstyle_p.h styles/qfusionstyle_p_p.h
+    SOURCES += styles/qfusionstyle.cpp
 }

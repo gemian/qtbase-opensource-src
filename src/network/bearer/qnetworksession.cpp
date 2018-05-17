@@ -48,6 +48,11 @@
 
 #include "qnetworkconfigmanager_p.h"
 
+// for QNetworkSession::interface
+#ifdef interface
+#  undef interface
+#endif
+
 #ifndef QT_NO_BEARERMANAGEMENT
 
 QT_BEGIN_NAMESPACE
@@ -247,6 +252,10 @@ QT_BEGIN_NAMESPACE
 QNetworkSession::QNetworkSession(const QNetworkConfiguration &connectionConfig, QObject *parent)
     : QObject(parent), d(0)
 {
+    qRegisterMetaType<QNetworkSession::State>();
+    qRegisterMetaType<QNetworkSession::SessionError>();
+    qRegisterMetaType<QNetworkSession::UsagePolicies>();
+
     // invalid configuration
     if (!connectionConfig.identifier().isEmpty()) {
         const auto engines = qNetworkConfigurationManagerPrivate()->engines();
@@ -272,10 +281,6 @@ QNetworkSession::QNetworkSession(const QNetworkConfiguration &connectionConfig, 
             }
         }
     }
-
-    qRegisterMetaType<QNetworkSession::State>();
-    qRegisterMetaType<QNetworkSession::SessionError>();
-    qRegisterMetaType<QNetworkSession::UsagePolicies>();
 }
 
 /*!
@@ -744,8 +749,8 @@ void QNetworkSession::disconnectNotify(const QMetaMethod &signal)
         d->setALREnabled(false);
 }
 
-#include "moc_qnetworksession.cpp"
-
 QT_END_NAMESPACE
+
+#include "moc_qnetworksession.cpp"
 
 #endif // QT_NO_BEARERMANAGEMENT

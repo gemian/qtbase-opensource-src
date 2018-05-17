@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qtabbar.h"
 #include "private/qwidget_p.h"
 
@@ -59,11 +60,11 @@
 #include <qdebug.h>
 #include <qvariantanimation.h>
 
-#ifndef QT_NO_TABBAR
-
 #define ANIMATION_DURATION 250
 
 #include <qstyleoption.h>
+
+QT_REQUIRE_CONFIG(tabbar);
 
 QT_BEGIN_NAMESPACE
 
@@ -80,17 +81,17 @@ private:
     QPixmap m_pixmap;
 };
 
-class QTabBarPrivate  : public QWidgetPrivate
+class Q_WIDGETS_EXPORT QTabBarPrivate : public QWidgetPrivate
 {
     Q_DECLARE_PUBLIC(QTabBar)
 public:
     QTabBarPrivate()
         :currentIndex(-1), pressedIndex(-1), shape(QTabBar::RoundedNorth), layoutDirty(false),
-        drawBase(true), scrollOffset(0), elideModeSetByUser(false), useScrollButtonsSetByUser(false), expanding(true), closeButtonOnTabs(false),
+        drawBase(true), scrollOffset(0), hoverIndex(-1), elideModeSetByUser(false), useScrollButtonsSetByUser(false), expanding(true), closeButtonOnTabs(false),
         selectionBehaviorOnRemove(QTabBar::SelectRightTab), paintWithOffsets(true), movable(false),
         dragInProgress(false), documentMode(false), autoHide(false), changeCurrentOnDrag(false),
         switchTabCurrentIndex(-1), switchTabTimerId(0), movingTab(0)
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
         , previousPressedIndex(-1)
 #endif
         {}
@@ -117,7 +118,7 @@ public:
 #ifndef QT_NO_TOOLTIP
         QString toolTip;
 #endif
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
         QString whatsThis;
 #endif
         QIcon icon;
@@ -131,6 +132,9 @@ public:
         QWidget *rightWidget;
         int lastTab;
         int dragOffset;
+#ifndef QT_NO_ACCESSIBILITY
+        QString accessibleName;
+#endif
 
 #ifndef QT_NO_ANIMATION
         ~Tab() { delete animation; }
@@ -176,7 +180,7 @@ public:
 
     int indexAtPos(const QPoint &p) const;
 
-    inline bool isAnimated() const { Q_Q(const QTabBar); return q->style()->styleHint(QStyle::SH_Widget_Animate, 0, q); }
+    inline bool isAnimated() const { Q_Q(const QTabBar); return q->style()->styleHint(QStyle::SH_Widget_Animation_Duration, 0, q) > 0; }
     inline bool validIndex(int index) const { return index >= 0 && index < tabList.count(); }
     void setCurrentNextEnabledIndex(int offset);
 
@@ -188,6 +192,7 @@ public:
     void moveTab(int index, int offset);
     void moveTabFinished(int index);
     QRect hoverRect;
+    int hoverIndex;
 
     void refresh();
     void layoutTabs();
@@ -198,6 +203,7 @@ public:
     void setupMovableTab();
     void autoHideTabs();
     QRect normalizedScrollRect(int index = -1);
+    int hoveredTabIndex() const;
 
     void initBasicStyleOption(QStyleOptionTab *option, int tabIndex) const;
 
@@ -224,7 +230,7 @@ public:
     int switchTabTimerId;
 
     QMovableTabWidget *movingTab;
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     int previousPressedIndex;
 #endif
     // shared by tabwidget and qtabbar
@@ -280,9 +286,6 @@ public:
     void paintEvent(QPaintEvent *event) Q_DECL_OVERRIDE;
 };
 
-
 QT_END_NAMESPACE
-
-#endif
 
 #endif

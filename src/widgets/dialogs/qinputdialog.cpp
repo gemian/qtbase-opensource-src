@@ -39,8 +39,6 @@
 
 #include "qinputdialog.h"
 
-#ifndef QT_NO_INPUTDIALOG
-
 #include "qapplication.h"
 #include "qcombobox.h"
 #include "qdialogbuttonbox.h"
@@ -48,7 +46,7 @@
 #include "qlayout.h"
 #include "qlineedit.h"
 #include "qplaintextedit.h"
-#include "qlistwidget.h"
+#include "qlistview.h"
 #include "qpushbutton.h"
 #include "qspinbox.h"
 #include "qstackedlayout.h"
@@ -1194,10 +1192,6 @@ void QInputDialog::done(int result)
 
     \snippet dialogs/standarddialogs/dialog.cpp 3
 
-    \warning Do not delete \a parent during the execution of the dialog. If you
-    want to do this, you should create the dialog yourself using one of the
-    QInputDialog constructors.
-
     \sa getInt(), getDouble(), getItem(), getMultiLineText()
 */
 
@@ -1205,18 +1199,18 @@ QString QInputDialog::getText(QWidget *parent, const QString &title, const QStri
                               QLineEdit::EchoMode mode, const QString &text, bool *ok,
                               Qt::WindowFlags flags, Qt::InputMethodHints inputMethodHints)
 {
-    QInputDialog dialog(parent, flags);
-    dialog.setWindowTitle(title);
-    dialog.setLabelText(label);
-    dialog.setTextValue(text);
-    dialog.setTextEchoMode(mode);
-    dialog.setInputMethodHints(inputMethodHints);
+    QAutoPointer<QInputDialog> dialog(new QInputDialog(parent, flags));
+    dialog->setWindowTitle(title);
+    dialog->setLabelText(label);
+    dialog->setTextValue(text);
+    dialog->setTextEchoMode(mode);
+    dialog->setInputMethodHints(inputMethodHints);
 
-    int ret = dialog.exec();
+    const int ret = dialog->exec();
     if (ok)
         *ok = !!ret;
     if (ret) {
-        return dialog.textValue();
+        return dialog->textValue();
     } else {
         return QString();
     }
@@ -1246,10 +1240,6 @@ QString QInputDialog::getText(QWidget *parent, const QString &title, const QStri
 
     \snippet dialogs/standarddialogs/dialog.cpp 4
 
-    \warning Do not delete \a parent during the execution of the dialog. If you
-    want to do this, you should create the dialog yourself using one of the
-    QInputDialog constructors.
-
     \sa getInt(), getDouble(), getItem(), getText()
 */
 
@@ -1257,18 +1247,18 @@ QString QInputDialog::getMultiLineText(QWidget *parent, const QString &title, co
                                        const QString &text, bool *ok, Qt::WindowFlags flags,
                                        Qt::InputMethodHints inputMethodHints)
 {
-    QInputDialog dialog(parent, flags);
-    dialog.setOptions(QInputDialog::UsePlainTextEditForTextInput);
-    dialog.setWindowTitle(title);
-    dialog.setLabelText(label);
-    dialog.setTextValue(text);
-    dialog.setInputMethodHints(inputMethodHints);
+    QAutoPointer<QInputDialog> dialog(new QInputDialog(parent, flags));
+    dialog->setOptions(QInputDialog::UsePlainTextEditForTextInput);
+    dialog->setWindowTitle(title);
+    dialog->setLabelText(label);
+    dialog->setTextValue(text);
+    dialog->setInputMethodHints(inputMethodHints);
 
-    int ret = dialog.exec();
+    const int ret = dialog->exec();
     if (ok)
         *ok = !!ret;
     if (ret) {
-        return dialog.textValue();
+        return dialog->textValue();
     } else {
         return QString();
     }
@@ -1298,28 +1288,24 @@ QString QInputDialog::getMultiLineText(QWidget *parent, const QString &title, co
 
     \snippet dialogs/standarddialogs/dialog.cpp 0
 
-    \warning Do not delete \a parent during the execution of the dialog. If you
-    want to do this, you should create the dialog yourself using one of the
-    QInputDialog constructors.
-
     \sa getText(), getDouble(), getItem(), getMultiLineText()
 */
 
 int QInputDialog::getInt(QWidget *parent, const QString &title, const QString &label, int value,
                          int min, int max, int step, bool *ok, Qt::WindowFlags flags)
 {
-    QInputDialog dialog(parent, flags);
-    dialog.setWindowTitle(title);
-    dialog.setLabelText(label);
-    dialog.setIntRange(min, max);
-    dialog.setIntValue(value);
-    dialog.setIntStep(step);
+    QAutoPointer<QInputDialog> dialog(new QInputDialog(parent, flags));
+    dialog->setWindowTitle(title);
+    dialog->setLabelText(label);
+    dialog->setIntRange(min, max);
+    dialog->setIntValue(value);
+    dialog->setIntStep(step);
 
-    int ret = dialog.exec();
+    const int ret = dialog->exec();
     if (ok)
         *ok = !!ret;
     if (ret) {
-        return dialog.intValue();
+        return dialog->intValue();
     } else {
         return value;
     }
@@ -1350,10 +1336,6 @@ int QInputDialog::getInt(QWidget *parent, const QString &title, const QString &l
 
     \snippet dialogs/standarddialogs/dialog.cpp 0
 
-    \warning Do not delete \a parent during the execution of the dialog. If you
-    want to do this, you should create the dialog yourself using one of the
-    QInputDialog constructors.
-
     \sa getText(), getDouble(), getItem(), getMultiLineText()
 */
 
@@ -1379,10 +1361,6 @@ int QInputDialog::getInt(QWidget *parent, const QString &title, const QString &l
 
     \snippet dialogs/standarddialogs/dialog.cpp 1
 
-    \warning Do not delete \a parent during the execution of the dialog. If you
-    want to do this, you should create the dialog yourself using one of the
-    QInputDialog constructors.
-
     \sa getText(), getInt(), getItem(), getMultiLineText()
 */
 
@@ -1390,18 +1368,54 @@ double QInputDialog::getDouble(QWidget *parent, const QString &title, const QStr
                                double value, double min, double max, int decimals, bool *ok,
                                Qt::WindowFlags flags)
 {
-    QInputDialog dialog(parent, flags);
-    dialog.setWindowTitle(title);
-    dialog.setLabelText(label);
-    dialog.setDoubleDecimals(decimals);
-    dialog.setDoubleRange(min, max);
-    dialog.setDoubleValue(value);
+    return QInputDialog::getDouble(parent, title, label, value, min, max, decimals, ok, flags, 1.0);
+}
 
-    int ret = dialog.exec();
+/*!
+    \overload
+    Static convenience function to get a floating point number from the user.
+
+    \a title is the text which is displayed in the title bar of the dialog.
+    \a label is the text which is shown to the user (it should say what should
+    be entered).
+    \a value is the default floating point number that the line edit will be
+    set to.
+    \a min and \a max are the minimum and maximum values the user may choose.
+    \a decimals is the maximum number of decimal places the number may have.
+    \a step is the amount by which the values change as the user presses the
+    arrow buttons to increment or decrement the value.
+
+    If \a ok is nonnull, *\a ok will be set to true if the user pressed \uicontrol OK
+    and to false if the user pressed \uicontrol Cancel. The dialog's parent is
+    \a parent. The dialog will be modal and uses the widget \a flags.
+
+    This function returns the floating point number which has been entered by
+    the user.
+
+    Use this static function like this:
+
+    \snippet dialogs/standarddialogs/dialog.cpp 1
+
+    \sa getText(), getInt(), getItem(), getMultiLineText()
+*/
+
+double QInputDialog::getDouble(QWidget *parent, const QString &title, const QString &label,
+                               double value, double min, double max, int decimals, bool *ok,
+                               Qt::WindowFlags flags, double step)
+{
+    QAutoPointer<QInputDialog> dialog(new QInputDialog(parent, flags));
+    dialog->setWindowTitle(title);
+    dialog->setLabelText(label);
+    dialog->setDoubleDecimals(decimals);
+    dialog->setDoubleRange(min, max);
+    dialog->setDoubleValue(value);
+    dialog->setDoubleStep(step);
+
+    const int ret = dialog->exec();
     if (ok)
         *ok = !!ret;
     if (ret) {
-        return dialog.doubleValue();
+        return dialog->doubleValue();
     } else {
         return value;
     }
@@ -1433,10 +1447,6 @@ double QInputDialog::getDouble(QWidget *parent, const QString &title, const QStr
 
     \snippet dialogs/standarddialogs/dialog.cpp 2
 
-    \warning Do not delete \a parent during the execution of the dialog. If you
-    want to do this, you should create the dialog yourself using one of the
-    QInputDialog constructors.
-
     \sa getText(), getInt(), getDouble(), getMultiLineText()
 */
 
@@ -1446,22 +1456,47 @@ QString QInputDialog::getItem(QWidget *parent, const QString &title, const QStri
 {
     QString text(items.value(current));
 
-    QInputDialog dialog(parent, flags);
-    dialog.setWindowTitle(title);
-    dialog.setLabelText(label);
-    dialog.setComboBoxItems(items);
-    dialog.setTextValue(text);
-    dialog.setComboBoxEditable(editable);
-    dialog.setInputMethodHints(inputMethodHints);
+    QAutoPointer<QInputDialog> dialog(new QInputDialog(parent, flags));
+    dialog->setWindowTitle(title);
+    dialog->setLabelText(label);
+    dialog->setComboBoxItems(items);
+    dialog->setTextValue(text);
+    dialog->setComboBoxEditable(editable);
+    dialog->setInputMethodHints(inputMethodHints);
 
-    int ret = dialog.exec();
+    const int ret = dialog->exec();
     if (ok)
         *ok = !!ret;
     if (ret) {
-        return dialog.textValue();
+        return dialog->textValue();
     } else {
         return text;
     }
+}
+
+/*!
+    \property QInputDialog::doubleStep
+    \since 5.10
+    \brief the step by which the double value is increased and decreased
+
+    This property is only relevant when the input dialog is used in
+    DoubleInput mode.
+*/
+
+void QInputDialog::setDoubleStep(double step)
+{
+    Q_D(QInputDialog);
+    d->ensureDoubleSpinBox();
+    d->doubleSpinBox->setSingleStep(step);
+}
+
+double QInputDialog::doubleStep() const
+{
+    Q_D(const QInputDialog);
+    if (d->doubleSpinBox)
+        return d->doubleSpinBox->singleStep();
+    else
+        return 1.0;
 }
 
 /*!
@@ -1531,5 +1566,3 @@ QT_END_NAMESPACE
 
 #include "qinputdialog.moc"
 #include "moc_qinputdialog.cpp"
-
-#endif // QT_NO_INPUTDIALOG

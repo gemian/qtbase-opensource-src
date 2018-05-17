@@ -55,11 +55,9 @@ typedef struct _GUID
 #endif
 #endif
 
-#ifdef Q_OS_DARWIN
+#if defined(Q_OS_DARWIN) || defined(Q_QDOC)
 Q_FORWARD_DECLARE_CF_TYPE(CFUUID);
-#  ifdef __OBJC__
 Q_FORWARD_DECLARE_OBJC_CLASS(NSUUID);
-#  endif
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -67,6 +65,7 @@ QT_BEGIN_NAMESPACE
 
 class Q_CORE_EXPORT QUuid
 {
+    QUuid(Qt::Initialization) {}
 public:
     enum Variant {
         VarUnknown        =-1,
@@ -118,6 +117,8 @@ public:
 #endif
 
     QUuid(const QString &);
+    static QUuid fromString(QStringView string) Q_DECL_NOTHROW;
+    static QUuid fromString(QLatin1String string) Q_DECL_NOTHROW;
     QUuid(const char *);
     QString toString() const;
     QUuid(const QByteArray &);
@@ -210,10 +211,8 @@ public:
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
     static QUuid fromCFUUID(CFUUIDRef uuid);
     CFUUIDRef toCFUUID() const Q_DECL_CF_RETURNS_RETAINED;
-#  if defined(__OBJC__) || defined(Q_QDOC)
     static QUuid fromNSUUID(const NSUUID *uuid);
     NSUUID *toNSUUID() const Q_DECL_NS_RETURNS_AUTORELEASED;
-#  endif
 #endif
 
     uint    data1;

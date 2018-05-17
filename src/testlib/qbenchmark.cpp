@@ -40,8 +40,8 @@
 #include <QtTest/qbenchmark.h>
 #include <QtTest/private/qbenchmark_p.h>
 #include <QtTest/private/qbenchmarkmetric_p.h>
+#include <QtTest/private/qbenchmarktimemeasurers_p.h>
 
-#include <QtCore/qprocess.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qset.h>
 #include <QtCore/qdebug.h>

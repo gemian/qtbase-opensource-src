@@ -58,6 +58,7 @@ class Q_CORE_EXPORT QThreadPool : public QObject
     Q_PROPERTY(int expiryTimeout READ expiryTimeout WRITE setExpiryTimeout)
     Q_PROPERTY(int maxThreadCount READ maxThreadCount WRITE setMaxThreadCount)
     Q_PROPERTY(int activeThreadCount READ activeThreadCount)
+    Q_PROPERTY(uint stackSize READ stackSize WRITE setStackSize)
     friend class QFutureInterfaceBase;
 
 public:
@@ -77,13 +78,21 @@ public:
 
     int activeThreadCount() const;
 
+    void setStackSize(uint stackSize);
+    uint stackSize() const;
+
     void reserveThread();
     void releaseThread();
 
     bool waitForDone(int msecs = -1);
 
     void clear();
+
+#if QT_DEPRECATED_SINCE(5, 9)
+    QT_DEPRECATED_X("use tryTake(), but note the different deletion rules")
     void cancel(QRunnable *runnable);
+#endif
+    Q_REQUIRED_RESULT bool tryTake(QRunnable *runnable);
 };
 
 QT_END_NAMESPACE

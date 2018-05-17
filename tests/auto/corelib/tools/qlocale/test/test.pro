@@ -1,10 +1,9 @@
 CONFIG += console testcase
-CONFIG -= app_bundle
 QT = core testlib core-private
 embedded: QT += gui
 SOURCES = ../tst_qlocale.cpp
 
-!contains(QT_CONFIG, doubleconversion):!contains(QT_CONFIG, system-doubleconversion) {
+!qtConfig(doubleconversion):!qtConfig(system-doubleconversion) {
     DEFINES += QT_NO_DOUBLECONVERSION
 }
 

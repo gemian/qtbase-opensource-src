@@ -38,7 +38,6 @@
 ****************************************************************************/
 
 #include "qapplication.h"
-#ifndef QT_NO_EFFECTS
 #include "qdesktopwidget.h"
 #include "qeffects_p.h"
 #include "qevent.h"
@@ -50,6 +49,8 @@
 #include "qtimer.h"
 #include "qelapsedtimer.h"
 #include "qdebug.h"
+
+#include <private/qdesktopwidget_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -98,7 +99,7 @@ static QAlphaWidget* q_blend = 0;
   Constructs a QAlphaWidget.
 */
 QAlphaWidget::QAlphaWidget(QWidget* w, Qt::WindowFlags f)
-    : QWidget(QApplication::desktop()->screen(QApplication::desktop()->screenNumber(w)), f)
+    : QWidget(QApplication::desktop()->screen(QDesktopWidgetPrivate::screenNumber(w)), f)
 {
 #ifndef Q_OS_WIN
     setEnabled(false);
@@ -110,7 +111,7 @@ QAlphaWidget::QAlphaWidget(QWidget* w, Qt::WindowFlags f)
 
 QAlphaWidget::~QAlphaWidget()
 {
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
     // Restore user-defined opacity value
     if (widget)
         widget->setWindowOpacity(1);
@@ -144,7 +145,7 @@ void QAlphaWidget::run(int time)
     checkTime.start();
 
     showWidget = true;
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
     qApp->installEventFilter(this);
     widget->setWindowOpacity(0.0);
     widget->show();
@@ -196,16 +197,20 @@ bool QAlphaWidget::eventFilter(QObject *o, QEvent *e)
     case QEvent::Close:
        if (o != widget)
            break;
+       Q_FALLTHROUGH();
     case QEvent::MouseButtonPress:
     case QEvent::MouseButtonDblClick:
         showWidget = false;
         render();
         break;
     case QEvent::KeyPress: {
+#ifndef QT_NO_SHORTCUT
        QKeyEvent *ke = (QKeyEvent*)e;
        if (ke->matches(QKeySequence::Cancel)) {
            showWidget = false;
-       } else {
+       } else
+#endif
+       {
            duration = 0;
        }
        render();
@@ -251,7 +256,7 @@ void QAlphaWidget::render()
     else
         alpha = 1;
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
     if (alpha >= 1 || !showWidget) {
         anim.stop();
         qApp->removeEventFilter(this);
@@ -268,10 +273,6 @@ void QAlphaWidget::render()
 
         if (widget) {
             if (!showWidget) {
-#ifdef Q_OS_WIN
-                setEnabled(true);
-                setFocus();
-#endif // Q_OS_WIN
                 widget->hide();
             } else {
                 //Since we are faking the visibility of the widget
@@ -288,7 +289,7 @@ void QAlphaWidget::render()
         pm = QPixmap::fromImage(mixedImage);
         repaint();
     }
-#endif // defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#endif // defined(Q_OS_WIN)
 }
 
 /*
@@ -605,5 +606,3 @@ QT_END_NAMESPACE
 */
 
 #include "qeffects.moc"
-
-#endif //QT_NO_EFFECTS

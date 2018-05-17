@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include "QtNetwork/qabstractsocket.h"
 #include "QtCore/qbytearray.h"
 #include "QtCore/qlist.h"
@@ -71,13 +72,13 @@ public:
     virtual ~QAbstractSocketPrivate();
 
     // from QAbstractSocketEngineReceiver
-    inline void readNotification() { canReadNotification(); }
-    inline void writeNotification() { canWriteNotification(); }
-    inline void exceptionNotification() {}
-    inline void closeNotification() { canCloseNotification(); }
-    void connectionNotification();
+    inline void readNotification() override { canReadNotification(); }
+    inline void writeNotification() override { canWriteNotification(); }
+    inline void exceptionNotification() override {}
+    inline void closeNotification() override { canCloseNotification(); }
+    void connectionNotification() override;
 #ifndef QT_NO_NETWORKPROXY
-    inline void proxyAuthenticationRequired(const QNetworkProxy &proxy, QAuthenticator *authenticator) {
+    inline void proxyAuthenticationRequired(const QNetworkProxy &proxy, QAuthenticator *authenticator) override {
         Q_Q(QAbstractSocket);
         q->proxyAuthenticationRequired(proxy, authenticator);
     }
@@ -85,7 +86,7 @@ public:
 
     virtual bool bind(const QHostAddress &address, quint16 port, QAbstractSocket::BindMode mode);
 
-    bool canReadNotification();
+    virtual bool canReadNotification();
     bool canWriteNotification();
     void canCloseNotification();
 
@@ -94,7 +95,6 @@ public:
     void _q_startConnecting(const QHostInfo &hostInfo);
     void _q_testConnection();
     void _q_abortConnectionAttempt();
-    void _q_forceDisconnect();
 
     bool emittedReadyRead;
     bool emittedBytesWritten;
@@ -128,31 +128,32 @@ public:
     inline void resolveProxy(quint16 port) { resolveProxy(QString(), port); }
 
     void resetSocketLayer();
-    bool flush();
+    virtual bool flush();
 
     bool initSocketLayer(QAbstractSocket::NetworkLayerProtocol protocol);
     virtual void configureCreatedSocket();
     void startConnectingByName(const QString &host);
     void fetchConnectionParameters();
-    void setupSocketNotifiers();
     bool readFromSocket();
-    bool writeToSocket();
-    void emitReadyRead();
+    virtual bool writeToSocket();
+    void emitReadyRead(int channel = 0);
+    void emitBytesWritten(qint64 bytes, int channel = 0);
 
     void setError(QAbstractSocket::SocketError errorCode, const QString &errorString);
     void setErrorAndEmit(QAbstractSocket::SocketError errorCode, const QString &errorString);
 
     qint64 readBufferMaxSize;
     bool isBuffered;
+    bool hasPendingData;
 
     QTimer *connectTimer;
-    QTimer *disconnectTimer;
 
     int hostLookupId;
 
     QAbstractSocket::SocketType socketType;
     QAbstractSocket::SocketState state;
 
+    // Must be kept in sync with QIODevicePrivate::errorString.
     QAbstractSocket::SocketError socketError;
 
     QAbstractSocket::NetworkLayerProtocol preferredNetworkLayerProtocol;

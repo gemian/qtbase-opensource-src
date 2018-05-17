@@ -38,17 +38,22 @@
 ****************************************************************************/
 
 #include "qtextedit_p.h"
+#if QT_CONFIG(lineedit)
 #include "qlineedit.h"
+#endif
+#if QT_CONFIG(textbrowser)
 #include "qtextbrowser.h"
+#endif
 
-#ifndef QT_NO_TEXTEDIT
 #include <qfont.h>
 #include <qpainter.h>
 #include <qevent.h>
 #include <qdebug.h>
 #include <qdrag.h>
 #include <qclipboard.h>
+#if QT_CONFIG(menu)
 #include <qmenu.h>
+#endif
 #include <qstyle.h>
 #include <qtimer.h>
 #ifndef QT_NO_ACCESSIBILITY
@@ -67,12 +72,8 @@
 #include <qtexttable.h>
 #include <qvariant.h>
 
-#endif
-
 QT_BEGIN_NAMESPACE
 
-
-#ifndef QT_NO_TEXTEDIT
 static inline bool shouldEnableInputMethod(QTextEdit *textedit)
 {
     return !textedit->isReadOnly();
@@ -184,7 +185,7 @@ void QTextEditPrivate::init(const QString &html)
 #ifndef QT_NO_CURSOR
     viewport->setCursor(Qt::IBeamCursor);
 #endif
-#ifdef Q_DEAD_CODE_FROM_QT4_WIN
+#if 0 // Used to be included in Qt4 for Q_WS_WIN
     setSingleFingerPanEnabled(true);
 #endif
 }
@@ -243,7 +244,7 @@ void QTextEditPrivate::pageUpDown(QTextCursor::MoveOperation op, QTextCursor::Mo
     control->setTextCursor(cursor);
 }
 
-#ifndef QT_NO_SCROLLBAR
+#if QT_CONFIG(scrollbar)
 static QSize documentSize(QWidgetTextControl *control)
 {
     QTextDocument *doc = control->document();
@@ -1514,7 +1515,7 @@ void QTextEditPrivate::paint(QPainter *p, QPaintEvent *e)
     if (layout)
         layout->setViewport(QRect());
 
-    if (!placeholderText.isEmpty() && doc->isEmpty()) {
+    if (!placeholderText.isEmpty() && doc->isEmpty() && !control->isPreediting()) {
         QColor col = control->palette().text().color();
         col.setAlpha(128);
         p->setPen(col);
@@ -1831,7 +1832,7 @@ void QTextEdit::changeEvent(QEvent *e)
 
 /*! \reimp
 */
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 void QTextEdit::wheelEvent(QWheelEvent *e)
 {
     Q_D(QTextEdit);
@@ -1954,27 +1955,48 @@ void QTextEdit::setOverwriteMode(bool overwrite)
     d->control->setOverwriteMode(overwrite);
 }
 
+#if QT_DEPRECATED_SINCE(5, 10)
 /*!
     \property QTextEdit::tabStopWidth
     \brief the tab stop width in pixels
     \since 4.1
+    \deprecated in Qt 5.10. Use tabStopDistance instead.
 
     By default, this property contains a value of 80 pixels.
 */
 
 int QTextEdit::tabStopWidth() const
 {
-    Q_D(const QTextEdit);
-    return qRound(d->control->document()->defaultTextOption().tabStop());
+    return qRound(tabStopDistance());
 }
 
 void QTextEdit::setTabStopWidth(int width)
 {
+    setTabStopDistance(width);
+}
+#endif
+
+/*!
+    \property QTextEdit::tabStopDistance
+    \brief the tab stop distance in pixels
+    \since 5.10
+
+    By default, this property contains a value of 80 pixels.
+*/
+
+qreal QTextEdit::tabStopDistance() const
+{
+    Q_D(const QTextEdit);
+    return d->control->document()->defaultTextOption().tabStopDistance();
+}
+
+void QTextEdit::setTabStopDistance(qreal distance)
+{
     Q_D(QTextEdit);
     QTextOption opt = d->control->document()->defaultTextOption();
-    if (opt.tabStop() == width || width < 0)
+    if (opt.tabStopDistance() == distance || distance < 0)
         return;
-    opt.setTabStop(width);
+    opt.setTabStopDistance(distance);
     d->control->document()->setDefaultTextOption(opt);
 }
 
@@ -2134,7 +2156,7 @@ void QTextEdit::setReadOnly(bool ro)
     Qt::TextInteractionFlags flags = Qt::NoTextInteraction;
     if (ro) {
         flags = Qt::TextSelectableByMouse;
-#ifndef QT_NO_TEXTBROWSER
+#if QT_CONFIG(textbrowser)
         if (qobject_cast<QTextBrowser *>(this))
             flags |= Qt::TextBrowserInteraction;
 #endif
@@ -2578,6 +2600,8 @@ void QTextEdit::setText(const QString &text)
     if (format == Qt::RichText)
         setHtml(text);
     else
+#else
+    Q_UNUSED(format);
 #endif
         setPlainText(text);
 }
@@ -2632,8 +2656,6 @@ void QTextEdit::ensureCursorVisible()
     This signal is emitted whenever redo operations become available
     (\a available is true) or unavailable (\a available is false).
 */
-
-#endif // QT_NO_TEXTEDIT
 
 QT_END_NAMESPACE
 

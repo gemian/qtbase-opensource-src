@@ -60,6 +60,7 @@
 #    include <QtNetwork/qsslkey.h>
 #    include <QtNetwork/qsslcipher.h>
 #    include <QtNetwork/qsslconfiguration.h>
+#    include <QtNetwork/qsslerror.h>
 #endif
 
 
@@ -81,26 +82,31 @@ QHttpNetworkConnectionPrivate::QHttpNetworkConnectionPrivate(const QString &host
 : state(RunningState),
   networkLayerState(Unknown),
   hostName(hostName), port(port), encrypt(encrypt), delayIpv4(true)
+  , activeChannelCount(type == QHttpNetworkConnection::ConnectionTypeHTTP2
 #ifndef QT_NO_SSL
-, channelCount((type == QHttpNetworkConnection::ConnectionTypeSPDY) ? 1 : defaultHttpChannelCount)
-#else
-, channelCount(defaultHttpChannelCount)
-#endif // QT_NO_SSL
+                        || type == QHttpNetworkConnection::ConnectionTypeSPDY
+#endif
+                        ? 1 : defaultHttpChannelCount)
+  , channelCount(defaultHttpChannelCount)
 #ifndef QT_NO_NETWORKPROXY
   , networkProxy(QNetworkProxy::NoProxy)
 #endif
   , preConnectRequests(0)
   , connectionType(type)
 {
+    // We allocate all 6 channels even if it's SPDY or HTTP/2 enabled
+    // connection: in case the protocol negotiation via NPN/ALPN fails,
+    // we will have normally working HTTP/1.1.
+    Q_ASSERT(channelCount >= activeChannelCount);
     channels = new QHttpNetworkConnectionChannel[channelCount];
 }
 
-QHttpNetworkConnectionPrivate::QHttpNetworkConnectionPrivate(quint16 channelCount, const QString &hostName,
+QHttpNetworkConnectionPrivate::QHttpNetworkConnectionPrivate(quint16 connectionCount, const QString &hostName,
                                                              quint16 port, bool encrypt,
                                                              QHttpNetworkConnection::ConnectionType type)
 : state(RunningState), networkLayerState(Unknown),
   hostName(hostName), port(port), encrypt(encrypt), delayIpv4(true),
-  channelCount(channelCount)
+  activeChannelCount(connectionCount), channelCount(connectionCount)
 #ifndef QT_NO_NETWORKPROXY
   , networkProxy(QNetworkProxy::NoProxy)
 #endif
@@ -116,6 +122,7 @@ QHttpNetworkConnectionPrivate::~QHttpNetworkConnectionPrivate()
 {
     for (int i = 0; i < channelCount; ++i) {
         if (channels[i].socket) {
+            QObject::disconnect(channels[i].socket, Q_NULLPTR, &channels[i], Q_NULLPTR);
             channels[i].socket->close();
             delete channels[i].socket;
         }
@@ -144,7 +151,7 @@ void QHttpNetworkConnectionPrivate::pauseConnection()
     state = PausedState;
 
     // Disable all socket notifiers
-    for (int i = 0; i < channelCount; i++) {
+    for (int i = 0; i < activeChannelCount; i++) {
         if (channels[i].socket) {
 #ifndef QT_NO_SSL
             if (encrypt)
@@ -160,7 +167,7 @@ void QHttpNetworkConnectionPrivate::resumeConnection()
 {
     state = RunningState;
     // Enable all socket notifiers
-    for (int i = 0; i < channelCount; i++) {
+    for (int i = 0; i < activeChannelCount; i++) {
         if (channels[i].socket) {
 #ifndef QT_NO_SSL
             if (encrypt)
@@ -181,7 +188,7 @@ void QHttpNetworkConnectionPrivate::resumeConnection()
 
 int QHttpNetworkConnectionPrivate::indexOf(QAbstractSocket *socket) const
 {
-    for (int i = 0; i < channelCount; ++i)
+    for (int i = 0; i < activeChannelCount; ++i)
         if (channels[i].socket == socket)
             return i;
 
@@ -207,7 +214,7 @@ bool QHttpNetworkConnectionPrivate::shouldEmitChannelError(QAbstractSocket *sock
         channels[otherSocket].ensureConnection();
     }
 
-    if (channelCount == 1) {
+    if (activeChannelCount < channelCount) {
         if (networkLayerState == HostLookupPending || networkLayerState == IPv4or6)
             networkLayerState = QHttpNetworkConnectionPrivate::Unknown;
         channels[0].close();
@@ -317,10 +324,10 @@ void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
         if (systemLocale == QLatin1String("C"))
             acceptLanguage = QString::fromLatin1("en,*");
         else if (systemLocale.startsWith(QLatin1String("en-")))
-            acceptLanguage = QString::fromLatin1("%1,*").arg(systemLocale);
+            acceptLanguage = systemLocale + QLatin1String(",*");
         else
-            acceptLanguage = QString::fromLatin1("%1,en,*").arg(systemLocale);
-        request.setHeaderField("Accept-Language", acceptLanguage.toLatin1());
+            acceptLanguage = systemLocale + QLatin1String(",en,*");
+        request.setHeaderField("Accept-Language", std::move(acceptLanguage).toLatin1());
     }
 
     // set the User Agent
@@ -348,7 +355,7 @@ void QHttpNetworkConnectionPrivate::prepareRequest(HttpMessagePair &messagePair)
             host += QByteArray::number(port);
         }
 
-        request.setHeaderField("Host", host);
+        request.prependHeaderField("Host", host);
     }
 
     reply->d_func()->requestIsPrepared = true;
@@ -402,7 +409,7 @@ void QHttpNetworkConnectionPrivate::copyCredentials(int fromChannel, QAuthentica
 
     // select another channel
     QAuthenticator* otherAuth = 0;
-    for (int i = 0; i < channelCount; ++i) {
+    for (int i = 0; i < activeChannelCount; ++i) {
         if (i == fromChannel)
             continue;
         if (isProxy)
@@ -519,17 +526,17 @@ QUrl QHttpNetworkConnectionPrivate::parseRedirectResponse(QAbstractSocket *socke
     if (!reply->request().isFollowRedirects())
         return QUrl();
 
-    QUrl rUrl;
+    QUrl redirectUrl;
     const QList<QPair<QByteArray, QByteArray> > fields = reply->header();
     for (const QNetworkReply::RawHeaderPair &header : fields) {
         if (header.first.toLower() == "location") {
-            rUrl = QUrl::fromEncoded(header.second);
+            redirectUrl = QUrl::fromEncoded(header.second);
             break;
         }
     }
 
     // If the location url is invalid/empty, we emit ProtocolUnknownError
-    if (!rUrl.isValid()) {
+    if (!redirectUrl.isValid()) {
         emitReplyError(socket, reply, QNetworkReply::ProtocolUnknownError);
         return QUrl();
     }
@@ -541,24 +548,38 @@ QUrl QHttpNetworkConnectionPrivate::parseRedirectResponse(QAbstractSocket *socke
     }
 
     // Resolve the URL if it's relative
-    if (rUrl.isRelative())
-        rUrl = reply->request().url().resolved(rUrl);
+    if (redirectUrl.isRelative())
+        redirectUrl = reply->request().url().resolved(redirectUrl);
 
     // Check redirect url protocol
-    QString scheme = rUrl.scheme();
-    if (scheme == QLatin1String("http") || scheme == QLatin1String("https")) {
-        QString previousUrlScheme = reply->request().url().scheme();
-        // Check if we're doing an unsecure redirect (https -> http)
-        if (previousUrlScheme == QLatin1String("https")
-            && scheme == QLatin1String("http")) {
-            emitReplyError(socket, reply, QNetworkReply::InsecureRedirectError);
-            return QUrl();
+    const QUrl priorUrl(reply->request().url());
+    if (redirectUrl.scheme() == QLatin1String("http") || redirectUrl.scheme() == QLatin1String("https")) {
+        switch (reply->request().redirectPolicy()) {
+        case QNetworkRequest::NoLessSafeRedirectPolicy:
+            // Here we could handle https->http redirects as InsecureProtocolError.
+            // However, if HSTS is enabled and redirectUrl.host() is a known STS
+            // host, then we'll replace its scheme and this won't downgrade protocol,
+            // after all.  We cannot access QNAM's STS cache from here, so delegate
+            // this check to QNetworkReplyHttpImpl.
+            break;
+        case QNetworkRequest::SameOriginRedirectPolicy:
+            if (priorUrl.host() != redirectUrl.host()
+                || priorUrl.scheme() != redirectUrl.scheme()
+                || priorUrl.port() != redirectUrl.port()) {
+                emitReplyError(socket, reply, QNetworkReply::InsecureRedirectError);
+                return QUrl();
+            }
+            break;
+        case QNetworkRequest::UserVerifiedRedirectPolicy:
+            break;
+        default:
+            Q_ASSERT(!"Unexpected redirect policy");
         }
     } else {
         emitReplyError(socket, reply, QNetworkReply::ProtocolUnknownError);
         return QUrl();
     }
-    return rUrl;
+    return redirectUrl;
 }
 
 void QHttpNetworkConnectionPrivate::createAuthorization(QAbstractSocket *socket, QHttpNetworkRequest &request)
@@ -606,7 +627,8 @@ QHttpNetworkReply* QHttpNetworkConnectionPrivate::queueRequest(const QHttpNetwor
     if (request.isPreConnect())
         preConnectRequests++;
 
-    if (connectionType == QHttpNetworkConnection::ConnectionTypeHTTP) {
+    if (connectionType == QHttpNetworkConnection::ConnectionTypeHTTP
+        || (!encrypt && connectionType == QHttpNetworkConnection::ConnectionTypeHTTP2 && !channels[0].switchedToHttp2)) {
         switch (request.priority()) {
         case QHttpNetworkRequest::HighPriority:
             highPriorityQueue.prepend(pair);
@@ -617,14 +639,13 @@ QHttpNetworkReply* QHttpNetworkConnectionPrivate::queueRequest(const QHttpNetwor
             break;
         }
     }
-#ifndef QT_NO_SSL
-    else { // SPDY
+    else { // SPDY, HTTP/2 ('h2' mode)
         if (!pair.second->d_func()->requestIsPrepared)
             prepareRequest(pair);
         channels[0].spdyRequestsToSend.insertMulti(request.priority(), pair);
     }
-#endif // QT_NO_SSL
 
+#ifndef Q_OS_WINRT
     // For Happy Eyeballs the networkLayerState is set to Unknown
     // untill we have started the first connection attempt. So no
     // request will be started untill we know if IPv4 or IPv6
@@ -632,6 +653,13 @@ QHttpNetworkReply* QHttpNetworkConnectionPrivate::queueRequest(const QHttpNetwor
     if (networkLayerState == Unknown || networkLayerState == HostLookupPending) {
         startHostInfoLookup();
     } else if ( networkLayerState == IPv4 || networkLayerState == IPv6 ) {
+#else // !Q_OS_WINRT
+    {
+        // Skip the host lookup part for winrt. Host lookup and proxy handling are done by Windows
+        // internally and networkLayerPreference is ignored on this platform. Instead of refactoring
+        // the whole approach we just pretend that everything important is known here.
+        networkLayerState = IPv4;
+#endif
         // this used to be called via invokeMethod and a QueuedConnection
         // It is the only place _q_startNextRequest is called directly without going
         // through the event loop using a QueuedConnection.
@@ -643,6 +671,25 @@ QHttpNetworkReply* QHttpNetworkConnectionPrivate::queueRequest(const QHttpNetwor
         _q_startNextRequest();
     }
     return reply;
+}
+
+void QHttpNetworkConnectionPrivate::fillHttp2Queue()
+{
+    for (auto &pair : highPriorityQueue) {
+        if (!pair.second->d_func()->requestIsPrepared)
+            prepareRequest(pair);
+        channels[0].spdyRequestsToSend.insertMulti(QHttpNetworkRequest::HighPriority, pair);
+    }
+
+    highPriorityQueue.clear();
+
+    for (auto &pair : lowPriorityQueue) {
+        if (!pair.second->d_func()->requestIsPrepared)
+            prepareRequest(pair);
+        channels[0].spdyRequestsToSend.insertMulti(pair.first.priority(), pair);
+    }
+
+    lowPriorityQueue.clear();
 }
 
 void QHttpNetworkConnectionPrivate::requeueRequest(const HttpMessagePair &pair)
@@ -674,8 +721,7 @@ bool QHttpNetworkConnectionPrivate::dequeueRequest(QAbstractSocket *socket)
         HttpMessagePair messagePair = highPriorityQueue.takeLast();
         if (!messagePair.second->d_func()->requestIsPrepared)
             prepareRequest(messagePair);
-        channels[i].request = messagePair.first;
-        channels[i].reply = messagePair.second;
+        updateChannel(i, messagePair);
         return true;
     }
 
@@ -684,11 +730,19 @@ bool QHttpNetworkConnectionPrivate::dequeueRequest(QAbstractSocket *socket)
         HttpMessagePair messagePair = lowPriorityQueue.takeLast();
         if (!messagePair.second->d_func()->requestIsPrepared)
             prepareRequest(messagePair);
-        channels[i].request = messagePair.first;
-        channels[i].reply = messagePair.second;
+        updateChannel(i, messagePair);
         return true;
     }
     return false;
+}
+
+void QHttpNetworkConnectionPrivate::updateChannel(int i, const HttpMessagePair &messagePair)
+{
+    channels[i].request = messagePair.first;
+    channels[i].reply = messagePair.second;
+    // Now that reply is assigned a channel, correct reply to channel association
+    // previously set in queueRequest.
+    channels[i].reply->d_func()->connectionChannel = &channels[i];
 }
 
 QHttpNetworkRequest QHttpNetworkConnectionPrivate::predictNextRequest() const
@@ -878,7 +932,7 @@ void QHttpNetworkConnectionPrivate::removeReply(QHttpNetworkReply *reply)
     Q_Q(QHttpNetworkConnection);
 
     // check if the reply is currently being processed or it is pipelined in
-    for (int i = 0; i < channelCount; ++i) {
+    for (int i = 0; i < activeChannelCount; ++i) {
         // is the reply associated the currently processing of this channel?
         if (channels[i].reply == reply) {
             channels[i].reply = 0;
@@ -981,7 +1035,7 @@ void QHttpNetworkConnectionPrivate::_q_startNextRequest()
         return;
 
     //resend the necessary ones.
-    for (int i = 0; i < channelCount; ++i) {
+    for (int i = 0; i < activeChannelCount; ++i) {
         if (channels[i].resendCurrent && (channels[i].state != QHttpNetworkConnectionChannel::ClosingState)) {
             channels[i].resendCurrent = false;
 
@@ -1001,7 +1055,7 @@ void QHttpNetworkConnectionPrivate::_q_startNextRequest()
             return;
 
         // try to get a free AND connected socket
-        for (int i = 0; i < channelCount; ++i) {
+        for (int i = 0; i < activeChannelCount; ++i) {
             if (channels[i].socket) {
                 if (!channels[i].reply && !channels[i].isSocketBusy() && channels[i].socket->state() == QAbstractSocket::ConnectedState) {
                     if (dequeueRequest(channels[i].socket))
@@ -1011,9 +1065,9 @@ void QHttpNetworkConnectionPrivate::_q_startNextRequest()
         }
         break;
     }
+    case QHttpNetworkConnection::ConnectionTypeHTTP2:
     case QHttpNetworkConnection::ConnectionTypeSPDY: {
-#ifndef QT_NO_SSL
-        if (channels[0].spdyRequestsToSend.isEmpty())
+        if (channels[0].spdyRequestsToSend.isEmpty() && channels[0].switchedToHttp2)
             return;
 
         if (networkLayerState == IPv4)
@@ -1022,9 +1076,8 @@ void QHttpNetworkConnectionPrivate::_q_startNextRequest()
             channels[0].networkLayerPreference = QAbstractSocket::IPv6Protocol;
         channels[0].ensureConnection();
         if (channels[0].socket && channels[0].socket->state() == QAbstractSocket::ConnectedState
-                && !channels[0].pendingEncrypt)
+                && !channels[0].pendingEncrypt && channels[0].spdyRequestsToSend.size())
             channels[0].sendRequest();
-#endif // QT_NO_SSL
         break;
     }
     }
@@ -1039,7 +1092,7 @@ void QHttpNetworkConnectionPrivate::_q_startNextRequest()
     // return fast if there is nothing to pipeline
     if (highPriorityQueue.isEmpty() && lowPriorityQueue.isEmpty())
         return;
-    for (int i = 0; i < channelCount; i++)
+    for (int i = 0; i < activeChannelCount; i++)
         if (channels[i].socket && channels[i].socket->state() == QAbstractSocket::ConnectedState)
             fillPipeline(channels[i].socket);
 
@@ -1055,7 +1108,7 @@ void QHttpNetworkConnectionPrivate::_q_startNextRequest()
         int normalRequests = queuedRequests - preConnectRequests;
         neededOpenChannels = qMax(normalRequests, preConnectRequests);
     }
-    for (int i = 0; i < channelCount && neededOpenChannels > 0; ++i) {
+    for (int i = 0; i < activeChannelCount && neededOpenChannels > 0; ++i) {
         bool connectChannel = false;
         if (channels[i].socket) {
             if ((channels[i].socket->state() == QAbstractSocket::ConnectingState)
@@ -1085,7 +1138,7 @@ void QHttpNetworkConnectionPrivate::_q_startNextRequest()
 
 void QHttpNetworkConnectionPrivate::readMoreLater(QHttpNetworkReply *reply)
 {
-    for (int i = 0 ; i < channelCount; ++i) {
+    for (int i = 0 ; i < activeChannelCount; ++i) {
         if (channels[i].reply ==  reply) {
             // emulate a readyRead() from the socket
             QMetaObject::invokeMethod(&channels[i], "_q_readyRead", Qt::QueuedConnection);
@@ -1178,20 +1231,20 @@ void QHttpNetworkConnectionPrivate::_q_hostLookupFinished(const QHostInfo &info)
         if (dequeueRequest(channels[0].socket)) {
             emitReplyError(channels[0].socket, channels[0].reply, QNetworkReply::HostNotFoundError);
             networkLayerState = QHttpNetworkConnectionPrivate::Unknown;
-        }
-#ifndef QT_NO_SSL
-        else if (connectionType == QHttpNetworkConnection::ConnectionTypeSPDY) {
+        } else if (connectionType == QHttpNetworkConnection::ConnectionTypeSPDY
+                   || connectionType == QHttpNetworkConnection::ConnectionTypeHTTP2) {
             for (const HttpMessagePair &spdyPair : qAsConst(channels[0].spdyRequestsToSend)) {
                 // emit error for all replies
                 QHttpNetworkReply *currentReply = spdyPair.second;
                 Q_ASSERT(currentReply);
                 emitReplyError(channels[0].socket, currentReply, QNetworkReply::HostNotFoundError);
             }
-        }
-#endif // QT_NO_SSL
-        else {
-            // Should not happen
-            qWarning("QHttpNetworkConnectionPrivate::_q_hostLookupFinished could not de-queue request");
+        } else {
+            // Should not happen: we start a host lookup before sending a request,
+            // so it's natural to have requests either in SPDY/HTTP/2 queue,
+            // or in low/high priority queues.
+            qWarning("QHttpNetworkConnectionPrivate::_q_hostLookupFinished"
+                     " could not de-queue request, failed to report HostNotFoundError");
             networkLayerState = QHttpNetworkConnectionPrivate::Unknown;
         }
     }
@@ -1204,7 +1257,7 @@ void QHttpNetworkConnectionPrivate::_q_hostLookupFinished(const QHostInfo &info)
 // connection will then be disconnected.
 void QHttpNetworkConnectionPrivate::startNetworkLayerStateLookup()
 {
-    if (channelCount > 1) {
+    if (activeChannelCount > 1) {
         // At this time all channels should be unconnected.
         Q_ASSERT(!channels[0].isSocketBusy());
         Q_ASSERT(!channels[1].isSocketBusy());
@@ -1242,7 +1295,7 @@ void QHttpNetworkConnectionPrivate::startNetworkLayerStateLookup()
 
 void QHttpNetworkConnectionPrivate::networkLayerDetected(QAbstractSocket::NetworkLayerProtocol protocol)
 {
-    for (int i = 0 ; i < channelCount; ++i) {
+    for (int i = 0 ; i < activeChannelCount; ++i) {
         if ((channels[i].networkLayerPreference != protocol) && (channels[i].state == QHttpNetworkConnectionChannel::ConnectingState)) {
             channels[i].close();
         }
@@ -1321,6 +1374,12 @@ QHttpNetworkReply* QHttpNetworkConnection::sendRequest(const QHttpNetworkRequest
     return d->queueRequest(request);
 }
 
+void QHttpNetworkConnection::fillHttp2Queue()
+{
+    Q_D(QHttpNetworkConnection);
+    d->fillHttp2Queue();
+}
+
 bool QHttpNetworkConnection::isSsl() const
 {
     Q_D(const QHttpNetworkConnection);
@@ -1339,7 +1398,7 @@ void QHttpNetworkConnection::setCacheProxy(const QNetworkProxy &networkProxy)
     d->networkProxy = networkProxy;
     // update the authenticator
     if (!d->networkProxy.user().isEmpty()) {
-        for (int i = 0; i < d->channelCount; ++i) {
+        for (int i = 0; i < d->activeChannelCount; ++i) {
             d->channels[i].proxyAuthenticator.setUser(d->networkProxy.user());
             d->channels[i].proxyAuthenticator.setPassword(d->networkProxy.password());
         }
@@ -1355,7 +1414,7 @@ QNetworkProxy QHttpNetworkConnection::cacheProxy() const
 void QHttpNetworkConnection::setTransparentProxy(const QNetworkProxy &networkProxy)
 {
     Q_D(QHttpNetworkConnection);
-    for (int i = 0; i < d->channelCount; ++i)
+    for (int i = 0; i < d->activeChannelCount; ++i)
         d->channels[i].setProxy(networkProxy);
 }
 
@@ -1378,6 +1437,23 @@ void QHttpNetworkConnection::setConnectionType(ConnectionType type)
     d->connectionType = type;
 }
 
+Http2::ProtocolParameters QHttpNetworkConnection::http2Parameters() const
+{
+    Q_D(const QHttpNetworkConnection);
+    return d->http2Parameters;
+}
+
+void QHttpNetworkConnection::setHttp2Parameters(const Http2::ProtocolParameters &params)
+{
+    Q_D(QHttpNetworkConnection);
+    if (params.validate()) {
+        d->http2Parameters = params;
+    } else {
+        qCWarning(QT_HTTP2)
+            << "invalid HTTP/2 parameters, falling back to defaults instead";
+    }
+}
+
 // SSL support below
 #ifndef QT_NO_SSL
 void QHttpNetworkConnection::setSslConfiguration(const QSslConfiguration &config)
@@ -1387,7 +1463,7 @@ void QHttpNetworkConnection::setSslConfiguration(const QSslConfiguration &config
         return;
 
     // set the config on all channels
-    for (int i = 0; i < d->channelCount; ++i)
+    for (int i = 0; i < d->activeChannelCount; ++i)
         d->channels[i].setSslConfiguration(config);
 }
 
@@ -1410,7 +1486,7 @@ void QHttpNetworkConnection::ignoreSslErrors(int channel)
         return;
 
     if (channel == -1) { // ignore for all channels
-        for (int i = 0; i < d->channelCount; ++i) {
+        for (int i = 0; i < d->activeChannelCount; ++i) {
             d->channels[i].ignoreSslErrors();
         }
 
@@ -1426,7 +1502,7 @@ void QHttpNetworkConnection::ignoreSslErrors(const QList<QSslError> &errors, int
         return;
 
     if (channel == -1) { // ignore for all channels
-        for (int i = 0; i < d->channelCount; ++i) {
+        for (int i = 0; i < d->activeChannelCount; ++i) {
             d->channels[i].ignoreSslErrors(errors);
         }
 

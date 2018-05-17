@@ -42,7 +42,7 @@
 #include <QtGui/QOpenGLFramebufferObject>
 #include <QtGui/QOpenGLPaintDevice>
 #include <QtGui/QOpenGLFunctions>
-#include <QtGui/private/qopengltextureblitter_p.h>
+#include <QtGui/QOpenGLTextureBlitter>
 #include <QtGui/private/qopenglextensions_p.h>
 #include <QtGui/private/qopenglcontext_p.h>
 #include <QtGui/QMatrix4x4>
@@ -528,7 +528,9 @@ QImage QOpenGLWindow::grabFramebuffer()
         return QImage();
 
     makeCurrent();
-    return qt_gl_read_framebuffer(size() * devicePixelRatio(), false, false);
+    QImage img = qt_gl_read_framebuffer(size() * devicePixelRatio(), false, false);
+    img.setDevicePixelRatio(devicePixelRatio());
+    return img;
 }
 
 /*!

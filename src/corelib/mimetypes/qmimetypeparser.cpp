@@ -49,7 +49,6 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
 #include <QtCore/QDir>
-#include <QtCore/QPair>
 #include <QtCore/QXmlStreamReader>
 #include <QtCore/QXmlStreamWriter>
 #include <QtCore/QStack>
@@ -85,7 +84,7 @@ static const char matchMaskAttributeC[] = "mask";
     \class QMimeTypeParser
     \inmodule QtCore
     \internal
-    \brief The QMimeTypeParser class parses MIME types, and builds a MIME database hierarchy by adding to QMimeDatabasePrivate.
+    \brief The QMimeTypeParser class parses MIME types, and builds a MIME database hierarchy by adding to QMimeDatabase.
 
     Populates QMimeDataBase
 
@@ -165,7 +164,8 @@ bool QMimeTypeParserBase::parseNumber(const QStringRef &n, int *target, QString 
     bool ok;
     *target = n.toInt(&ok);
     if (Q_UNLIKELY(!ok)) {
-        *errorMessage = QLatin1String("Not a number '") + n + QLatin1String("'.");
+        if (errorMessage)
+            *errorMessage = QLatin1String("Not a number '") + n + QLatin1String("'.");
         return false;
     }
     return true;

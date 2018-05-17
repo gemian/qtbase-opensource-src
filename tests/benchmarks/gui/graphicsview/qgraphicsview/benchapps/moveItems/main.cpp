@@ -27,14 +27,14 @@
 ****************************************************************************/
 #include <QtGui>
 
-#ifdef Q_DEAD_CODE_FROM_QT4_WIN
+#if 0 // Used to be included in Qt4 for Q_WS_WIN
 #define CALLGRIND_START_INSTRUMENTATION  {}
 #define CALLGRIND_STOP_INSTRUMENTATION   {}
 #else
 #include "valgrind/callgrind.h"
 #endif
 
-#ifdef Q_DEAD_CODE_FROM_QT4_X11
+#if 0 // Used to be included in Qt4 for Q_WS_X11
 extern void qt_x11_wait_for_window_manager(QWidget *);
 #endif
 
@@ -82,14 +82,14 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < atoi(argv[1]); ++i) {
         QGraphicsRectItem *child = scene.addRect(-5, -5, 10, 10, QPen(Qt::NoPen), QBrush(Qt::blue));
-        child->setPos(-50 + qrand() % 100, -50 + qrand() % 100);
+        child->setPos(-50 + QRandomGenerator::global()->bounded(100), -50 + QRandomGenerator::global()->bounded(100));
         child->setParentItem(item);
     }
 
     View view(&scene, item);
     view.resize(300, 300);
     view.show();
-#ifdef Q_DEAD_CODE_FROM_QT4_X11
+#if 0 // Used to be included in Qt4 for Q_WS_X11
     qt_x11_wait_for_window_manager(&view);
 #endif
 

@@ -51,10 +51,11 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtCore/qobject.h"
 #include "QtCore/qpoint.h"
 
-#ifndef QT_NO_RESIZEHANDLER
+QT_REQUIRE_CONFIG(resizehandler);
 
 QT_BEGIN_NAMESPACE
 
@@ -133,7 +134,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_RESIZEHANDLER
 
 #endif // QWIDGETRESIZEHANDLER_P_H

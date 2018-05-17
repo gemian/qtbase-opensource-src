@@ -56,31 +56,13 @@
 #include <qlineedit.h>
 #include <qmdiarea.h>
 #include <qscrollarea.h>
-
-#ifdef Q_OS_WINCE_WM
-#include <windows.h>
-
-static bool qt_wince_is_smartphone() {
-    wchar_t tszPlatform[64];
-    if (SystemParametersInfo(SPI_GETPLATFORMTYPE,
-                             sizeof(tszPlatform)/sizeof(*tszPlatform),tszPlatform,0))
-      if (0 == _tcsicmp(reinterpret_cast<const wchar_t *> (QString::fromLatin1("Smartphone").utf16()), tszPlatform))
-            return true;
-    return false;
-}
-#endif
-
 #include <qwidget.h>
 
-// Make a widget frameless to prevent size constraints of title bars
-// from interfering (Windows).
-static inline void setFrameless(QWidget *w)
-{
-    Qt::WindowFlags flags = w->windowFlags();
-    flags |= Qt::FramelessWindowHint;
-    flags &= ~(Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
-    w->setWindowFlags(flags);
-}
+#include <algorithm>
+
+#include <QtTest/private/qtesthelpers_p.h>
+
+using namespace QTestPrivate;
 
 class tst_QStyle : public QObject
 {
@@ -90,7 +72,7 @@ public:
 
 private:
     bool testAllFunctions(QStyle *);
-    bool testScrollBarSubControls(QStyle *);
+    bool testScrollBarSubControls();
     void testPainting(QStyle *style, const QString &platform);
 private slots:
     void drawItemPixmap();
@@ -100,20 +82,11 @@ private slots:
     void testFusionStyle();
 #endif
     void testWindowsStyle();
-#if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSXP)
-    void testWindowsXPStyle();
-#endif
 #if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSVISTA)
     void testWindowsVistaStyle();
 #endif
 #ifdef Q_OS_MAC
     void testMacStyle();
-#endif
-#ifdef Q_OS_WINCE
-    void testWindowsCEStyle();
-#endif
-#ifdef Q_OS_WINCE_WM
-    void testWindowsMobileStyle();
 #endif
     void testStyleFactory();
     void testProxyStyle();
@@ -165,14 +138,6 @@ void tst_QStyle::testStyleFactory()
 #endif
 #ifndef QT_NO_STYLE_WINDOWS
     QVERIFY(keys.contains("Windows"));
-#endif
-#ifdef Q_OS_WIN
-    if (QSysInfo::WindowsVersion >= QSysInfo::WV_XP &&
-        (QSysInfo::WindowsVersion & QSysInfo::WV_NT_based))
-        QVERIFY(keys.contains("WindowsXP"));
-    if (QSysInfo::WindowsVersion >= QSysInfo::WV_VISTA &&
-        (QSysInfo::WindowsVersion & QSysInfo::WV_NT_based))
-        QVERIFY(keys.contains("WindowsVista"));
 #endif
 
     foreach (QString styleName , keys) {
@@ -228,13 +193,12 @@ void tst_QStyle::drawItemPixmap()
     testWidget->resize(300, 300);
     testWidget->showNormal();
 
-    const QString imageFileName = QFINDTESTDATA("task_25863.png");
-    QVERIFY(!imageFileName.isEmpty());
-
-    QPixmap p(imageFileName, "PNG");
-    const QPixmap actualPix = testWidget->grab();
-
-    QCOMPARE(actualPix, p);
+    QImage image = testWidget->grab().toImage();
+    const QRgb green = QColor(Qt::green).rgb();
+    QVERIFY(image.reinterpretAsFormat(QImage::Format_RGB32));
+    const QRgb *bits = reinterpret_cast<const QRgb *>(image.constBits());
+    const QRgb *end = bits + image.byteCount() / sizeof(QRgb);
+    QVERIFY(std::all_of(bits, end, [green] (QRgb r) { return r == green; }));
     testWidget->hide();
 }
 
@@ -315,29 +279,27 @@ bool tst_QStyle::testAllFunctions(QStyle *style)
     style->itemPixmapRect(QRect(0, 0, 100, 100), Qt::AlignHCenter, QPixmap(200, 200));
     style->itemTextRect(QFontMetrics(qApp->font()), QRect(0, 0, 100, 100), Qt::AlignHCenter, true, QString("Test"));
 
-    return testScrollBarSubControls(style);
+    return testScrollBarSubControls();
 }
 
-bool tst_QStyle::testScrollBarSubControls(QStyle* style)
+bool tst_QStyle::testScrollBarSubControls()
 {
-    // WinCE SmartPhone doesn't have scrollbar subcontrols, so skip the rest of the test.
-#ifdef Q_OS_WINCE_WM
-    if (style->inherits("QWindowsMobileStyle") && qt_wince_is_smartphone())
-        return true;
-#else
-    Q_UNUSED(style);
-#endif
-
+    const auto *style = testWidget->style();
+    const bool isMacStyle = style->objectName().toLower() == "macintosh";
     QScrollBar scrollBar;
     setFrameless(&scrollBar);
     scrollBar.show();
     const QStyleOptionSlider opt = qt_qscrollbarStyleOption(&scrollBar);
-    foreach (int subControl, QList<int>() << 1 << 2 << 4 << 8) {
-        QRect sr = testWidget->style()->subControlRect(QStyle::CC_ScrollBar, &opt,
-                                    QStyle::SubControl(subControl), &scrollBar);
+    foreach (int sc, QList<int>() << 1 << 2 << 4 << 8) {
+        const auto subControl = static_cast<QStyle::SubControl>(sc);
+        const QRect sr = style->subControlRect(QStyle::CC_ScrollBar, &opt, subControl, &scrollBar);
         if (sr.isNull()) {
-            qWarning("Null rect for subcontrol %d", subControl);
-            return false;
+            // macOS scrollbars no longer have these, so there's no reason to fail
+            if (!(isMacStyle && (subControl == QStyle::SC_ScrollBarAddLine ||
+                                 subControl == QStyle::SC_ScrollBarSubLine))) {
+                qWarning() << "Unexpected null rect for subcontrol" << subControl;
+                return false;
+            }
         }
     }
     return true;
@@ -368,17 +330,6 @@ void tst_QStyle::testWindowsStyle()
     delete wstyle;
 }
 
-#if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSXP)
-// WindowsXP style
-void tst_QStyle::testWindowsXPStyle()
-{
-    QStyle *xpstyle = QStyleFactory::create("WindowsXP");
-    QVERIFY(testAllFunctions(xpstyle));
-    lineUpLayoutTest(xpstyle);
-    delete xpstyle;
-}
-#endif
-
 void writeImage(const QString &fileName, QImage image)
 {
     QImageWriter imageWriter(fileName);
@@ -401,8 +352,6 @@ void tst_QStyle::testWindowsVistaStyle()
 
     if (QSysInfo::WindowsVersion == QSysInfo::WV_VISTA)
         testPainting(vistastyle, "vista");
-    else if (QSysInfo::WindowsVersion == QSysInfo::WV_XP)
-        testPainting(vistastyle, "xp");
     delete vistastyle;
 }
 #endif
@@ -519,26 +468,6 @@ void tst_QStyle::testMacStyle()
     QStyle *mstyle = QStyleFactory::create("Macintosh");
     QVERIFY(testAllFunctions(mstyle));
     delete mstyle;
-}
-#endif
-
-#ifdef Q_OS_WINCE
-// WindowsCEStyle style
-void tst_QStyle::testWindowsCEStyle()
-{
-    QStyle *cstyle = QStyleFactory::create("WindowsCE");
-    QVERIFY(testAllFunctions(cstyle));
-    delete cstyle;
-}
-#endif
-
-#ifdef Q_OS_WINCE_WM
-// WindowsMobileStyle style
-void tst_QStyle::testWindowsMobileStyle()
-{
-    QStyle *cstyle = QStyleFactory::create("WindowsMobile");
-    QVERIFY(testAllFunctions(cstyle));
-    delete cstyle;
 }
 #endif
 

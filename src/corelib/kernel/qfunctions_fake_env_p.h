@@ -44,9 +44,9 @@
 //  W A R N I N G
 //  -------------
 //
-// This file is not part of the Qt API.  It exists for the convenience
-// of the QLibrary class.  This header file may change from
-// version to version without notice, or even be removed.
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
 //
 // We mean it.
 //
@@ -77,7 +77,9 @@ struct NameEquals {
     { return qstrcmp(other.name, name) == 0; }
 };
 
+#ifndef Q_CLANG_QDOC
 Q_GLOBAL_STATIC(QVector<Variable>, qt_app_environment)
+#endif
 
 errno_t qt_fake_getenv_s(size_t *sizeNeeded, char *buffer, size_t bufferSize, const char *varName)
 {

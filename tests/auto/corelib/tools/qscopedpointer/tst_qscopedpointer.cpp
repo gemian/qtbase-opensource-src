@@ -88,7 +88,7 @@ class MySubClass : public MyClass
 void tst_QScopedPointer::useSubClassInConstructor()
 {
     /* Use a syntax which users typically would do. */
-    QScopedPointer<MyClass> p(new MyClass());
+    QScopedPointer<MyClass> p(new MySubClass());
 }
 
 void tst_QScopedPointer::dataOnValue()
@@ -278,12 +278,16 @@ void tst_QScopedPointer::isNull()
     {
         QScopedPointer<int> p;
         QVERIFY(p.isNull());
+        QVERIFY(p == nullptr);
+        QVERIFY(nullptr == p);
     }
 
     /* Invoke on a set value. */
     {
         QScopedPointer<int> p(new int(69));
         QVERIFY(!p.isNull());
+        QVERIFY(p != nullptr);
+        QVERIFY(nullptr != p);
     }
 }
 

@@ -53,13 +53,9 @@
 //! [1]
 RasterWindow::RasterWindow(QWindow *parent)
     : QWindow(parent)
-    , m_update_pending(false)
+    , m_backingStore(new QBackingStore(this))
 {
-    create();
-    m_backingStore = new QBackingStore(this);
-
     setGeometry(100, 100, 300, 200);
-
 }
 //! [1]
 
@@ -68,7 +64,6 @@ RasterWindow::RasterWindow(QWindow *parent)
 bool RasterWindow::event(QEvent *event)
 {
     if (event->type() == QEvent::UpdateRequest) {
-        m_update_pending = false;
         renderNow();
         return true;
     }
@@ -79,10 +74,7 @@ bool RasterWindow::event(QEvent *event)
 //! [6]
 void RasterWindow::renderLater()
 {
-    if (!m_update_pending) {
-        m_update_pending = true;
-        QCoreApplication::postEvent(this, new QEvent(QEvent::UpdateRequest));
-    }
+    requestUpdate();
 }
 //! [6]
 
@@ -99,9 +91,8 @@ void RasterWindow::resizeEvent(QResizeEvent *resizeEvent)
 //! [2]
 void RasterWindow::exposeEvent(QExposeEvent *)
 {
-    if (isExposed()) {
+    if (isExposed())
         renderNow();
-    }
 }
 //! [2]
 
@@ -120,6 +111,7 @@ void RasterWindow::renderNow()
 
     painter.fillRect(0, 0, width(), height(), Qt::white);
     render(&painter);
+    painter.end();
 
     m_backingStore->endPaint();
     m_backingStore->flush(rect);

@@ -116,8 +116,7 @@ static QString generateSubObjectXml(QObject *object)
     for ( ; it != end; ++it) {
         QString name = (*it)->objectName();
         if (!name.isEmpty() && QDBusUtil::isValidPartOfObjectPath(name))
-            retval += QString::fromLatin1("  <node name=\"%1\"/>\n")
-                      .arg(name);
+            retval += QLatin1String("  <node name=\"") + name + QLatin1String("\"/>\n");
     }
     return retval;
 }
@@ -192,8 +191,7 @@ QString qDBusIntrospectObject(const QDBusConnectionPrivate::ObjectTreeNode &node
             node.children.constEnd();
         for ( ; it != end; ++it)
             if (it->obj || !it->children.isEmpty())
-                xml_data += QString::fromLatin1("  <node name=\"%1\"/>\n")
-                            .arg(it->name);
+                xml_data += QLatin1String("  <node name=\"") + it->name + QLatin1String("\"/>\n");
     }
 
     xml_data += QLatin1String("</node>\n");
@@ -206,8 +204,7 @@ static inline QDBusMessage interfaceNotFoundError(const QDBusMessage &msg, const
 {
     return msg.createErrorReply(QDBusError::UnknownInterface,
                                 QString::fromLatin1("Interface %1 was not found in object %2")
-                                .arg(interface_name)
-                                .arg(msg.path()));
+                                .arg(interface_name, msg.path()));
 }
 
 static inline QDBusMessage
@@ -410,7 +407,7 @@ QDBusMessage qDBusPropertySet(const QDBusConnectionPrivate::ObjectTreeNode &node
             QDBusAdaptorConnector::AdaptorMap::ConstIterator it;
             it = std::lower_bound(connector->adaptors.constBegin(), connector->adaptors.constEnd(),
                                   interface_name);
-            if (it != connector->adaptors.end() && interface_name == QLatin1String(it->interface)) {
+            if (it != connector->adaptors.cend() && interface_name == QLatin1String(it->interface)) {
                 return propertyWriteReply(msg, interface_name, property_name,
                                           writeProperty(it->adaptor, property_name, value));
             }

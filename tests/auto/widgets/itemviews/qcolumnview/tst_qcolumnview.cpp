@@ -28,6 +28,7 @@
 
 #include "../../../../shared/fakedirmodel.h"
 #include <QtTest/QtTest>
+#include <QtTest/private/qtesthelpers_p.h>
 #include <qitemdelegate.h>
 #include <qcolumnview.h>
 #include <private/qcolumnviewgrip_p.h>
@@ -183,9 +184,6 @@ void tst_QColumnView::initTestCase()
 void tst_QColumnView::init()
 {
     qApp->setLayoutDirection(Qt::LeftToRight);
-#ifdef Q_OS_WINCE //disable magic for WindowsCE
-    qApp->setAutoMaximizeThreshold(-1);
-#endif
 }
 
 void tst_QColumnView::rootIndex()
@@ -372,12 +370,6 @@ void tst_QColumnView::scrollTo_data()
     QTest::newRow("reverse") << true << false;
 }
 
-static inline void centerOnScreen(QWidget *w)
-{
-    const QPoint offset = QPoint(w->width() / 2, w->height() / 2);
-    w->move(QGuiApplication::primaryScreen()->availableGeometry().center() - offset);
-}
-
 void tst_QColumnView::scrollTo()
 {
     QFETCH(bool, reverse);
@@ -389,7 +381,7 @@ void tst_QColumnView::scrollTo()
     view.resize(200, 200);
     topLevel.show();
     topLevel.activateWindow();
-    centerOnScreen(&topLevel);
+    QTestPrivate::centerOnScreen(&topLevel);
     QVERIFY(QTest::qWaitForWindowActive(&topLevel));
 
     view.scrollTo(QModelIndex(), QAbstractItemView::EnsureVisible);
@@ -773,15 +765,15 @@ void tst_QColumnView::gripMoved()
 void tst_QColumnView::preview()
 {
     QColumnView view;
-    QCOMPARE(view.previewWidget(), (QWidget*)0);
+    QCOMPARE(view.previewWidget(), nullptr);
     TreeModel model;
     view.setModel(&model);
-    QCOMPARE(view.previewWidget(), (QWidget*)0);
+    QCOMPARE(view.previewWidget(), nullptr);
     QModelIndex home = model.index(0, 0);
     QVERIFY(home.isValid());
     QVERIFY(model.hasChildren(home));
     view.setCurrentIndex(home);
-    QCOMPARE(view.previewWidget(), (QWidget*)0);
+    QCOMPARE(view.previewWidget(), nullptr);
 
     QModelIndex file;
     QVERIFY(model.rowCount(home) > 0);
@@ -1007,7 +999,7 @@ void tst_QColumnView::dynamicModelChanges()
     ColumnView view;
     view.setModel(&model);
     view.setItemDelegate(&delegate);
-    centerOnScreen(&view);
+    QTestPrivate::centerOnScreen(&view);
     view.show();
 
     QStandardItem *item = new QStandardItem(QLatin1String("item"));

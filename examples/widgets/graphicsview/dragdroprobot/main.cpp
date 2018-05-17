@@ -63,7 +63,7 @@ public:
     }
 
 protected:
-    virtual void resizeEvent(QResizeEvent *) Q_DECL_OVERRIDE
+    void resizeEvent(QResizeEvent *) override
     {
     }
 };
@@ -73,7 +73,6 @@ int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
 
-    qsrand(QTime(0,0,0).secsTo(QTime::currentTime()));
 //! [0]
 //! [1]
     QGraphicsScene scene(-200, -200, 400, 400);

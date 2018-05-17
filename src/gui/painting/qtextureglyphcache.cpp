@@ -42,7 +42,6 @@
 #include "qtextureglyphcache_p.h"
 #include "private/qfontengine_p.h"
 #include "private/qnumeric_p.h"
-#include "private/qnativeimage_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -247,6 +246,7 @@ void QTextureGlyphCache::fillInPendingGlyphs()
             resizeCache(qNextPowerOfTwo(requiredWidth - 1), qNextPowerOfTwo(requiredHeight - 1));
     }
 
+    beginFillTexture();
     {
         QHash<GlyphAndSubPixelPosition, Coord>::iterator iter = m_pendingGlyphs.begin();
         while (iter != m_pendingGlyphs.end()) {
@@ -256,6 +256,7 @@ void QTextureGlyphCache::fillInPendingGlyphs()
             ++iter;
         }
     }
+    endFillTexture();
 
     m_pendingGlyphs.clear();
 }
@@ -317,11 +318,12 @@ void QImageTextureGlyphCache::fillTexture(const Coord &c, glyph_t g, QFixed subP
         return;
     }
 #endif
+    Q_ASSERT(mask.width() <= c.w && mask.height() <= c.h);
 
     if (m_format == QFontEngine::Format_A32
         || m_format == QFontEngine::Format_ARGB) {
         QImage ref(m_image.bits() + (c.x * 4 + c.y * m_image.bytesPerLine()),
-                   qMax(mask.width(), c.w), qMax(mask.height(), c.h), m_image.bytesPerLine(),
+                   qMin(mask.width(), c.w), qMin(mask.height(), c.h), m_image.bytesPerLine(),
                    m_image.format());
         QPainter p(&ref);
         p.setCompositionMode(QPainter::CompositionMode_Source);

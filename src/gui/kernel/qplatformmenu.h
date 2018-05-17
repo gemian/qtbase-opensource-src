@@ -49,7 +49,7 @@
 // source and binary incompatible with future versions of Qt.
 //
 
-#include <QtCore/qglobal.h>
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qpointer.h>
 #include <QtGui/QFont>
 #include <QtGui/QKeySequence>
@@ -62,6 +62,8 @@ class Q_GUI_EXPORT QPlatformMenuItem : public QObject
 {
 Q_OBJECT
 public:
+    QPlatformMenuItem();
+
     // copied from, and must stay in sync with, QAction menu roles.
     enum MenuRole { NoRole = 0, TextHeuristicRole, ApplicationSpecificRole, AboutQtRole,
                     AboutRole, PreferencesRole, QuitRole,
@@ -71,8 +73,8 @@ public:
                     RoleCount };
     Q_ENUM(MenuRole)
 
-    virtual void setTag(quintptr tag) = 0;
-    virtual quintptr tag()const = 0;
+    virtual void setTag(quintptr tag);
+    virtual quintptr tag() const;
 
     virtual void setText(const QString &text) = 0;
     virtual void setIcon(const QIcon &icon) = 0;
@@ -83,7 +85,9 @@ public:
     virtual void setRole(MenuRole role) = 0;
     virtual void setCheckable(bool checkable) = 0;
     virtual void setChecked(bool isChecked) = 0;
+#ifndef QT_NO_SHORTCUT
     virtual void setShortcut(const QKeySequence& shortcut) = 0;
+#endif
     virtual void setEnabled(bool enabled) = 0;
     virtual void setIconSize(int size) = 0;
     virtual void setNativeContents(WId item) { Q_UNUSED(item); }
@@ -92,12 +96,17 @@ public:
 Q_SIGNALS:
     void activated();
     void hovered();
+
+private:
+    quintptr m_tag;
 };
 
 class Q_GUI_EXPORT QPlatformMenu : public QObject
 {
 Q_OBJECT
 public:
+    QPlatformMenu();
+
     enum MenuType { DefaultMenu = 0, EditMenu };
     Q_ENUM(MenuType)
 
@@ -106,8 +115,8 @@ public:
     virtual void syncMenuItem(QPlatformMenuItem *menuItem) = 0;
     virtual void syncSeparatorsCollapsible(bool enable) = 0;
 
-    virtual void setTag(quintptr tag) = 0;
-    virtual quintptr tag()const = 0;
+    virtual void setTag(quintptr tag);
+    virtual quintptr tag() const;
 
     virtual void setText(const QString &text) = 0;
     virtual void setIcon(const QIcon &icon) = 0;
@@ -136,6 +145,9 @@ public:
 Q_SIGNALS:
     void aboutToShow();
     void aboutToHide();
+
+private:
+    quintptr m_tag;
 };
 
 class Q_GUI_EXPORT QPlatformMenuBar : public QObject
@@ -148,7 +160,7 @@ public:
     virtual void handleReparent(QWindow *newParentWindow) = 0;
 
     virtual QPlatformMenu *menuForTag(quintptr tag) const = 0;
-    virtual QPlatformMenu *createMenu() const { return nullptr; }
+    virtual QPlatformMenu *createMenu() const;
 };
 
 QT_END_NAMESPACE

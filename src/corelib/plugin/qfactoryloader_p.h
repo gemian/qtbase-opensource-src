@@ -57,10 +57,23 @@
 #include "QtCore/qobject.h"
 #include "QtCore/qstringlist.h"
 #include "QtCore/qjsonobject.h"
+#include "QtCore/qjsondocument.h"
 #include "QtCore/qmap.h"
+#include "QtCore/qendian.h"
+#if QT_CONFIG(library)
 #include "private/qlibrary_p.h"
+#endif
 
 QT_BEGIN_NAMESPACE
+
+inline QJsonDocument qJsonFromRawLibraryMetaData(const char *raw)
+{
+    raw += strlen("QTMETADATA  ");
+    // the size of the embedded JSON object can be found 8 bytes into the data (see qjson_p.h),
+    // but doesn't include the size of the header (8 bytes)
+    QByteArray json(raw, qFromLittleEndian<uint>(*(const uint *)(raw + 8)) + 8);
+    return QJsonDocument::fromBinaryData(json);
+}
 
 class QFactoryLoaderPrivate;
 class Q_CORE_EXPORT QFactoryLoader : public QObject
@@ -73,7 +86,7 @@ public:
                    const QString &suffix = QString(),
                    Qt::CaseSensitivity = Qt::CaseSensitive);
 
-#ifndef QT_NO_LIBRARY
+#if QT_CONFIG(library)
     ~QFactoryLoader();
 
     void update();
@@ -82,7 +95,7 @@ public:
 #if defined(Q_OS_UNIX) && !defined (Q_OS_MAC)
     QLibraryPrivate *library(const QString &key) const;
 #endif // Q_OS_UNIX && !Q_OS_MAC
-#endif // !QT_NO_LIBRARY
+#endif // QT_CONFIG(library)
 
     QMultiMap<int, QString> keyMap() const;
     int indexOf(const QString &needle) const;
@@ -90,8 +103,6 @@ public:
     QList<QJsonObject> metaData() const;
     QObject *instance(int index) const;
 };
-
-#ifdef Q_COMPILER_VARIADIC_TEMPLATES
 
 template <class PluginInterface, class FactoryInterface, typename ...Args>
 PluginInterface *qLoadPlugin(const QFactoryLoader *loader, const QString &key, Args &&...args)
@@ -105,68 +116,6 @@ PluginInterface *qLoadPlugin(const QFactoryLoader *loader, const QString &key, A
     }
     return nullptr;
 }
-
-#else
-
-template <class PluginInterface, class FactoryInterface>
-    PluginInterface *qLoadPlugin(const QFactoryLoader *loader, const QString &key)
-{
-    const int index = loader->indexOf(key);
-    if (index != -1) {
-        QObject *factoryObject = loader->instance(index);
-        if (FactoryInterface *factory = qobject_cast<FactoryInterface *>(factoryObject))
-            if (PluginInterface *result = factory->create(key))
-                return result;
-    }
-    return 0;
-}
-
-template <class PluginInterface, class FactoryInterface, class P1>
-PluginInterface *qLoadPlugin(const QFactoryLoader *loader,
-                              const QString &key,
-                              P1 &&p1)
-{
-    const int index = loader->indexOf(key);
-    if (index != -1) {
-        QObject *factoryObject = loader->instance(index);
-        if (FactoryInterface *factory = qobject_cast<FactoryInterface *>(factoryObject))
-            if (PluginInterface *result = factory->create(key, std::forward<P1>(p1)))
-                return result;
-    }
-    return 0;
-}
-
-template <class PluginInterface, class FactoryInterface, class P1, class P2>
-PluginInterface *qLoadPlugin(const QFactoryLoader *loader,
-                              const QString &key,
-                              P1 &&p1, P2 &&p2)
-{
-    const int index = loader->indexOf(key);
-    if (index != -1) {
-        QObject *factoryObject = loader->instance(index);
-        if (FactoryInterface *factory = qobject_cast<FactoryInterface *>(factoryObject))
-            if (PluginInterface *result = factory->create(key, std::forward<P1>(p1), std::forward<P2>(p2)))
-                return result;
-    }
-    return 0;
-}
-
-template <class PluginInterface, class FactoryInterface, class P1, class P2, class P3>
-PluginInterface *qLoadPlugin(const QFactoryLoader *loader,
-                              const QString &key,
-                              P1 &&p1, P2 &&p2, P3 &&p3)
-{
-    const int index = loader->indexOf(key);
-    if (index != -1) {
-        QObject *factoryObject = loader->instance(index);
-        if (FactoryInterface *factory = qobject_cast<FactoryInterface *>(factoryObject))
-            if (PluginInterface *result = factory->create(key, std::forward<P1>(p1), std::forward<P2>(p2), std::forward<P3>(p3)))
-                return result;
-    }
-    return 0;
-}
-
-#endif
 
 template <class PluginInterface, class FactoryInterface, typename Arg>
 Q_DECL_DEPRECATED PluginInterface *qLoadPlugin1(const QFactoryLoader *loader, const QString &key, Arg &&arg)

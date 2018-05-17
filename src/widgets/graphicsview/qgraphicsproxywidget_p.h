@@ -51,10 +51,11 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qgraphicsproxywidget.h"
 #include "private/qgraphicswidget_p.h"
 
-#if !defined(QT_NO_GRAPHICSVIEW)
+QT_REQUIRE_CONFIG(graphicsview);
 
 QT_BEGIN_NAMESPACE
 
@@ -79,7 +80,7 @@ public:
     void embedSubWindow(QWidget *);
     void unembedSubWindow(QWidget *);
 
-    bool isProxyWidget() const;
+    bool isProxyWidget() const override;
 
     QPointer<QWidget> widget;
     QPointer<QWidget> lastWidgetUnderMouse;
@@ -111,7 +112,5 @@ public:
 };
 
 QT_END_NAMESPACE
-
-#endif
 
 #endif

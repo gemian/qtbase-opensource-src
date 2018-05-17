@@ -39,7 +39,9 @@
 
 #include "qfilesystemiterator_p.h"
 #include "qfilesystemengine_p.h"
+#include "qoperatingsystemversion.h"
 #include "qplatformdefs.h"
+#include "qvector.h"
 
 #include <QtCore/qt_windows.h>
 
@@ -67,10 +69,6 @@ QFileSystemIterator::QFileSystemIterator(const QFileSystemEntry &entry, QDir::Fi
         nativePath.append(QLatin1Char('\\'));
     nativePath.append(QLatin1Char('*'));
     // In MSVC2015+ case we prepend //?/ for longer file-name support
-#if defined(Q_OS_WINRT) && _MSC_VER < 1900
-    if (nativePath.startsWith(QLatin1Char('\\')))
-        nativePath.remove(0, 1);
-#endif
     if (!dirPath.endsWith(QLatin1Char('/')))
         dirPath.append(QLatin1Char('/'));
     if ((filters & (QDir::Dirs|QDir::Drives)) && (!(filters & (QDir::Files))))
@@ -92,12 +90,10 @@ bool QFileSystemIterator::advance(QFileSystemEntry &fileEntry, QFileSystemMetaDa
         haveData = true;
         int infoLevel = 0 ;         // FindExInfoStandard;
         DWORD dwAdditionalFlags  = 0;
-#ifndef Q_OS_WINCE
-        if (QSysInfo::windowsVersion() >= QSysInfo::WV_WINDOWS7) {
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows7) {
             dwAdditionalFlags = 2;  // FIND_FIRST_EX_LARGE_FETCH
             infoLevel = 1 ;         // FindExInfoBasic;
         }
-#endif
         int searchOps =  0;         // FindExSearchNameMatch
         if (onlyDirs)
             searchOps = 1 ;         // FindExSearchLimitToDirectories
@@ -105,7 +101,7 @@ bool QFileSystemIterator::advance(QFileSystemEntry &fileEntry, QFileSystemMetaDa
                                          FINDEX_SEARCH_OPS(searchOps), 0, dwAdditionalFlags);
         if (findFileHandle == INVALID_HANDLE_VALUE) {
             if (nativePath.startsWith(QLatin1String("\\\\?\\UNC\\"))) {
-                QStringList parts = nativePath.split(QLatin1Char('\\'), QString::SkipEmptyParts);
+                const QVector<QStringRef> parts = nativePath.splitRef(QLatin1Char('\\'), QString::SkipEmptyParts);
                 if (parts.count() == 4 && QFileSystemEngine::uncListSharesOnServer(
                         QLatin1String("\\\\") + parts.at(2), &uncShares)) {
                     if (uncShares.isEmpty())

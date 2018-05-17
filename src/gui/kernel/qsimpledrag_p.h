@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <qpa/qplatformdrag.h>
 
 #include <QtCore/QObject>
@@ -124,7 +125,6 @@ class Q_GUI_EXPORT QSimpleDrag : public QBasicDrag
 {
 public:
     QSimpleDrag();
-    virtual QMimeData *platformDropData() Q_DECL_OVERRIDE;
 
 protected:
     virtual void startDrag() Q_DECL_OVERRIDE;

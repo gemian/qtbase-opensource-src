@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QtCore/qmap.h>
 #include <private/qobject_p.h>
 #include "qinputdevicemanager_p.h"
@@ -68,6 +69,8 @@ public:
     void setDeviceCount(QInputDeviceManager::DeviceType type, int count);
 
     QMap<QInputDeviceManager::DeviceType, int> m_deviceCount;
+
+    Qt::KeyboardModifiers keyboardModifiers;
 };
 
 QT_END_NAMESPACE

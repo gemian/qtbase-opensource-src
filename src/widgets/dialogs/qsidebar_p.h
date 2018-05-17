@@ -51,13 +51,14 @@
 // We mean it.
 //
 
-#include <qlistwidget.h>
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include <qlistview.h>
 #include <qstandarditemmodel.h>
 #include <qstyleditemdelegate.h>
 #include <qurl.h>
 #include <qvector.h>
 
-#ifndef QT_NO_FILEDIALOG
+QT_REQUIRE_CONFIG(filedialog);
 
 QT_BEGIN_NAMESPACE
 
@@ -107,9 +108,16 @@ private:
     void changed(const QString &path);
     void addIndexToWatch(const QString &path, const QModelIndex &index);
     QFileSystemModel *fileSystemModel;
-    QVector<QPair<QModelIndex, QString> > watching;
+    struct WatchItem {
+        QModelIndex index;
+        QString path;
+    };
+    friend class QTypeInfo<WatchItem>;
+
+    QVector<WatchItem> watching;
     QList<QUrl> invalidUrls;
 };
+Q_DECLARE_TYPEINFO(QUrlModel::WatchItem, Q_MOVABLE_TYPE);
 
 class Q_AUTOTEST_EXPORT QSidebar : public QListView
 {
@@ -140,7 +148,7 @@ protected:
 
 private Q_SLOTS:
     void clicked(const QModelIndex &index);
-#ifndef QT_NO_MENU
+#if QT_CONFIG(menu)
     void showContextMenu(const QPoint &position);
 #endif
     void removeEntry();
@@ -150,8 +158,6 @@ private:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_FILEDIALOG
 
 #endif // QSIDEBAR_H
 

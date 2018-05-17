@@ -1,6 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2017 The Qt Company Ltd.
+** Copyright (C) 2016 Intel Corporation.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
@@ -46,11 +47,9 @@
 
 #include <limits>
 
-#ifdef Q_OS_MAC
+#if defined(Q_OS_DARWIN) || defined(Q_QDOC)
 Q_FORWARD_DECLARE_CF_TYPE(CFDate);
-#  ifdef __OBJC__
 Q_FORWARD_DECLARE_OBJC_CLASS(NSDate);
-#  endif
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -60,7 +59,7 @@ class QTimeZone;
 class Q_CORE_EXPORT QDate
 {
 public:
-    enum MonthNameType {
+    enum MonthNameType { // ### Qt 6: remove, along with methods using it
         DateFormat = 0,
         StandaloneFormat
     };
@@ -82,15 +81,22 @@ public:
     int daysInYear() const;
     int weekNumber(int *yearNum = Q_NULLPTR) const;
 
-#ifndef QT_NO_TEXTDATE
-    static QString shortMonthName(int month, MonthNameType type = DateFormat);
-    static QString shortDayName(int weekday, MonthNameType type = DateFormat);
-    static QString longMonthName(int month, MonthNameType type = DateFormat);
-    static QString longDayName(int weekday, MonthNameType type = DateFormat);
-#endif // QT_NO_TEXTDATE
+#if QT_DEPRECATED_SINCE(5, 10) && !defined QT_NO_TEXTDATE
+    QT_DEPRECATED_X("Use QLocale::monthName or QLocale::standaloneMonthName")
+        static QString shortMonthName(int month, MonthNameType type = DateFormat);
+    QT_DEPRECATED_X("Use QLocale::dayName or QLocale::standaloneDayName")
+        static QString shortDayName(int weekday, MonthNameType type = DateFormat);
+    QT_DEPRECATED_X("Use QLocale::monthName or QLocale::standaloneMonthName")
+        static QString longMonthName(int month, MonthNameType type = DateFormat);
+    QT_DEPRECATED_X("Use QLocale::dayName or QLocale::standaloneDayName")
+        static QString longDayName(int weekday, MonthNameType type = DateFormat);
+#endif // QT_NO_TEXTDATE && deprecated
 #ifndef QT_NO_DATESTRING
     QString toString(Qt::DateFormat f = Qt::TextDate) const;
+#if QT_STRINGVIEW_LEVEL < 2
     QString toString(const QString &format) const;
+#endif
+    QString toString(QStringView format) const;
 #endif
 #if QT_DEPRECATED_SINCE(5,0)
 QT_DEPRECATED inline bool setYMD(int y, int m, int d)
@@ -104,9 +110,9 @@ QT_DEPRECATED inline bool setYMD(int y, int m, int d)
 #endif // < Qt 6
     void getDate(int *year, int *month, int *day) const;
 
-    QDate addDays(qint64 days) const Q_REQUIRED_RESULT;
-    QDate addMonths(int months) const Q_REQUIRED_RESULT;
-    QDate addYears(int years) const Q_REQUIRED_RESULT;
+    Q_REQUIRED_RESULT QDate addDays(qint64 days) const;
+    Q_REQUIRED_RESULT QDate addMonths(int months) const;
+    Q_REQUIRED_RESULT QDate addYears(int years) const;
     qint64 daysTo(const QDate &) const;
 
     Q_DECL_CONSTEXPR bool operator==(const QDate &other) const { return jd == other.jd; }
@@ -148,15 +154,9 @@ Q_DECLARE_TYPEINFO(QDate, Q_MOVABLE_TYPE);
 class Q_CORE_EXPORT QTime
 {
     explicit Q_DECL_CONSTEXPR QTime(int ms) : mds(ms)
-#if defined(Q_OS_WINCE)
-        , startTick(NullTime)
-#endif
     {}
 public:
     Q_DECL_CONSTEXPR QTime(): mds(NullTime)
-#if defined(Q_OS_WINCE)
-        , startTick(NullTime)
-#endif
     {}
     QTime(int h, int m, int s = 0, int ms = 0);
 
@@ -169,13 +169,16 @@ public:
     int msec() const;
 #ifndef QT_NO_DATESTRING
     QString toString(Qt::DateFormat f = Qt::TextDate) const;
+#if QT_STRINGVIEW_LEVEL < 2
     QString toString(const QString &format) const;
+#endif
+    QString toString(QStringView format) const;
 #endif
     bool setHMS(int h, int m, int s, int ms = 0);
 
-    QTime addSecs(int secs) const Q_REQUIRED_RESULT;
+    Q_REQUIRED_RESULT QTime addSecs(int secs) const;
     int secsTo(const QTime &) const;
-    QTime addMSecs(int ms) const Q_REQUIRED_RESULT;
+    Q_REQUIRED_RESULT QTime addMSecs(int ms) const;
     int msecsTo(const QTime &) const;
 
     Q_DECL_CONSTEXPR bool operator==(const QTime &other) const { return mds == other.mds; }
@@ -202,9 +205,6 @@ private:
     enum TimeFlag { NullTime = -1 };
     Q_DECL_CONSTEXPR inline int ds() const { return mds == -1 ? 0 : mds; }
     int mds;
-#if defined(Q_OS_WINCE)
-    int startTick;
-#endif
 
     friend class QDateTime;
     friend class QDateTimePrivate;
@@ -219,24 +219,63 @@ class QDateTimePrivate;
 
 class Q_CORE_EXPORT QDateTime
 {
+    // ### Qt 6: revisit the optimization
+    struct ShortData {
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        quintptr status : 8;
+#endif
+        // note: this is only 24 bits on 32-bit systems...
+        qintptr msecs : sizeof(void *) * 8 - 8;
+
+#if Q_BYTE_ORDER == Q_BIG_ENDIAN
+        quintptr status : 8;
+#endif
+    };
+
+    union Data {
+        enum {
+            // To be of any use, we need at least 60 years around 1970, which
+            // is 1,893,456,000,000 ms. That requires 41 bits to store, plus
+            // the sign bit. With the status byte, the minimum size is 50 bits.
+            CanBeSmall = sizeof(ShortData) * 8 > 50
+        };
+
+        Data();
+        Data(Qt::TimeSpec);
+        Data(const Data &other);
+        Data(Data &&other);
+        Data &operator=(const Data &other);
+        ~Data();
+
+        bool isShort() const;
+        void detach();
+
+        const QDateTimePrivate *operator->() const;
+        QDateTimePrivate *operator->();
+
+        QDateTimePrivate *d;
+        ShortData data;
+    };
+
 public:
-    QDateTime();
+    QDateTime() Q_DECL_NOEXCEPT_EXPR(Data::CanBeSmall);
     explicit QDateTime(const QDate &);
     QDateTime(const QDate &, const QTime &, Qt::TimeSpec spec = Qt::LocalTime);
     // ### Qt 6: Merge with above with default offsetSeconds = 0
     QDateTime(const QDate &date, const QTime &time, Qt::TimeSpec spec, int offsetSeconds);
-#ifndef QT_BOOTSTRAPPED
+#if QT_CONFIG(timezone)
     QDateTime(const QDate &date, const QTime &time, const QTimeZone &timeZone);
-#endif // QT_BOOTSTRAPPED
-    QDateTime(const QDateTime &other);
+#endif // timezone
+    QDateTime(const QDateTime &other) Q_DECL_NOTHROW;
+    QDateTime(QDateTime &&other) Q_DECL_NOTHROW;
     ~QDateTime();
 
 #ifdef Q_COMPILER_RVALUE_REFS
     QDateTime &operator=(QDateTime &&other) Q_DECL_NOTHROW { swap(other); return *this; }
 #endif
-    QDateTime &operator=(const QDateTime &other);
+    QDateTime &operator=(const QDateTime &other) Q_DECL_NOTHROW;
 
-    void swap(QDateTime &other) Q_DECL_NOTHROW { qSwap(d, other.d); }
+    void swap(QDateTime &other) Q_DECL_NOTHROW { qSwap(d.d, other.d.d); }
 
     bool isNull() const;
     bool isValid() const;
@@ -245,44 +284,45 @@ public:
     QTime time() const;
     Qt::TimeSpec timeSpec() const;
     int offsetFromUtc() const;
-#ifndef QT_BOOTSTRAPPED
+#if QT_CONFIG(timezone)
     QTimeZone timeZone() const;
-#endif // QT_BOOTSTRAPPED
+#endif // timezone
     QString timeZoneAbbreviation() const;
     bool isDaylightTime() const;
 
     qint64 toMSecsSinceEpoch() const;
-    // ### Qt 6: use quint64 instead of uint
-    uint toTime_t() const;
+    qint64 toSecsSinceEpoch() const;
 
     void setDate(const QDate &date);
     void setTime(const QTime &time);
     void setTimeSpec(Qt::TimeSpec spec);
     void setOffsetFromUtc(int offsetSeconds);
-#ifndef QT_BOOTSTRAPPED
+#if QT_CONFIG(timezone)
     void setTimeZone(const QTimeZone &toZone);
-#endif // QT_BOOTSTRAPPED
+#endif // timezone
     void setMSecsSinceEpoch(qint64 msecs);
-    // ### Qt 6: use quint64 instead of uint
-    void setTime_t(uint secsSince1Jan1970UTC);
+    void setSecsSinceEpoch(qint64 secs);
 
 #ifndef QT_NO_DATESTRING
     QString toString(Qt::DateFormat f = Qt::TextDate) const;
+#if QT_STRINGVIEW_LEVEL < 2
     QString toString(const QString &format) const;
 #endif
-    QDateTime addDays(qint64 days) const Q_REQUIRED_RESULT;
-    QDateTime addMonths(int months) const Q_REQUIRED_RESULT;
-    QDateTime addYears(int years) const Q_REQUIRED_RESULT;
-    QDateTime addSecs(qint64 secs) const Q_REQUIRED_RESULT;
-    QDateTime addMSecs(qint64 msecs) const Q_REQUIRED_RESULT;
+    QString toString(QStringView format) const;
+#endif
+    Q_REQUIRED_RESULT QDateTime addDays(qint64 days) const;
+    Q_REQUIRED_RESULT QDateTime addMonths(int months) const;
+    Q_REQUIRED_RESULT QDateTime addYears(int years) const;
+    Q_REQUIRED_RESULT QDateTime addSecs(qint64 secs) const;
+    Q_REQUIRED_RESULT QDateTime addMSecs(qint64 msecs) const;
 
     QDateTime toTimeSpec(Qt::TimeSpec spec) const;
     inline QDateTime toLocalTime() const { return toTimeSpec(Qt::LocalTime); }
     inline QDateTime toUTC() const { return toTimeSpec(Qt::UTC); }
     QDateTime toOffsetFromUtc(int offsetSeconds) const;
-#ifndef QT_BOOTSTRAPPED
+#if QT_CONFIG(timezone)
     QDateTime toTimeZone(const QTimeZone &toZone) const;
-#endif // QT_BOOTSTRAPPED
+#endif // timezone
 
     qint64 daysTo(const QDateTime &) const;
     qint64 secsTo(const QDateTime &) const;
@@ -306,38 +346,40 @@ public:
     static QDateTime fromString(const QString &s, Qt::DateFormat f = Qt::TextDate);
     static QDateTime fromString(const QString &s, const QString &format);
 #endif
-    // ### Qt 6: use quint64 instead of uint
+
+#if QT_DEPRECATED_SINCE(5, 8)
+    uint toTime_t() const;
+    void setTime_t(uint secsSince1Jan1970UTC);
     static QDateTime fromTime_t(uint secsSince1Jan1970UTC);
-    // ### Qt 6: Merge with above with default spec = Qt::LocalTime
     static QDateTime fromTime_t(uint secsSince1Jan1970UTC, Qt::TimeSpec spec,
                                 int offsetFromUtc = 0);
-#ifndef QT_BOOTSTRAPPED
     static QDateTime fromTime_t(uint secsSince1Jan1970UTC, const QTimeZone &timeZone);
 #endif
+
     static QDateTime fromMSecsSinceEpoch(qint64 msecs);
     // ### Qt 6: Merge with above with default spec = Qt::LocalTime
     static QDateTime fromMSecsSinceEpoch(qint64 msecs, Qt::TimeSpec spec, int offsetFromUtc = 0);
-#ifndef QT_BOOTSTRAPPED
-    static QDateTime fromMSecsSinceEpoch(qint64 msecs, const QTimeZone &timeZone);
-#endif
-    static qint64 currentMSecsSinceEpoch() Q_DECL_NOTHROW;
+    static QDateTime fromSecsSinceEpoch(qint64 secs, Qt::TimeSpec spe = Qt::LocalTime, int offsetFromUtc = 0);
 
-#if defined(Q_OS_MAC) || defined(Q_QDOC)
+#if QT_CONFIG(timezone)
+    static QDateTime fromMSecsSinceEpoch(qint64 msecs, const QTimeZone &timeZone);
+    static QDateTime fromSecsSinceEpoch(qint64 secs, const QTimeZone &timeZone);
+#endif
+
+    static qint64 currentMSecsSinceEpoch() Q_DECL_NOTHROW;
+    static qint64 currentSecsSinceEpoch() Q_DECL_NOTHROW;
+
+#if defined(Q_OS_DARWIN) || defined(Q_QDOC)
     static QDateTime fromCFDate(CFDateRef date);
     CFDateRef toCFDate() const Q_DECL_CF_RETURNS_RETAINED;
-#  if defined(__OBJC__) || defined(Q_QDOC)
     static QDateTime fromNSDate(const NSDate *date);
     NSDate *toNSDate() const Q_DECL_NS_RETURNS_AUTORELEASED;
-#  endif
 #endif
 
 private:
     friend class QDateTimePrivate;
 
-    // ### Qt6: Using a private here has high impact on runtime
-    // on users such as QFileInfo. In Qt 6, the data members
-    // should be inlined.
-    QSharedDataPointer<QDateTimePrivate> d;
+    Data d;
 
 #ifndef QT_NO_DATASTREAM
     friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, const QDateTime &);

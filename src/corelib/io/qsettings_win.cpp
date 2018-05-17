@@ -138,21 +138,6 @@ static void mergeKeySets(NameSet *dest, const QStringList &src)
 ** Wrappers for the insane windows registry API
 */
 
-static QString errorCodeToString(DWORD errorCode)
-{
-    wchar_t *data = 0;
-    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, 0, errorCode, 0, data, 0, 0);
-    QString result = QString::fromWCharArray(data);
-
-    if (data != 0)
-        LocalFree(data);
-
-    if (result.endsWith(QLatin1Char('\n')))
-        result.truncate(result.length() - 1);
-
-    return result;
-}
-
 // Open a key with the specified "perms".
 // "access" is to explicitly use the 32- or 64-bit branch.
 static HKEY openKey(HKEY parentHandle, REGSAM perms, const QString &rSubKey, REGSAM access = 0)
@@ -184,7 +169,7 @@ static HKEY createOrOpenKey(HKEY parentHandle, REGSAM perms, const QString &rSub
         return resultHandle;
 
     //qWarning("QSettings: Failed to create subkey \"%s\": %s",
-    //        rSubKey.toLatin1().data(), errorCodeToString(res).toLatin1().data());
+    //         qPrintable(rSubKey), qPrintable(qt_error_string(int(res))));
 
     return 0;
 }
@@ -224,7 +209,7 @@ static QStringList childKeysOrGroups(HKEY parentHandle, QSettingsPrivate::ChildS
                                &numKeys, &maxKeySize, 0, 0, 0);
 
     if (res != ERROR_SUCCESS) {
-        qWarning("QSettings: RegQueryInfoKey() failed: %s", errorCodeToString(res).toLatin1().data());
+        qWarning("QSettings: RegQueryInfoKey() failed: %s", qPrintable(qt_error_string(int(res))));
         return result;
     }
 
@@ -258,7 +243,7 @@ static QStringList childKeysOrGroups(HKEY parentHandle, QSettingsPrivate::ChildS
             item = QString::fromWCharArray((const wchar_t *)buff.constData(), l);
 
         if (res != ERROR_SUCCESS) {
-            qWarning("QSettings: RegEnumValue failed: %s", errorCodeToString(res).toLatin1().data());
+            qWarning("QSettings: RegEnumValue failed: %s", qPrintable(qt_error_string(int(res))));
             continue;
         }
         if (item.isEmpty())
@@ -313,7 +298,7 @@ static void deleteChildGroups(HKEY parentHandle, REGSAM access = 0)
         LONG res = RegDeleteKey(parentHandle, reinterpret_cast<const wchar_t *>(group.utf16()));
         if (res != ERROR_SUCCESS) {
             qWarning("QSettings: RegDeleteKey failed on subkey \"%s\": %s",
-                      group.toLatin1().data(), errorCodeToString(res).toLatin1().data());
+                     qPrintable(group), qPrintable(qt_error_string(int(res))));
             return;
         }
     }
@@ -609,16 +594,12 @@ HKEY QWinSettingsPrivate::writeHandle() const
 QWinSettingsPrivate::~QWinSettingsPrivate()
 {
     if (deleteWriteHandleOnExit && writeHandle() != 0) {
-#if defined(Q_OS_WINCE)
-        remove(regList.at(0).key());
-#else
         QString emptyKey;
         DWORD res = RegDeleteKey(writeHandle(), reinterpret_cast<const wchar_t *>(emptyKey.utf16()));
         if (res != ERROR_SUCCESS) {
             qWarning("QSettings: Failed to delete key \"%s\": %s",
-                    regList.at(0).key().toLatin1().data(), errorCodeToString(res).toLatin1().data());
+                     qPrintable(regList.at(0).key()), qPrintable(qt_error_string(int(res))));
         }
-#endif
     }
 
     for (int i = 0; i < regList.size(); ++i)
@@ -656,19 +637,15 @@ void QWinSettingsPrivate::remove(const QString &uKey)
                 LONG res = RegDeleteValue(handle, reinterpret_cast<const wchar_t *>(group.utf16()));
                 if (res != ERROR_SUCCESS) {
                     qWarning("QSettings: RegDeleteValue failed on subkey \"%s\": %s",
-                              group.toLatin1().data(), errorCodeToString(res).toLatin1().data());
+                             qPrintable(group), qPrintable(qt_error_string(int(res))));
                 }
             }
         } else {
-#if defined(Q_OS_WINCE)
-            // For WinCE always Close the handle first.
-            RegCloseKey(handle);
-#endif
             res = RegDeleteKey(writeHandle(), reinterpret_cast<const wchar_t *>(rKey.utf16()));
 
             if (res != ERROR_SUCCESS) {
                 qWarning("QSettings: RegDeleteKey failed on key \"%s\": %s",
-                            rKey.toLatin1().data(), errorCodeToString(res).toLatin1().data());
+                         qPrintable(rKey), qPrintable(qt_error_string(int(res))));
             }
         }
         RegCloseKey(handle);
@@ -741,7 +718,7 @@ void QWinSettingsPrivate::set(const QString &uKey, const QVariant &value)
         }
 
         case QVariant::ByteArray:
-            // fallthrough intended
+            Q_FALLTHROUGH();
 
         default: {
             // If the string does not contain '\0', we can use REG_SZ, the native registry
@@ -766,7 +743,7 @@ void QWinSettingsPrivate::set(const QString &uKey, const QVariant &value)
         deleteWriteHandleOnExit = false;
     } else {
         qWarning("QSettings: failed to set subkey \"%s\": %s",
-                rKey.toLatin1().data(), errorCodeToString(res).toLatin1().data());
+                 qPrintable(rKey), qPrintable(qt_error_string(int(res))));
         setStatus(QSettings::AccessError);
     }
 

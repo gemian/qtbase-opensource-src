@@ -55,15 +55,10 @@
 #include <qt_windows.h>
 
 #ifndef Q_OS_WINRT
-#ifndef Q_OS_WINCE
-#ifndef _MT
-#define _MT
-#endif // _MT
-#include <process.h>
-#else   // !Q_OS_WINCE
-#include "qfunctions_wince.h"
-#endif // Q_OS_WINCE
-#else // !Q_OS_WINRT
+#  ifndef _MT
+#    define _MT
+#  endif // _MT
+#  include <process.h>
 #endif // Q_OS_WINRT
 
 #ifndef QT_NO_THREAD
@@ -101,7 +96,7 @@ void qt_create_tls()
 {
     if (qt_current_thread_data_tls_index != TLS_OUT_OF_INDEXES)
         return;
-    static QMutex mutex;
+    static QBasicMutex mutex;
     QMutexLocker locker(&mutex);
     qt_current_thread_data_tls_index = TlsAlloc();
 }
@@ -142,7 +137,7 @@ QThreadData *QThreadData::current(bool createIfNecessary)
         }
         threadData->deref();
         threadData->isAdopted = true;
-        threadData->threadId = reinterpret_cast<Qt::HANDLE>(quintptr(GetCurrentThreadId()));
+        threadData->threadId.store(reinterpret_cast<Qt::HANDLE>(quintptr(GetCurrentThreadId())));
 
         if (!QCoreApplicationPrivate::theMainThread) {
             QCoreApplicationPrivate::theMainThread = threadData->thread.load();
@@ -150,7 +145,6 @@ QThreadData *QThreadData::current(bool createIfNecessary)
             // WinRT API?
         } else {
             HANDLE realHandle = INVALID_HANDLE_VALUE;
-#if !defined(Q_OS_WINCE) || (defined(_WIN32_WCE) && (_WIN32_WCE>=0x600))
             DuplicateHandle(GetCurrentProcess(),
                     GetCurrentThread(),
                     GetCurrentProcess(),
@@ -158,9 +152,6 @@ QThreadData *QThreadData::current(bool createIfNecessary)
                     0,
                     FALSE,
                     DUPLICATE_SAME_ACCESS);
-#else
-                        realHandle = reinterpret_cast<HANDLE>(GetCurrentThreadId());
-#endif
             qt_watch_adopted_thread(realHandle, threadData->thread);
         }
     }
@@ -175,7 +166,7 @@ void QAdoptedThread::init()
 
 static QVector<HANDLE> qt_adopted_thread_handles;
 static QVector<QThread *> qt_adopted_qthreads;
-static QMutex qt_adopted_thread_watcher_mutex;
+static QBasicMutex qt_adopted_thread_watcher_mutex;
 static DWORD qt_adopted_thread_watcher_id = 0;
 static HANDLE qt_adopted_thread_wakeup = 0;
 
@@ -190,9 +181,7 @@ void qt_watch_adopted_thread(const HANDLE adoptedThreadHandle, QThread *qthread)
     QMutexLocker lock(&qt_adopted_thread_watcher_mutex);
 
     if (GetCurrentThreadId() == qt_adopted_thread_watcher_id) {
-#if !defined(Q_OS_WINCE) || (defined(_WIN32_WCE) && (_WIN32_WCE>=0x600))
         CloseHandle(adoptedThreadHandle);
-#endif
         return;
     }
 
@@ -291,9 +280,7 @@ DWORD WINAPI qt_adopted_thread_watcher_function(LPVOID)
             data->deref();
 
             QMutexLocker lock(&qt_adopted_thread_watcher_mutex);
-#if !defined(Q_OS_WINCE) || (defined(_WIN32_WCE) && (_WIN32_WCE>=0x600))
             CloseHandle(qt_adopted_thread_handles.at(handleIndex));
-#endif
             qt_adopted_thread_handles.remove(handleIndex);
             qt_adopted_qthreads.remove(qthreadIndex);
         }
@@ -306,7 +293,7 @@ DWORD WINAPI qt_adopted_thread_watcher_function(LPVOID)
     return 0;
 }
 
-#if !defined(QT_NO_DEBUG) && defined(Q_CC_MSVC) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#if !defined(QT_NO_DEBUG) && defined(Q_CC_MSVC) && !defined(Q_OS_WINRT)
 
 #ifndef Q_OS_WIN64
 #  define ULONG_PTR DWORD
@@ -336,7 +323,7 @@ void qt_set_thread_name(HANDLE threadId, LPCSTR threadName)
     {
     }
 }
-#endif // !QT_NO_DEBUG && Q_CC_MSVC && !Q_OS_WINCE && !Q_OS_WINRT
+#endif // !QT_NO_DEBUG && Q_CC_MSVC && !Q_OS_WINRT
 
 /**************************************************************************
  ** QThreadPrivate
@@ -357,14 +344,14 @@ void QThreadPrivate::createEventDispatcher(QThreadData *data)
 
 #ifndef QT_NO_THREAD
 
-unsigned int __stdcall QT_ENSURE_STACK_ALIGNED_FOR_SSE QThreadPrivate::start(void *arg)
+unsigned int __stdcall QT_ENSURE_STACK_ALIGNED_FOR_SSE QThreadPrivate::start(void *arg) Q_DECL_NOEXCEPT
 {
     QThread *thr = reinterpret_cast<QThread *>(arg);
     QThreadData *data = QThreadData::get2(thr);
 
     qt_create_tls();
     TlsSetValue(qt_current_thread_data_tls_index, data);
-    data->threadId = reinterpret_cast<Qt::HANDLE>(quintptr(GetCurrentThreadId()));
+    data->threadId.store(reinterpret_cast<Qt::HANDLE>(quintptr(GetCurrentThreadId())));
 
     QThread::setTerminationEnabled(false);
 
@@ -378,7 +365,7 @@ unsigned int __stdcall QT_ENSURE_STACK_ALIGNED_FOR_SSE QThreadPrivate::start(voi
     else
         createEventDispatcher(data);
 
-#if !defined(QT_NO_DEBUG) && defined(Q_CC_MSVC) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#if !defined(QT_NO_DEBUG) && defined(Q_CC_MSVC) && !defined(Q_OS_WINRT)
     // sets the name of the current thread.
     QByteArray objectName = thr->objectName().toLocal8Bit();
     qt_set_thread_name((HANDLE)-1,
@@ -394,7 +381,7 @@ unsigned int __stdcall QT_ENSURE_STACK_ALIGNED_FOR_SSE QThreadPrivate::start(voi
     return 0;
 }
 
-void QThreadPrivate::finish(void *arg, bool lockAnyway)
+void QThreadPrivate::finish(void *arg, bool lockAnyway) Q_DECL_NOEXCEPT
 {
     QThread *thr = reinterpret_cast<QThread *>(arg);
     QThreadPrivate *d = thr->d_func();
@@ -453,7 +440,7 @@ int QThread::idealThreadCount() Q_DECL_NOTHROW
 
 void QThread::yieldCurrentThread()
 {
-#if !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#if !defined(Q_OS_WINRT)
     SwitchToThread();
 #else
     ::Sleep(0);
@@ -495,7 +482,6 @@ void QThread::start(Priority priority)
     d->returnCode = 0;
     d->interruptionRequested = false;
 
-#ifndef Q_OS_WINRT
     /*
       NOTE: we create the thread in the suspended state, set the
       priority and then resume the thread.
@@ -506,9 +492,21 @@ void QThread::start(Priority priority)
       less than NormalPriority), but the newly created thread preempts
       its 'parent' and runs at normal priority.
     */
+#if defined(Q_CC_MSVC) && !defined(_DLL) // && !defined(Q_OS_WINRT)
+#  ifdef Q_OS_WINRT
+    // If you wish to accept the memory leaks, uncomment the part above.
+    // See:
+    //  https://support.microsoft.com/en-us/kb/104641
+    //  https://msdn.microsoft.com/en-us/library/kdzttdcb.aspx
+#    error "Microsoft documentation says this combination leaks memory every time a thread is started. " \
+    "Please change your build back to -MD/-MDd or, if you understand this issue and want to continue, " \
+    "edit this source file."
+#  endif
+    // MSVC -MT or -MTd build
     d->handle = (Qt::HANDLE) _beginthreadex(NULL, d->stackSize, QThreadPrivate::start,
                                             this, CREATE_SUSPENDED, &(d->id));
-#else // !Q_OS_WINRT
+#else
+    // MSVC -MD or -MDd or MinGW build
     d->handle = (Qt::HANDLE) CreateThread(NULL, d->stackSize, (LPTHREAD_START_ROUTINE)QThreadPrivate::start,
                                             this, CREATE_SUSPENDED, reinterpret_cast<LPDWORD>(&d->id));
 #endif // Q_OS_WINRT

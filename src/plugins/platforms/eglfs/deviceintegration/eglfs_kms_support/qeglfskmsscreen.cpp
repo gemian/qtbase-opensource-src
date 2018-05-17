@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+** Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
 ** Copyright (C) 2016 The Qt Company Ltd.
 ** Copyright (C) 2016 Pelagicore AG
 ** Contact: https://www.qt.io/licensing/
@@ -40,13 +40,12 @@
 ****************************************************************************/
 
 #include "qeglfskmsscreen.h"
-#include "qeglfskmsdevice.h"
-#include "qeglfsintegration.h"
+#include "qeglfsintegration_p.h"
 
 #include <QtCore/QLoggingCategory>
 
 #include <QtGui/private/qguiapplication_p.h>
-#include <QtPlatformSupport/private/qfbvthandler_p.h>
+#include <QtFbSupport/private/qfbvthandler_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -69,36 +68,46 @@ private:
     QEglFSKmsScreen *m_screen;
 };
 
-QEglFSKmsScreen::QEglFSKmsScreen(QEglFSKmsIntegration *integration,
-                                 QEglFSKmsDevice *device,
-                                 QEglFSKmsOutput output,
-                                 QPoint position)
-    : QEglFSScreen(eglGetDisplay(device->nativeDisplay()))
-    , m_integration(integration)
+QEglFSKmsScreen::QEglFSKmsScreen(QKmsDevice *device, const QKmsOutput &output)
+    : QEglFSScreen(static_cast<QEglFSIntegration *>(QGuiApplicationPrivate::platformIntegration())->display())
     , m_device(device)
     , m_output(output)
-    , m_pos(position)
     , m_powerState(PowerStateOn)
     , m_interruptHandler(new QEglFSKmsInterruptHandler(this))
 {
-    m_siblings << this;
+    m_siblings << this; // gets overridden later
+
+    if (m_output.edid_blob) {
+        QByteArray edid(reinterpret_cast<const char *>(m_output.edid_blob->data), m_output.edid_blob->length);
+        if (m_edid.parse(edid))
+            qCDebug(qLcEglfsKmsDebug, "EDID data for output \"%s\": identifier '%s', manufacturer '%s', model '%s', serial '%s', physical size: %.2fx%.2f",
+                    name().toLatin1().constData(),
+                    m_edid.identifier.toLatin1().constData(),
+                    m_edid.manufacturer.toLatin1().constData(),
+                    m_edid.model.toLatin1().constData(),
+                    m_edid.serialNumber.toLatin1().constData(),
+                    m_edid.physicalSize.width(), m_edid.physicalSize.height());
+        else
+            qCDebug(qLcEglfsKmsDebug) << "Failed to parse EDID data for output" << name(); // keep this debug, not warning
+    } else {
+        qCDebug(qLcEglfsKmsDebug) << "No EDID data for output" << name();
+    }
 }
 
 QEglFSKmsScreen::~QEglFSKmsScreen()
 {
-    if (m_output.dpms_prop) {
-        drmModeFreeProperty(m_output.dpms_prop);
-        m_output.dpms_prop = Q_NULLPTR;
-    }
-    restoreMode();
-    if (m_output.saved_crtc) {
-        drmModeFreeCrtc(m_output.saved_crtc);
-        m_output.saved_crtc = Q_NULLPTR;
-    }
+    m_output.cleanup(m_device);
     delete m_interruptHandler;
 }
 
-QRect QEglFSKmsScreen::geometry() const
+void QEglFSKmsScreen::setVirtualPosition(const QPoint &pos)
+{
+    m_pos = pos;
+}
+
+// Reimplement rawGeometry(), not geometry(). The base class implementation of
+// geometry() calls rawGeometry() and may apply additional transforms.
+QRect QEglFSKmsScreen::rawGeometry() const
 {
     const int mode = m_output.mode;
     return QRect(m_pos.x(), m_pos.y(),
@@ -118,7 +127,12 @@ QImage::Format QEglFSKmsScreen::format() const
 
 QSizeF QEglFSKmsScreen::physicalSize() const
 {
-    return m_output.physical_size;
+    if (!m_output.physical_size.isEmpty()) {
+        return m_output.physical_size;
+    } else {
+        const QSize s = geometry().size();
+        return QSizeF(0.254 * s.width(), 0.254 * s.height());
+    }
 }
 
 QDpi QEglFSKmsScreen::logicalDpi() const
@@ -148,6 +162,21 @@ QString QEglFSKmsScreen::name() const
     return m_output.name;
 }
 
+QString QEglFSKmsScreen::manufacturer() const
+{
+    return m_edid.manufacturer;
+}
+
+QString QEglFSKmsScreen::model() const
+{
+    return m_edid.model.isEmpty() ? m_edid.identifier : m_edid.model;
+}
+
+QString QEglFSKmsScreen::serialNumber() const
+{
+    return m_edid.serialNumber;
+}
+
 void QEglFSKmsScreen::destroySurface()
 {
 }
@@ -166,16 +195,7 @@ void QEglFSKmsScreen::flipFinished()
 
 void QEglFSKmsScreen::restoreMode()
 {
-    if (m_output.mode_set && m_output.saved_crtc) {
-        drmModeSetCrtc(m_device->fd(),
-                       m_output.saved_crtc->crtc_id,
-                       m_output.saved_crtc->buffer_id,
-                       0, 0,
-                       &m_output.connector_id, 1,
-                       &m_output.saved_crtc->mode);
-
-        m_output.mode_set = false;
-    }
+    m_output.restoreMode(m_device);
 }
 
 qreal QEglFSKmsScreen::refreshRate() const
@@ -184,22 +204,31 @@ qreal QEglFSKmsScreen::refreshRate() const
     return refresh > 0 ? refresh : 60;
 }
 
+QVector<QPlatformScreen::Mode> QEglFSKmsScreen::modes() const
+{
+    QVector<QPlatformScreen::Mode> list;
+    list.reserve(m_output.modes.size());
+
+    for (const drmModeModeInfo &info : qAsConst(m_output.modes))
+        list.append({QSize(info.hdisplay, info.vdisplay),
+                     qreal(info.vrefresh > 0 ? info.vrefresh : 60)});
+
+    return list;
+}
+
+int QEglFSKmsScreen::currentMode() const
+{
+    return m_output.mode;
+}
+
+int QEglFSKmsScreen::preferredMode() const
+{
+    return m_output.preferred_mode;
+}
+
 QPlatformScreen::SubpixelAntialiasingType QEglFSKmsScreen::subpixelAntialiasingTypeHint() const
 {
-    switch (m_output.subpixel) {
-    default:
-    case DRM_MODE_SUBPIXEL_UNKNOWN:
-    case DRM_MODE_SUBPIXEL_NONE:
-        return Subpixel_None;
-    case DRM_MODE_SUBPIXEL_HORIZONTAL_RGB:
-        return Subpixel_RGB;
-    case DRM_MODE_SUBPIXEL_HORIZONTAL_BGR:
-        return Subpixel_BGR;
-    case DRM_MODE_SUBPIXEL_VERTICAL_RGB:
-        return Subpixel_VRGB;
-    case DRM_MODE_SUBPIXEL_VERTICAL_BGR:
-        return Subpixel_VBGR;
-    }
+    return m_output.subpixelAntialiasingTypeHint();
 }
 
 QPlatformScreen::PowerState QEglFSKmsScreen::powerState() const
@@ -209,11 +238,7 @@ QPlatformScreen::PowerState QEglFSKmsScreen::powerState() const
 
 void QEglFSKmsScreen::setPowerState(QPlatformScreen::PowerState state)
 {
-    if (!m_output.dpms_prop)
-        return;
-
-    drmModeConnectorSetProperty(m_device->fd(), m_output.connector_id,
-                                m_output.dpms_prop->prop_id, (int)state);
+    m_output.setPowerState(m_device, state);
     m_powerState = state;
 }
 

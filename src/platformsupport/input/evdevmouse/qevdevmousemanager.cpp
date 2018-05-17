@@ -44,7 +44,7 @@
 #include <QScreen>
 #include <QLoggingCategory>
 #include <qpa/qwindowsysteminterface.h>
-#include <QtPlatformSupport/private/qdevicediscovery_p.h>
+#include <QtDeviceDiscoverySupport/private/qdevicediscovery_p.h>
 #include <private/qguiapplication_p.h>
 #include <private/qinputdevicemanager_p_p.h>
 #include <private/qhighdpiscaling_p.h>
@@ -90,18 +90,23 @@ QEvdevMouseManager::QEvdevMouseManager(const QString &key, const QString &specif
         m_deviceDiscovery = QDeviceDiscovery::create(QDeviceDiscovery::Device_Mouse | QDeviceDiscovery::Device_Touchpad, this);
         if (m_deviceDiscovery) {
             // scan and add already connected keyboards
-            QStringList devices = m_deviceDiscovery->scanConnectedDevices();
-            foreach (const QString &device, devices) {
+            const QStringList devices = m_deviceDiscovery->scanConnectedDevices();
+            for (const QString &device : devices)
                 addMouse(device);
-            }
 
-            connect(m_deviceDiscovery, SIGNAL(deviceDetected(QString)), this, SLOT(addMouse(QString)));
-            connect(m_deviceDiscovery, SIGNAL(deviceRemoved(QString)), this, SLOT(removeMouse(QString)));
+            connect(m_deviceDiscovery, &QDeviceDiscovery::deviceDetected,
+                    this, &QEvdevMouseManager::addMouse);
+            connect(m_deviceDiscovery, &QDeviceDiscovery::deviceRemoved,
+                    this, &QEvdevMouseManager::removeMouse);
         }
     }
 
-    connect(QGuiApplicationPrivate::inputDeviceManager(), SIGNAL(cursorPositionChangeRequested(QPoint)),
-            this, SLOT(handleCursorPositionChange(QPoint)));
+    QInputDeviceManager *manager = QGuiApplicationPrivate::inputDeviceManager();
+    connect(manager, &QInputDeviceManager::cursorPositionChangeRequested, [=](const QPoint &pos) {
+        m_x = pos.x();
+        m_y = pos.y();
+        clampPosition();
+    });
 }
 
 QEvdevMouseManager::~QEvdevMouseManager()
@@ -145,20 +150,21 @@ void QEvdevMouseManager::handleMouseEvent(int x, int y, bool abs, Qt::MouseButto
     QWindowSystemInterface::handleMouseEvent(0, pos, pos, buttons, QGuiApplication::keyboardModifiers());
 }
 
-void QEvdevMouseManager::handleWheelEvent(int delta, Qt::Orientation orientation)
+void QEvdevMouseManager::handleWheelEvent(QPoint delta)
 {
     QPoint pos(m_x + m_xoffset, m_y + m_yoffset);
-    QWindowSystemInterface::handleWheelEvent(0, pos, pos, delta, orientation, QGuiApplication::keyboardModifiers());
+    QWindowSystemInterface::handleWheelEvent(0, pos, pos, QPoint(), delta, QGuiApplication::keyboardModifiers());
 }
 
 void QEvdevMouseManager::addMouse(const QString &deviceNode)
 {
     qCDebug(qLcEvdevMouse) << "Adding mouse at" << deviceNode;
-    QEvdevMouseHandler *handler;
-    handler = QEvdevMouseHandler::create(deviceNode, m_spec);
+    QEvdevMouseHandler *handler = QEvdevMouseHandler::create(deviceNode, m_spec);
     if (handler) {
-        connect(handler, SIGNAL(handleMouseEvent(int,int,bool,Qt::MouseButtons)), this, SLOT(handleMouseEvent(int,int,bool,Qt::MouseButtons)));
-        connect(handler, SIGNAL(handleWheelEvent(int,Qt::Orientation)), this, SLOT(handleWheelEvent(int,Qt::Orientation)));
+        connect(handler, &QEvdevMouseHandler::handleMouseEvent,
+                this, &QEvdevMouseManager::handleMouseEvent);
+        connect(handler, &QEvdevMouseHandler::handleWheelEvent,
+                this, &QEvdevMouseManager::handleWheelEvent);
         m_mice.insert(deviceNode, handler);
         QInputDeviceManagerPrivate::get(QGuiApplicationPrivate::inputDeviceManager())->setDeviceCount(
             QInputDeviceManager::DeviceTypePointer, m_mice.count());
@@ -177,13 +183,6 @@ void QEvdevMouseManager::removeMouse(const QString &deviceNode)
             QInputDeviceManager::DeviceTypePointer, m_mice.count());
         delete handler;
     }
-}
-
-void QEvdevMouseManager::handleCursorPositionChange(const QPoint &pos)
-{
-    m_x = pos.x();
-    m_y = pos.y();
-    clampPosition();
 }
 
 QT_END_NAMESPACE

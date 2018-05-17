@@ -38,6 +38,7 @@
 **
 ****************************************************************************/
 
+#include <QtCore/private/qglobal_p.h>
 #include "qcore_unix_p.h"
 #include "qelapsedtimer.h"
 
@@ -49,9 +50,39 @@
 
 QT_BEGIN_NAMESPACE
 
-#if !defined(QT_HAVE_PPOLL) && defined(QT_HAVE_POLLTS)
-# define ppoll pollts
-# define QT_HAVE_PPOLL
+QByteArray qt_readlink(const char *path)
+{
+#ifndef PATH_MAX
+    // suitably large value that won't consume too much memory
+#  define PATH_MAX  1024*1024
+#endif
+
+    QByteArray buf(256, Qt::Uninitialized);
+
+    ssize_t len = ::readlink(path, buf.data(), buf.size());
+    while (len == buf.size()) {
+        // readlink(2) will fill our buffer and not necessarily terminate with NUL;
+        if (buf.size() >= PATH_MAX) {
+            errno = ENAMETOOLONG;
+            return QByteArray();
+        }
+
+        // double the size and try again
+        buf.resize(buf.size() * 2);
+        len = ::readlink(path, buf.data(), buf.size());
+    }
+
+    if (len == -1)
+        return QByteArray();
+
+    buf.resize(len);
+    return buf;
+}
+
+#ifndef QT_BOOTSTRAPPED
+
+#if QT_CONFIG(poll_pollts)
+#  define ppoll pollts
 #endif
 
 static inline bool time_update(struct timespec *tv, const struct timespec &start,
@@ -64,7 +95,7 @@ static inline bool time_update(struct timespec *tv, const struct timespec &start
     return tv->tv_sec >= 0;
 }
 
-#if !defined(QT_HAVE_PPOLL) && defined(QT_HAVE_POLL)
+#if QT_CONFIG(poll_poll)
 static inline int timespecToMillisecs(const struct timespec *ts)
 {
     return (ts == NULL) ? -1 :
@@ -77,9 +108,9 @@ int qt_poll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts);
 
 static inline int qt_ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts)
 {
-#if defined(QT_HAVE_PPOLL)
-    return ::ppoll(fds, nfds, timeout_ts, Q_NULLPTR);
-#elif defined(QT_HAVE_POLL)
+#if QT_CONFIG(poll_ppoll) || QT_CONFIG(poll_pollts)
+    return ::ppoll(fds, nfds, timeout_ts, nullptr);
+#elif QT_CONFIG(poll_poll)
     return ::poll(fds, nfds, timespecToMillisecs(timeout_ts));
 #else
     return qt_poll(fds, nfds, timeout_ts);
@@ -120,5 +151,7 @@ int qt_safe_poll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout
         }
     }
 }
+
+#endif // QT_BOOTSTRAPPED
 
 QT_END_NAMESPACE

@@ -40,12 +40,12 @@
 #ifndef QHEADERVIEW_H
 #define QHEADERVIEW_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qabstractitemview.h>
 
+QT_REQUIRE_CONFIG(itemviews);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_ITEMVIEWS
 
 class QHeaderViewPrivate;
 class QStyleOptionHeader;
@@ -263,8 +263,6 @@ inline void QHeaderView::hideSection(int alogicalIndex)
 { setSectionHidden(alogicalIndex, true); }
 inline void QHeaderView::showSection(int alogicalIndex)
 { setSectionHidden(alogicalIndex, false); }
-
-#endif // QT_NO_ITEMVIEWS
 
 QT_END_NAMESPACE
 

@@ -51,8 +51,11 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qabstractslider_p.h"
 #include "qstyle.h"
+
+QT_REQUIRE_CONFIG(scrollbar);
 
 QT_BEGIN_NAMESPACE
 

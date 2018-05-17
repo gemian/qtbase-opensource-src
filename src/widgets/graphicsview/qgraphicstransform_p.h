@@ -51,8 +51,11 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qobject_p.h"
-#ifndef QT_NO_GRAPHICSVIEW
+
+QT_REQUIRE_CONFIG(graphicsview);
+
 QT_BEGIN_NAMESPACE
 
 class QGraphicsItem;
@@ -73,6 +76,5 @@ public:
 };
 
 QT_END_NAMESPACE
-#endif //QT_NO_GRAPHCISVIEW
 
 #endif // QGRAPHICSTRANSFORM_P_H

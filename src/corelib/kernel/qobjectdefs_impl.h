@@ -51,7 +51,7 @@
 #endif
 
 QT_BEGIN_NAMESPACE
-
+class QObject;
 
 namespace QtPrivate {
     template <typename T> struct RemoveRef { typedef T Type; };
@@ -90,14 +90,9 @@ namespace QtPrivate {
         explicit ApplyReturnValue(void *data_) : data(data_) {}
     };
     template<typename T, typename U>
-    void operator,(const T &value, const ApplyReturnValue<U> &container) {
-        if (container.data)
-            *reinterpret_cast<U*>(container.data) = value;
-    }
-    template<typename T, typename U>
     void operator,(T &&value, const ApplyReturnValue<U> &container) {
         if (container.data)
-            *reinterpret_cast<U*>(container.data) = value;
+            *reinterpret_cast<U *>(container.data) = std::forward<T>(value);
     }
     template<typename T>
     void operator,(T, const ApplyReturnValue<void> &) {}
@@ -147,6 +142,20 @@ namespace QtPrivate {
             (o->*f)((*reinterpret_cast<typename RemoveRef<SignalArgs>::Type *>(arg[II+1]))...), ApplyReturnValue<R>(arg[0]);
         }
     };
+#if defined(__cpp_noexcept_function_type) && __cpp_noexcept_function_type >= 201510
+    template <int... II, typename... SignalArgs, typename R, typename... SlotArgs, typename SlotRet, class Obj>
+    struct FunctorCall<IndexesList<II...>, List<SignalArgs...>, R, SlotRet (Obj::*)(SlotArgs...) noexcept> {
+        static void call(SlotRet (Obj::*f)(SlotArgs...) noexcept, Obj *o, void **arg) {
+            (o->*f)((*reinterpret_cast<typename RemoveRef<SignalArgs>::Type *>(arg[II+1]))...), ApplyReturnValue<R>(arg[0]);
+        }
+    };
+    template <int... II, typename... SignalArgs, typename R, typename... SlotArgs, typename SlotRet, class Obj>
+    struct FunctorCall<IndexesList<II...>, List<SignalArgs...>, R, SlotRet (Obj::*)(SlotArgs...) const noexcept> {
+        static void call(SlotRet (Obj::*f)(SlotArgs...) const noexcept, Obj *o, void **arg) {
+            (o->*f)((*reinterpret_cast<typename RemoveRef<SignalArgs>::Type *>(arg[II+1]))...), ApplyReturnValue<R>(arg[0]);
+        }
+    };
+#endif
 
     template<class Obj, typename Ret, typename... Args> struct FunctionPointer<Ret (Obj::*) (Args...)>
     {
@@ -185,12 +194,97 @@ namespace QtPrivate {
         }
     };
 
+#if defined(__cpp_noexcept_function_type) && __cpp_noexcept_function_type >= 201510
+    template<class Obj, typename Ret, typename... Args> struct FunctionPointer<Ret (Obj::*) (Args...) noexcept>
+    {
+        typedef Obj Object;
+        typedef List<Args...>  Arguments;
+        typedef Ret ReturnType;
+        typedef Ret (Obj::*Function) (Args...) noexcept;
+        enum {ArgumentCount = sizeof...(Args), IsPointerToMemberFunction = true};
+        template <typename SignalArgs, typename R>
+        static void call(Function f, Obj *o, void **arg) {
+            FunctorCall<typename Indexes<ArgumentCount>::Value, SignalArgs, R, Function>::call(f, o, arg);
+        }
+    };
+    template<class Obj, typename Ret, typename... Args> struct FunctionPointer<Ret (Obj::*) (Args...) const noexcept>
+    {
+        typedef Obj Object;
+        typedef List<Args...>  Arguments;
+        typedef Ret ReturnType;
+        typedef Ret (Obj::*Function) (Args...) const noexcept;
+        enum {ArgumentCount = sizeof...(Args), IsPointerToMemberFunction = true};
+        template <typename SignalArgs, typename R>
+        static void call(Function f, Obj *o, void **arg) {
+            FunctorCall<typename Indexes<ArgumentCount>::Value, SignalArgs, R, Function>::call(f, o, arg);
+        }
+    };
+
+    template<typename Ret, typename... Args> struct FunctionPointer<Ret (*) (Args...) noexcept>
+    {
+        typedef List<Args...> Arguments;
+        typedef Ret ReturnType;
+        typedef Ret (*Function) (Args...) noexcept;
+        enum {ArgumentCount = sizeof...(Args), IsPointerToMemberFunction = false};
+        template <typename SignalArgs, typename R>
+        static void call(Function f, void *, void **arg) {
+            FunctorCall<typename Indexes<ArgumentCount>::Value, SignalArgs, R, Function>::call(f, arg);
+        }
+    };
+#endif
+
     template<typename Function, int N> struct Functor
     {
         template <typename SignalArgs, typename R>
         static void call(Function &f, void *, void **arg) {
             FunctorCall<typename Indexes<N>::Value, SignalArgs, R, Function>::call(f, arg);
         }
+    };
+
+    /*
+        Logic that checks if the underlying type of an enum is signed or not.
+        Needs an external, explicit check that E is indeed an enum. Works
+        around the fact that it's undefined behavior to instantiate
+        std::underlying_type on non-enums (cf. §20.13.7.6 [meta.trans.other]).
+    */
+    template<typename E, typename Enable = void>
+    struct IsEnumUnderlyingTypeSigned : std::false_type
+    {
+    };
+
+    template<typename E>
+    struct IsEnumUnderlyingTypeSigned<E, typename std::enable_if<std::is_enum<E>::value>::type>
+            : std::integral_constant<bool, std::is_signed<typename std::underlying_type<E>::type>::value>
+    {
+    };
+
+    /*
+       Logic that checks if the argument of the slot does not narrow the
+       argument of the signal when used in list initialization. Cf. §8.5.4.7
+       [dcl.init.list] for the definition of narrowing.
+       For incomplete From/To types, there's no narrowing.
+    */
+    template<typename From, typename To, typename Enable = void>
+    struct AreArgumentsNarrowedBase : std::false_type
+    {
+    };
+
+    template<typename From, typename To>
+    struct AreArgumentsNarrowedBase<From, To, typename std::enable_if<sizeof(From) && sizeof(To)>::type>
+        : std::integral_constant<bool,
+              (std::is_floating_point<From>::value && std::is_integral<To>::value) ||
+              (std::is_floating_point<From>::value && std::is_floating_point<To>::value && sizeof(From) > sizeof(To)) ||
+              ((std::is_integral<From>::value || std::is_enum<From>::value) && std::is_floating_point<To>::value) ||
+              (std::is_integral<From>::value && std::is_integral<To>::value
+               && (sizeof(From) > sizeof(To)
+                   || (std::is_signed<From>::value ? !std::is_signed<To>::value
+                       : (std::is_signed<To>::value && sizeof(From) == sizeof(To))))) ||
+              (std::is_enum<From>::value && std::is_integral<To>::value
+               && (sizeof(From) > sizeof(To)
+                   || (IsEnumUnderlyingTypeSigned<From>::value ? !std::is_signed<To>::value
+                       : (std::is_signed<To>::value && sizeof(From) == sizeof(To)))))
+              >
+    {
     };
 
     /*
@@ -203,6 +297,10 @@ namespace QtPrivate {
         static char test(...);
         static const typename RemoveRef<A1>::Type &dummy();
         enum { value = sizeof(test(dummy())) == sizeof(int) };
+#ifdef QT_NO_NARROWING_CONVERSIONS_IN_CONNECT
+        using AreArgumentsNarrowed = AreArgumentsNarrowedBase<typename RemoveRef<A1>::Type, typename RemoveRef<A2>::Type>;
+        Q_STATIC_ASSERT_X(!AreArgumentsNarrowed::value, "Signal and slot arguments are not compatible (narrowing)");
+#endif
     };
     template<typename A1, typename A2> struct AreArgumentsCompatible<A1, A2&> { enum { value = false }; };
     template<typename A> struct AreArgumentsCompatible<A&, A&> { enum { value = true }; };
@@ -252,6 +350,98 @@ namespace QtPrivate {
         template <typename D> static D dummy();
         typedef decltype(dummy<Functor>().operator()((dummy<ArgList>())...)) Value;
     };
+
+    // internal base class (interface) containing functions required to call a slot managed by a pointer to function.
+    class QSlotObjectBase {
+        QAtomicInt m_ref;
+        // don't use virtual functions here; we don't want the
+        // compiler to create tons of per-polymorphic-class stuff that
+        // we'll never need. We just use one function pointer.
+        typedef void (*ImplFn)(int which, QSlotObjectBase* this_, QObject *receiver, void **args, bool *ret);
+        const ImplFn m_impl;
+    protected:
+        enum Operation {
+            Destroy,
+            Call,
+            Compare,
+
+            NumOperations
+        };
+    public:
+        explicit QSlotObjectBase(ImplFn fn) : m_ref(1), m_impl(fn) {}
+
+        inline int ref() Q_DECL_NOTHROW { return m_ref.ref(); }
+        inline void destroyIfLastRef() Q_DECL_NOTHROW
+        { if (!m_ref.deref()) m_impl(Destroy, this, Q_NULLPTR, Q_NULLPTR, Q_NULLPTR); }
+
+        inline bool compare(void **a) { bool ret = false; m_impl(Compare, this, Q_NULLPTR, a, &ret); return ret; }
+        inline void call(QObject *r, void **a)  { m_impl(Call,    this, r, a, Q_NULLPTR); }
+    protected:
+        ~QSlotObjectBase() {}
+    private:
+        Q_DISABLE_COPY(QSlotObjectBase)
+    };
+
+    // implementation of QSlotObjectBase for which the slot is a pointer to member function of a QObject
+    // Args and R are the List of arguments and the returntype of the signal to which the slot is connected.
+    template<typename Func, typename Args, typename R> class QSlotObject : public QSlotObjectBase
+    {
+        typedef QtPrivate::FunctionPointer<Func> FuncType;
+        Func function;
+        static void impl(int which, QSlotObjectBase *this_, QObject *r, void **a, bool *ret)
+        {
+            switch (which) {
+            case Destroy:
+                delete static_cast<QSlotObject*>(this_);
+                break;
+            case Call:
+                FuncType::template call<Args, R>(static_cast<QSlotObject*>(this_)->function, static_cast<typename FuncType::Object *>(r), a);
+                break;
+            case Compare:
+                *ret = *reinterpret_cast<Func *>(a) == static_cast<QSlotObject*>(this_)->function;
+                break;
+            case NumOperations: ;
+            }
+        }
+    public:
+        explicit QSlotObject(Func f) : QSlotObjectBase(&impl), function(f) {}
+    };
+    // implementation of QSlotObjectBase for which the slot is a functor (or lambda)
+    // N is the number of arguments
+    // Args and R are the List of arguments and the returntype of the signal to which the slot is connected.
+    template<typename Func, int N, typename Args, typename R> class QFunctorSlotObject : public QSlotObjectBase
+    {
+        typedef QtPrivate::Functor<Func, N> FuncType;
+        Func function;
+        static void impl(int which, QSlotObjectBase *this_, QObject *r, void **a, bool *ret)
+        {
+            switch (which) {
+            case Destroy:
+                delete static_cast<QFunctorSlotObject*>(this_);
+                break;
+            case Call:
+                FuncType::template call<Args, R>(static_cast<QFunctorSlotObject*>(this_)->function, r, a);
+                break;
+            case Compare: // not implemented
+            case NumOperations:
+                Q_UNUSED(ret);
+            }
+        }
+    public:
+        explicit QFunctorSlotObject(Func f) : QSlotObjectBase(&impl), function(std::move(f)) {}
+    };
+
+    // typedefs for readability for when there are no parameters
+    template <typename Func>
+    using QSlotObjectWithNoArgs = QSlotObject<Func,
+                                              QtPrivate::List<>,
+                                              typename QtPrivate::FunctionPointer<Func>::ReturnType>;
+
+    template <typename Func, typename R>
+    using QFunctorSlotObjectWithNoArgs = QFunctorSlotObject<Func, 0, QtPrivate::List<>, R>;
+
+    template <typename Func>
+    using QFunctorSlotObjectWithNoArgsImplicitReturn = QFunctorSlotObjectWithNoArgs<Func, typename QtPrivate::FunctionPointer<Func>::ReturnType>;
 }
 
 QT_END_NAMESPACE

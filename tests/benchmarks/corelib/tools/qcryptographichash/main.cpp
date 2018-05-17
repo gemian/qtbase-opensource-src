@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 Intel Corporation.
+** Copyright (C) 2017 Intel Corporation.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
@@ -29,19 +29,11 @@
 #include <QByteArray>
 #include <QCryptographicHash>
 #include <QFile>
+#include <QRandomGenerator>
 #include <QString>
 #include <QtTest>
 
 #include <time.h>
-
-#ifdef Q_OS_WINCE
-// no C89 time() on Windows CE:
-// http://blogs.msdn.com/b/cenet/archive/2006/04/29/time-h-on-windows-ce.aspx
-uint time(void *)
-{
-    return uint(-1);
-}
-#endif
 
 class tst_bench_QCryptographicHash : public QObject
 {
@@ -88,6 +80,14 @@ const char *algoname(int i)
         return "sha3_384-";
     case QCryptographicHash::Sha3_512:
         return "sha3_512-";
+    case QCryptographicHash::Keccak_224:
+        return "keccak_224-";
+    case QCryptographicHash::Keccak_256:
+        return "keccak_256-";
+    case QCryptographicHash::Keccak_384:
+        return "keccak_384-";
+    case QCryptographicHash::Keccak_512:
+        return "keccak_512-";
     }
     Q_UNREACHABLE();
     return 0;
@@ -103,9 +103,8 @@ tst_bench_QCryptographicHash::tst_bench_QCryptographicHash()
     } else
 #endif
     {
-        qsrand(time(NULL));
         for (int i = 0; i < MaxBlockSize; ++i)
-            blockOfData[i] = qrand();
+            blockOfData[i] = QRandomGenerator::global()->generate();
     }
 }
 

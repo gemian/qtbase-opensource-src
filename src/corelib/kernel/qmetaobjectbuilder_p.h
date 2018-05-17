@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtCore/private/qglobal_p.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qdatastream.h>
@@ -298,6 +299,9 @@ public:
 
     bool isFlag() const;
     void setIsFlag(bool value);
+
+    bool isScoped() const;
+    void setIsScoped(bool value);
 
     int keyCount() const;
     QByteArray key(int index) const;

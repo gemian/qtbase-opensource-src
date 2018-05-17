@@ -40,12 +40,12 @@
 #ifndef QLOCALSERVER_H
 #define QLOCALSERVER_H
 
+#include <QtNetwork/qtnetworkglobal.h>
 #include <QtNetwork/qabstractsocket.h>
 
+QT_REQUIRE_CONFIG(localserver);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_LOCALSERVER
 
 class QLocalSocket;
 class QLocalServerPrivate;
@@ -55,7 +55,6 @@ class Q_NETWORK_EXPORT QLocalServer : public QObject
     Q_OBJECT
     Q_DECLARE_PRIVATE(QLocalServer)
     Q_PROPERTY(SocketOptions socketOptions READ socketOptions WRITE setSocketOptions)
-    Q_FLAGS(SocketOption SocketOptions)
 
 Q_SIGNALS:
     void newConnection();
@@ -68,7 +67,9 @@ public:
         OtherAccessOption = 0x4,
         WorldAccessOption = 0x7
     };
+    Q_FLAG(SocketOption)
     Q_DECLARE_FLAGS(SocketOptions, SocketOption)
+    Q_FLAG(SocketOptions)
 
     explicit QLocalServer(QObject *parent = Q_NULLPTR);
     ~QLocalServer();
@@ -91,6 +92,8 @@ public:
     void setSocketOptions(SocketOptions options);
     SocketOptions socketOptions() const;
 
+    qintptr socketDescriptor() const;
+
 protected:
     virtual void incomingConnection(quintptr socketDescriptor);
 
@@ -100,8 +103,6 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QLocalServer::SocketOptions)
-
-#endif // QT_NO_LOCALSERVER
 
 QT_END_NAMESPACE
 

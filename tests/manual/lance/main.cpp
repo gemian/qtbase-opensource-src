@@ -91,6 +91,7 @@ static void printHelp()
 #ifndef QT_NO_OPENGL
            "    -opengl         Paints the files to a QGLWidget (Qt4 style) on screen\n"
            "    -glbuffer       Paints the files to a QOpenGLFrameBufferObject (Qt5 style) \n"
+           "    -coreglbuffer   Paints the files to a Core Profile context QOpenGLFrameBufferObject\n"
 #endif
 #ifdef USE_CUSTOM_DEVICE
            "    -customdevice   Paints the files to the custom paint device\n"
@@ -213,6 +214,7 @@ int main(int argc, char **argv)
 #endif
 
     DeviceType type = WidgetType;
+    QSurfaceFormat contextFormat;
     bool checkers_background = true;
 
     QImage::Format imageFormat = QImage::Format_ARGB32_Premultiplied;
@@ -281,6 +283,11 @@ int main(int argc, char **argv)
                 type = OpenGLType;
             else if (option == "glbuffer")
                 type = OpenGLBufferType;
+            else if (option == "coreglbuffer") {
+                type = OpenGLBufferType;
+                contextFormat.setVersion(3, 2);
+                contextFormat.setProfile(QSurfaceFormat::CoreProfile);
+            }
 #endif
 #ifdef USE_CUSTOM_DEVICE
             else if (option == "customdevice")
@@ -327,7 +334,7 @@ int main(int argc, char **argv)
                 checkers_background = false;
             }
         } else {
-#if defined (Q_DEAD_CODE_FROM_QT4_WIN)
+#if 0 // Used to be included in Qt4 for Q_WS_WIN
             QString input = QString::fromLocal8Bit(argv[i]);
             if (input.indexOf('*') >= 0) {
                 QFileInfo info(input);
@@ -346,7 +353,7 @@ int main(int argc, char **argv)
     scaledWidth = width * scalefactor;
     scaledHeight = height * scalefactor;
 
-    PaintCommands pcmd(QStringList(), 800, 800);
+    PaintCommands pcmd(QStringList(), 800, 800, imageFormat);
     pcmd.setVerboseMode(verboseMode);
     pcmd.setType(type);
     pcmd.setCheckersBackground(checkers_background);
@@ -423,11 +430,13 @@ int main(int argc, char **argv)
             {
                 QWindow win;
                 win.setSurfaceType(QSurface::OpenGLSurface);
+                win.setFormat(contextFormat);
                 win.create();
                 QOpenGLFramebufferObjectFormat fmt;
                 fmt.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
                 fmt.setSamples(4);
                 QOpenGLContext ctx;
+                ctx.setFormat(contextFormat);
                 ctx.create();
                 ctx.makeCurrent(&win);
                 QOpenGLFramebufferObject fbo(width, height, fmt);
@@ -592,7 +601,7 @@ int main(int argc, char **argv)
             case PrinterType:
             {
 #ifndef QT_NO_PRINTER
-                PaintCommands pcmd(QStringList(), 800, 800);
+                PaintCommands pcmd(QStringList(), 800, 800, imageFormat);
                 pcmd.setVerboseMode(verboseMode);
                 pcmd.setType(type);
                 pcmd.setCheckersBackground(checkers_background);
@@ -626,7 +635,7 @@ int main(int argc, char **argv)
             case PdfType:
             {
 #ifndef QT_NO_PRINTER
-                PaintCommands pcmd(QStringList(), 800, 800);
+                PaintCommands pcmd(QStringList(), 800, 800, QImage::Format_ARGB32_Premultiplied);
                 pcmd.setVerboseMode(verboseMode);
                 pcmd.setType(type);
                 pcmd.setCheckersBackground(checkers_background);

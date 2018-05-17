@@ -216,7 +216,7 @@ public:
 */
 
 QValidator::QValidator(QObject * parent)
-    : QObject(*new QValidatorPrivate, parent)
+    : QValidator(*new QValidatorPrivate, parent)
 {
 }
 
@@ -337,10 +337,8 @@ void QValidator::fixup(QString &) const
 */
 
 QIntValidator::QIntValidator(QObject * parent)
-    : QValidator(parent)
+    : QIntValidator(INT_MIN, INT_MAX, parent)
 {
-    b = INT_MIN;
-    t = INT_MAX;
 }
 
 
@@ -422,9 +420,9 @@ QValidator::State QIntValidator::validate(QString & input, int&) const
     if (buff.size() == 1 && (buff.at(0) == '+' || buff.at(0) == '-'))
         return Intermediate;
 
-    bool ok, overflow;
-    qlonglong entered = QLocaleData::bytearrayToLongLong(buff.constData(), 10, &ok, &overflow);
-    if (overflow || !ok)
+    bool ok;
+    qlonglong entered = QLocaleData::bytearrayToLongLong(buff.constData(), 10, &ok);
+    if (!ok)
         return Invalid;
 
     if (entered >= b && entered <= t) {
@@ -449,9 +447,9 @@ void QIntValidator::fixup(QString &input) const
                                            locale().numberOptions())) {
         return;
     }
-    bool ok, overflow;
-    qlonglong entered = QLocaleData::bytearrayToLongLong(buff.constData(), 10, &ok, &overflow);
-    if (ok && !overflow)
+    bool ok;
+    qlonglong entered = QLocaleData::bytearrayToLongLong(buff.constData(), 10, &ok);
+    if (ok)
         input = locale().toString(entered);
 }
 
@@ -589,11 +587,8 @@ public:
 */
 
 QDoubleValidator::QDoubleValidator(QObject * parent)
-    : QValidator(*new QDoubleValidatorPrivate , parent)
+    : QDoubleValidator(-HUGE_VAL, HUGE_VAL, 1000, parent)
 {
-    b = -HUGE_VAL;
-    t = HUGE_VAL;
-    dec = 1000;
 }
 
 
@@ -845,7 +840,7 @@ QDoubleValidator::Notation QDoubleValidator::notation() const
 */
 
 QRegExpValidator::QRegExpValidator(QObject *parent)
-    : QValidator(parent), r(QString::fromLatin1(".*"))
+    : QRegExpValidator(QRegExp(QString::fromLatin1(".*")), parent)
 {
 }
 
@@ -982,7 +977,7 @@ QRegularExpressionValidator::QRegularExpressionValidator(QObject *parent)
 */
 
 QRegularExpressionValidator::QRegularExpressionValidator(const QRegularExpression &re, QObject *parent)
-    : QValidator(*new QRegularExpressionValidatorPrivate, parent)
+    : QRegularExpressionValidator(parent)
 {
     Q_D(QRegularExpressionValidator);
     d->setRegularExpression(re);

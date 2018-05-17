@@ -38,16 +38,21 @@
 ****************************************************************************/
 
 #include "qplatformdefs.h"
-
-#ifndef QT_NO_PRINTDIALOG
+#include <QtPrintSupport/private/qtprintsupportglobal_p.h>
 
 #include "private/qabstractprintdialog_p.h"
+#if QT_CONFIG(messagebox)
 #include <QtWidgets/qmessagebox.h>
+#endif
 #include "qprintdialog.h"
+#if QT_CONFIG(filedialog)
 #include "qfiledialog.h"
+#endif
 #include <QtCore/qdir.h>
 #include <QtGui/qevent.h>
+#if QT_CONFIG(filesystemmodel)
 #include <QtWidgets/qfilesystemmodel.h>
+#endif
 #include <QtWidgets/qstyleditemdelegate.h>
 #include <QtPrintSupport/qprinter.h>
 
@@ -58,14 +63,18 @@
 
 #include <QtWidgets/qdialogbuttonbox.h>
 
-#include "private/qfscompleter_p.h"
+#if QT_CONFIG(completer)
+#include <private/qcompleter_p.h>
+#endif
 #include "ui_qprintpropertieswidget.h"
 #include "ui_qprintsettingsoutput.h"
 #include "ui_qprintwidget.h"
 
-#ifndef QT_NO_CUPS
+#if QT_CONFIG(cups)
 #include <private/qcups_p.h>
+#if QT_CONFIG(cupsjobwidget)
 #include "qcupsjobwidget_p.h"
+#endif
 #endif
 
 /*
@@ -115,7 +124,7 @@ class QPrintPropertiesDialog : public QDialog
 {
     Q_OBJECT
 public:
-    QPrintPropertiesDialog(QAbstractPrintDialog *parent = 0);
+    QPrintPropertiesDialog(QAbstractPrintDialog *parent = nullptr);
     ~QPrintPropertiesDialog();
 
     void selectPrinter(QPrinter::OutputFormat outputFormat, const QString &printerName);
@@ -128,7 +137,7 @@ private:
     friend class QUnixPrintWidgetPrivate;
     Ui::QPrintPropertiesWidget widget;
     QDialogButtonBox *m_buttons;
-#ifndef QT_NO_CUPS
+#if QT_CONFIG(cupsjobwidget)
     QCupsJobWidget *m_jobOptions;
 #endif
 };
@@ -140,7 +149,7 @@ class QUnixPrintWidget : public QWidget
     Q_OBJECT
 
 public:
-    explicit QUnixPrintWidget(QPrinter *printer, QWidget *parent = 0);
+    explicit QUnixPrintWidget(QPrinter *printer, QWidget *parent = nullptr);
     ~QUnixPrintWidget();
     void updatePrinter();
 
@@ -200,7 +209,7 @@ public:
     void selectPrinter(const QPrinter::OutputFormat outputFormat);
 
     void _q_togglePageSetCombo(bool);
-#ifndef QT_NO_MESSAGEBOX
+#if QT_CONFIG(messagebox)
     void _q_checkFields();
 #endif
     void _q_collapseOrExpandDialog();
@@ -236,17 +245,16 @@ QPrintPropertiesDialog::QPrintPropertiesDialog(QAbstractPrintDialog *parent)
 {
     setWindowTitle(tr("Printer Properties"));
     QVBoxLayout *lay = new QVBoxLayout(this);
-    this->setLayout(lay);
     QWidget *content = new QWidget(this);
     widget.setupUi(content);
     m_buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, this);
     lay->addWidget(content);
     lay->addWidget(m_buttons);
 
-    connect(m_buttons->button(QDialogButtonBox::Ok), SIGNAL(clicked()), this, SLOT(accept()));
-    connect(m_buttons->button(QDialogButtonBox::Cancel), SIGNAL(clicked()), this, SLOT(reject()));
+    connect(m_buttons->button(QDialogButtonBox::Ok), &QPushButton::clicked, this, &QPrintPropertiesDialog::accept);
+    connect(m_buttons->button(QDialogButtonBox::Cancel), &QPushButton::clicked, this, &QPrintPropertiesDialog::reject);
 
-#ifndef QT_NO_CUPS
+#if QT_CONFIG(cupsjobwidget)
     m_jobOptions = new QCupsJobWidget();
     widget.tabs->addTab(m_jobOptions, tr("Job Options"));
 #endif
@@ -259,7 +267,7 @@ QPrintPropertiesDialog::~QPrintPropertiesDialog()
 void QPrintPropertiesDialog::applyPrinterProperties(QPrinter *p)
 {
     widget.pageSetup->setPrinter(p);
-#ifndef QT_NO_CUPS
+#if QT_CONFIG(cupsjobwidget)
     m_jobOptions->setPrinter(p);
 #endif
 }
@@ -267,7 +275,7 @@ void QPrintPropertiesDialog::applyPrinterProperties(QPrinter *p)
 void QPrintPropertiesDialog::setupPrinter() const
 {
     widget.pageSetup->setupPrinter();
-#ifndef QT_NO_CUPS
+#if QT_CONFIG(cupsjobwidget)
     m_jobOptions->setupPrinter();
 #endif
 }
@@ -289,7 +297,7 @@ void QPrintPropertiesDialog::selectPrinter(QPrinter::OutputFormat outputFormat, 
 
 */
 QPrintDialogPrivate::QPrintDialogPrivate()
-    : top(0), bottom(0), buttons(0), collapseButton(0)
+    : top(nullptr), bottom(nullptr), buttons(nullptr), collapseButton(nullptr)
 {
     initResources();
 }
@@ -310,7 +318,7 @@ void QPrintDialogPrivate::init()
     options.grayscale->setIconSize(QSize(32, 32));
     options.grayscale->setIcon(QIcon(QLatin1String(":/qt-project.org/dialogs/qprintdialog/images/status-gray-scale.png")));
 
-#ifndef QT_NO_CUPS
+#if QT_CONFIG(cups)
     // Add Page Set widget if CUPS is available
     options.pageSetCombo->addItem(tr("All Pages"), QVariant::fromValue(QCUPSSupport::AllPages));
     options.pageSetCombo->addItem(tr("Odd Pages"), QVariant::fromValue(QCUPSSupport::OddPages));
@@ -329,12 +337,11 @@ void QPrintDialogPrivate::init()
     printButton->setDefault(true);
 
     QVBoxLayout *lay = new QVBoxLayout(q);
-    q->setLayout(lay);
     lay->addWidget(top);
     lay->addWidget(bottom);
     lay->addWidget(buttons);
 
-#ifdef QT_NO_MESSAGEBOX
+#if !QT_CONFIG(messagebox)
     QObject::connect(buttons, SIGNAL(accepted()), q, SLOT(accept()));
 #else
     QObject::connect(buttons, SIGNAL(accepted()), q, SLOT(_q_checkFields()));
@@ -432,7 +439,7 @@ void QPrintDialogPrivate::setupPrinter()
         }
     }
 
-#ifndef QT_NO_CUPS
+#if QT_CONFIG(cups)
     // page set
     if (p->printRange() == QPrinter::AllPages || p->printRange() == QPrinter::PageRange) {
         //If the application is selecting pages and the first page number is even then need to adjust the odd-even accordingly
@@ -493,14 +500,14 @@ void QPrintDialogPrivate::_q_collapseOrExpandDialog()
     }
 }
 
-#ifndef QT_NO_MESSAGEBOX
+#if QT_CONFIG(messagebox)
 void QPrintDialogPrivate::_q_checkFields()
 {
     Q_Q(QPrintDialog);
     if (top->d->checkFields())
         q->accept();
 }
-#endif // QT_NO_MESSAGEBOX
+#endif // QT_CONFIG(messagebox)
 
 
 void QPrintDialogPrivate::updateWidgets()
@@ -515,7 +522,7 @@ void QPrintDialogPrivate::updateWidgets()
     options.printCurrentPage->setVisible(q->isOptionEnabled(QPrintDialog::PrintCurrentPage));
     options.collate->setVisible(q->isOptionEnabled(QPrintDialog::PrintCollateCopies));
 
-#ifndef QT_NO_CUPS
+#if QT_CONFIG(cups)
     // Don't display Page Set if only Selection or Current Page are enabled
     if (!q->isOptionEnabled(QPrintDialog::PrintPageRange)
         && (q->isOptionEnabled(QPrintDialog::PrintSelection) || q->isOptionEnabled(QPrintDialog::PrintCurrentPage))) {
@@ -601,7 +608,7 @@ QPrintDialog::QPrintDialog(QPrinter *printer, QWidget *parent)
     Constructs a print dialog with the given \a parent.
 */
 QPrintDialog::QPrintDialog(QWidget *parent)
-    : QAbstractPrintDialog(*(new QPrintDialogPrivate), 0, parent)
+    : QAbstractPrintDialog(*(new QPrintDialogPrivate), nullptr, parent)
 {
     Q_D(QPrintDialog);
     d->init();
@@ -649,7 +656,7 @@ void QPrintDialog::accept()
 /*! \internal
 */
 QUnixPrintWidgetPrivate::QUnixPrintWidgetPrivate(QUnixPrintWidget *p, QPrinter *prn)
-    : parent(p), propertiesDialog(0), printer(prn), optionsPane(0),
+    : parent(p), propertiesDialog(nullptr), printer(prn), optionsPane(0),
       filePrintersAdded(false), propertiesDialogShown(false)
 {
     q = 0;
@@ -666,13 +673,15 @@ QUnixPrintWidgetPrivate::QUnixPrintWidgetPrivate(QUnixPrintWidget *p, QPrinter *
 
         widget.printers->addItems(printers);
 
-        const int idx = printers.indexOf(defaultPrinter);
+        const QString selectedPrinter = prn && !prn->printerName().isEmpty() ? prn->printerName() : defaultPrinter;
+        const int idx = printers.indexOf(selectedPrinter);
+
         if (idx >= 0)
             currentPrinterIndex = idx;
     }
     widget.properties->setEnabled(true);
 
-#if !defined(QT_NO_FILESYSTEMMODEL) && !defined(QT_NO_COMPLETER)
+#if QT_CONFIG(filesystemmodel) && QT_CONFIG(completer)
     QFileSystemModel *fsm = new QFileSystemModel(widget.filename);
     fsm->setRootPath(QDir::homePath());
     widget.filename->setCompleter(new QCompleter(fsm, widget.filename));
@@ -735,7 +744,7 @@ void QUnixPrintWidgetPrivate::_q_printerChanged(int index)
     // Reset properties dialog when printer is changed
     if (propertiesDialog){
         delete propertiesDialog;
-        propertiesDialog = 0;
+        propertiesDialog = nullptr;
         propertiesDialogShown = false;
     }
 
@@ -779,9 +788,9 @@ void QUnixPrintWidgetPrivate::setOptionsPane(QPrintDialogPrivate *pane)
 void QUnixPrintWidgetPrivate::_q_btnBrowseClicked()
 {
     QString filename = widget.filename->text();
-#ifndef QT_NO_FILEDIALOG
+#if QT_CONFIG(filedialog)
     filename = QFileDialog::getSaveFileName(parent, QPrintDialog::tr("Print To File ..."), filename,
-                                            QString(), 0, QFileDialog::DontConfirmOverwrite);
+                                            QString(), nullptr, QFileDialog::DontConfirmOverwrite);
 #else
     filename.clear();
 #endif
@@ -793,7 +802,7 @@ void QUnixPrintWidgetPrivate::_q_btnBrowseClicked()
 
 void QUnixPrintWidgetPrivate::applyPrinterProperties()
 {
-    if (printer == 0)
+    if (printer == nullptr)
         return;
     if (printer->outputFileName().isEmpty()) {
         QString home = QDir::homePath();
@@ -833,7 +842,7 @@ void QUnixPrintWidgetPrivate::applyPrinterProperties()
         propertiesDialog->applyPrinterProperties(printer);
 }
 
-#ifndef QT_NO_MESSAGEBOX
+#if QT_CONFIG(messagebox)
 bool QUnixPrintWidgetPrivate::checkFields()
 {
     if (widget.filename->isEnabled()) {
@@ -864,7 +873,7 @@ bool QUnixPrintWidgetPrivate::checkFields()
         }
     }
 
-#ifndef QT_NO_CUPS
+#if QT_CONFIG(cups)
     if (propertiesDialogShown) {
         QCUPSSupport::PagesPerSheet pagesPerSheet = propertiesDialog->widget.pageSetup->m_ui.pagesPerSheetCombo
                                                                     ->currentData().value<QCUPSSupport::PagesPerSheet>();
@@ -884,12 +893,11 @@ bool QUnixPrintWidgetPrivate::checkFields()
     // Every test passed. Accept the dialog.
     return true;
 }
-#endif // QT_NO_MESSAGEBOX
+#endif // QT_CONFIG(messagebox)
 
 void QUnixPrintWidgetPrivate::setupPrinterProperties()
 {
-    if (propertiesDialog)
-        delete propertiesDialog;
+    delete propertiesDialog;
 
     propertiesDialog = new QPrintPropertiesDialog(q);
     propertiesDialog->setResult(QDialog::Rejected);
@@ -914,7 +922,7 @@ void QUnixPrintWidgetPrivate::_q_btnPropertiesClicked()
         // If properties dialog was rejected the dialog is deleted and
         // the properties are set to defaults when printer is setup
         delete propertiesDialog;
-        propertiesDialog = 0;
+        propertiesDialog = nullptr;
         propertiesDialogShown = false;
     } else
         // properties dialog was shown and accepted
@@ -980,6 +988,3 @@ QT_END_NAMESPACE
 
 #include "moc_qprintdialog.cpp"
 #include "qprintdialog_unix.moc"
-
-#endif // QT_NO_PRINTDIALOG
-

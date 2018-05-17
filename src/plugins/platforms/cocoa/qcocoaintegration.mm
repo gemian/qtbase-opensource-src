@@ -47,16 +47,26 @@
 #include "qcocoahelpers.h"
 #include "qcocoaapplication.h"
 #include "qcocoaapplicationdelegate.h"
-#include "qcocoafiledialoghelper.h"
 #include "qcocoatheme.h"
 #include "qcocoainputcontext.h"
 #include "qcocoamimetypes.h"
 #include "qcocoaaccessibility.h"
+#include "qcocoascreen.h"
 
 #include <qpa/qplatforminputcontextfactory_p.h>
 #include <qpa/qplatformaccessibility.h>
 #include <qpa/qplatforminputcontextfactory_p.h>
+#include <qpa/qplatformoffscreensurface.h>
 #include <QtCore/qcoreapplication.h>
+
+#include <QtGui/private/qcoregraphics_p.h>
+
+#ifdef QT_WIDGETS_LIB
+#include <QtWidgets/qtwidgetsglobal.h>
+#if QT_CONFIG(filedialog)
+#include "qcocoafiledialoghelper.h"
+#endif
+#endif
 
 #include <IOKit/graphics/IOGraphicsLib.h>
 
@@ -67,199 +77,8 @@ static void initResources()
 
 QT_BEGIN_NAMESPACE
 
-QCocoaScreen::QCocoaScreen(int screenIndex) :
-    QPlatformScreen(), m_screenIndex(screenIndex), m_refreshRate(60.0)
-{
-    updateGeometry();
-    m_cursor = new QCocoaCursor;
-}
-
-QCocoaScreen::~QCocoaScreen()
-{
-    delete m_cursor;
-}
-
-NSScreen *QCocoaScreen::osScreen() const
-{
-    NSArray *screens = [NSScreen screens];
-    return ((NSUInteger)m_screenIndex < [screens count]) ? [screens objectAtIndex:m_screenIndex] : nil;
-}
-
-void QCocoaScreen::updateGeometry()
-{
-    NSScreen *nsScreen = osScreen();
-    if (!nsScreen)
-        return;
-
-    NSRect frameRect = [nsScreen frame];
-
-    if (m_screenIndex == 0) {
-        m_geometry = QRect(frameRect.origin.x, frameRect.origin.y, frameRect.size.width, frameRect.size.height);
-        // This is the primary screen, the one that contains the menubar. Its origin should be
-        // (0, 0), and it's the only one whose available geometry differs from its full geometry.
-        NSRect visibleRect = [nsScreen visibleFrame];
-        m_availableGeometry = QRect(visibleRect.origin.x,
-                                    frameRect.size.height - (visibleRect.origin.y + visibleRect.size.height), // invert y
-                                    visibleRect.size.width, visibleRect.size.height);
-    } else {
-        // NSScreen origin is at the bottom-left corner, QScreen is at the top-left corner.
-        // When we get the NSScreen frame rect, we need to re-align its origin y coordinate
-        // w.r.t. the primary screen, whose origin is (0, 0).
-        NSRect r = [[[NSScreen screens] objectAtIndex:0] frame];
-        QRect referenceScreenGeometry = QRect(r.origin.x, r.origin.y, r.size.width, r.size.height);
-        m_geometry = QRect(frameRect.origin.x,
-                           referenceScreenGeometry.height() - (frameRect.origin.y + frameRect.size.height),
-                           frameRect.size.width, frameRect.size.height);
-
-        // Not primary screen. See above.
-        m_availableGeometry = m_geometry;
-    }
-
-    m_format = QImage::Format_RGB32;
-    m_depth = NSBitsPerPixelFromDepth([nsScreen depth]);
-
-    NSDictionary *devDesc = [nsScreen deviceDescription];
-    CGDirectDisplayID dpy = [[devDesc objectForKey:@"NSScreenNumber"] unsignedIntValue];
-    CGSize size = CGDisplayScreenSize(dpy);
-    m_physicalSize = QSizeF(size.width, size.height);
-    m_logicalDpi.first = 72;
-    m_logicalDpi.second = 72;
-    CGDisplayModeRef displayMode = CGDisplayCopyDisplayMode(dpy);
-    float refresh = CGDisplayModeGetRefreshRate(displayMode);
-    CGDisplayModeRelease(displayMode);
-    if (refresh > 0)
-        m_refreshRate = refresh;
-
-    // Get m_name (brand/model of the monitor)
-    NSDictionary *deviceInfo = (NSDictionary *)IODisplayCreateInfoDictionary(CGDisplayIOServicePort(dpy), kIODisplayOnlyPreferredName);
-    NSDictionary *localizedNames = [deviceInfo objectForKey:[NSString stringWithUTF8String:kDisplayProductName]];
-    if ([localizedNames count] > 0)
-        m_name = QString::fromUtf8([[localizedNames objectForKey:[[localizedNames allKeys] objectAtIndex:0]] UTF8String]);
-    [deviceInfo release];
-
-    QWindowSystemInterface::handleScreenGeometryChange(screen(), geometry(), availableGeometry());
-    QWindowSystemInterface::handleScreenLogicalDotsPerInchChange(screen(), m_logicalDpi.first, m_logicalDpi.second);
-    QWindowSystemInterface::handleScreenRefreshRateChange(screen(), m_refreshRate);
-}
-
-qreal QCocoaScreen::devicePixelRatio() const
-{
-    QMacAutoReleasePool pool;
-    NSScreen * screen = osScreen();
-    return qreal(screen ? [screen backingScaleFactor] : 1.0);
-}
-
-QPlatformScreen::SubpixelAntialiasingType QCocoaScreen::subpixelAntialiasingTypeHint() const
-{
-    QPlatformScreen::SubpixelAntialiasingType type = QPlatformScreen::subpixelAntialiasingTypeHint();
-    if (type == QPlatformScreen::Subpixel_None) {
-        // Every OSX machine has RGB pixels unless a peculiar or rotated non-Apple screen is attached
-        type = QPlatformScreen::Subpixel_RGB;
-    }
-    return type;
-}
-
-QWindow *QCocoaScreen::topLevelAt(const QPoint &point) const
-{
-    NSPoint screenPoint = qt_mac_flipPoint(point);
-
-    // Search (hit test) for the top-level window. [NSWidow windowNumberAtPoint:
-    // belowWindowWithWindowNumber] may return windows that are not interesting
-    // to Qt. The search iterates until a suitable window or no window is found.
-    NSInteger topWindowNumber = 0;
-    QWindow *window = 0;
-    do {
-        // Get the top-most window, below any previously rejected window.
-        topWindowNumber = [NSWindow windowNumberAtPoint:screenPoint
-                                    belowWindowWithWindowNumber:topWindowNumber];
-
-        // Continue the search if the window does not belong to this process.
-        NSWindow *nsWindow = [NSApp windowWithWindowNumber:topWindowNumber];
-        if (nsWindow == 0)
-            continue;
-
-        // Continue the search if the window does not belong to Qt.
-        if (![nsWindow conformsToProtocol:@protocol(QNSWindowProtocol)])
-            continue;
-
-        id<QNSWindowProtocol> proto = static_cast<id<QNSWindowProtocol> >(nsWindow);
-        QCocoaWindow *cocoaWindow = proto.helper.platformWindow;
-        if (!cocoaWindow)
-            continue;
-        window = cocoaWindow->window();
-
-        // Continue the search if the window is not a top-level window.
-        if (!window->isTopLevel())
-             continue;
-
-        // Stop searching. The current window is the correct window.
-        break;
-    } while (topWindowNumber > 0);
-
-    return window;
-}
-
-extern CGContextRef qt_mac_cg_context(const QPaintDevice *pdev);
-
-QPixmap QCocoaScreen::grabWindow(WId window, int x, int y, int width, int height) const
-{
-    // TODO window should be handled
-    Q_UNUSED(window)
-
-    const int maxDisplays = 128; // 128 displays should be enough for everyone.
-    CGDirectDisplayID displays[maxDisplays];
-    CGDisplayCount displayCount;
-    CGRect cgRect;
-
-    if (width < 0 || height < 0) {
-        // get all displays
-        cgRect = CGRectInfinite;
-    } else {
-        cgRect = CGRectMake(x, y, width, height);
-    }
-    const CGDisplayErr err = CGGetDisplaysWithRect(cgRect, maxDisplays, displays, &displayCount);
-
-    if (err && displayCount == 0)
-        return QPixmap();
-
-    // calculate pixmap size
-    QSize windowSize(width, height);
-    if (width < 0 || height < 0) {
-        QRect windowRect;
-        for (uint i = 0; i < displayCount; ++i) {
-            const CGRect cgRect = CGDisplayBounds(displays[i]);
-            QRect qRect(cgRect.origin.x, cgRect.origin.y, cgRect.size.width, cgRect.size.height);
-            windowRect = windowRect.united(qRect);
-        }
-        if (width < 0)
-            windowSize.setWidth(windowRect.width());
-        if (height < 0)
-            windowSize.setHeight(windowRect.height());
-    }
-
-    QPixmap windowPixmap(windowSize * devicePixelRatio());
-    windowPixmap.fill(Qt::transparent);
-
-    for (uint i = 0; i < displayCount; ++i) {
-        const CGRect bounds = CGDisplayBounds(displays[i]);
-        int w = (width < 0 ? bounds.size.width : width) * devicePixelRatio();
-        int h = (height < 0 ? bounds.size.height : height) * devicePixelRatio();
-        QRect displayRect = QRect(x, y, w, h);
-        displayRect = displayRect.translated(qRound(-bounds.origin.x), qRound(-bounds.origin.y));
-        QCFType<CGImageRef> image = CGDisplayCreateImageForRect(displays[i],
-            CGRectMake(displayRect.x(), displayRect.y(), displayRect.width(), displayRect.height()));
-        QPixmap pix(w, h);
-        pix.fill(Qt::transparent);
-        CGRect rect = CGRectMake(0, 0, w, h);
-        CGContextRef ctx = qt_mac_cg_context(&pix);
-        qt_mac_drawCGImage(ctx, &rect, image);
-        CGContextRelease(ctx);
-
-        QPainter painter(&windowPixmap);
-        painter.drawPixmap(0, 0, pix);
-    }
-    return windowPixmap;
-}
+class QCoreTextFontEngine;
+class QFontEngineFT;
 
 static QCocoaIntegration::Options parseOptions(const QStringList &paramList)
 {
@@ -279,11 +98,13 @@ QCocoaIntegration *QCocoaIntegration::mInstance = 0;
 
 QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
     : mOptions(parseOptions(paramList))
-    , mFontDb(new QCoreTextFontDatabase(mOptions.testFlag(UseFreeTypeFontEngine)))
+    , mFontDb(0)
 #ifndef QT_NO_ACCESSIBILITY
     , mAccessibility(new QCocoaAccessibility)
 #endif
+#ifndef QT_NO_CLIPBOARD
     , mCocoaClipboard(new QCocoaClipboard)
+#endif
     , mCocoaDrag(new QCocoaDrag)
     , mNativeInterface(new QCocoaNativeInterface)
     , mServices(new QCocoaServices)
@@ -292,6 +113,13 @@ QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
     if (mInstance != 0)
         qWarning("Creating multiple Cocoa platform integrations is not supported");
     mInstance = this;
+
+#ifndef QT_NO_FREETYPE
+    if (mOptions.testFlag(UseFreeTypeFontEngine))
+        mFontDb.reset(new QCoreTextFontDatabaseEngineFactory<QFontEngineFT>);
+    else
+#endif
+        mFontDb.reset(new QCoreTextFontDatabaseEngineFactory<QCoreTextFontEngine>);
 
     QString icStr = QPlatformInputContextFactory::requested();
     icStr.isNull() ? mInputContext.reset(new QCocoaInputContext)
@@ -311,11 +139,15 @@ QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
         // see the function implementation for exceptions.)
         qt_mac_transformProccessToForegroundApplication();
 
-        // Move the application window to front to avoid launching behind the terminal.
-        // Ignoring other apps is neccessary (we must ignore the terminal), but makes
-        // Qt apps play slightly less nice with other apps when lanching from Finder
-        // (See the activateIgnoringOtherApps docs.)
-        [cocoaApplication activateIgnoringOtherApps : YES];
+        // Move the application window to front to make it take focus, also when launching
+        // from the terminal. On 10.12+ this call has been moved to applicationDidFinishLauching
+        // to work around issues with loss of focus at startup.
+        if (QOperatingSystemVersion::current() < QOperatingSystemVersion::MacOSSierra) {
+            // Ignoring other apps is necessary (we must ignore the terminal), but makes
+            // Qt apps play slightly less nice with other apps when lanching from Finder
+            // (See the activateIgnoringOtherApps docs.)
+            [cocoaApplication activateIgnoringOtherApps : YES];
+        }
     }
 
     // ### For AA_MacPluginApplication we don't want to load the menu nib.
@@ -329,10 +161,8 @@ QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
         [cocoaApplication setDelegate:newDelegate];
 
         // Load the application menu. This menu contains Preferences, Hide, Quit.
-        QCocoaMenuLoader *qtMenuLoader = [[QCocoaMenuLoader alloc] init];
-        qt_mac_loadMenuNib(qtMenuLoader);
+        QCocoaMenuLoader *qtMenuLoader = [QCocoaMenuLoader sharedMenuLoader];
         [cocoaApplication setMenu:[qtMenuLoader menu]];
-        [newDelegate setMenuLoader:qtMenuLoader];
     }
 
     // The presentation options such as whether or not the dock and/or menu bar is
@@ -349,6 +179,9 @@ QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
     QMacInternalPasteboardMime::initializeMimeTypes();
     QCocoaMimeTypes::initializeMimeTypes();
     QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
+
+    connect(qGuiApp, &QGuiApplication::focusWindowChanged,
+        this, &QCocoaIntegration::focusWindowChanged);
 }
 
 QCocoaIntegration::~QCocoaIntegration()
@@ -366,11 +199,13 @@ QCocoaIntegration::~QCocoaIntegration()
         [[NSApplication sharedApplication] setDelegate: 0];
     }
 
+#ifndef QT_NO_CLIPBOARD
     // Delete the clipboard integration and destroy mime type converters.
     // Deleting the clipboard integration flushes promised pastes using
     // the mime converters - the ordering here is important.
     delete mCocoaClipboard;
     QMacInternalPasteboardMime::destroyMimeTypes();
+#endif
 
     // Delete screens in reverse order to avoid crash in case of multiple screens
     while (!mScreens.isEmpty()) {
@@ -389,6 +224,8 @@ QCocoaIntegration::Options QCocoaIntegration::options() const
 {
     return mOptions;
 }
+
+Q_LOGGING_CATEGORY(lcCocoaScreen, "qt.qpa.cocoa.screens");
 
 /*!
     \brief Synchronizes the screen list, adds new screens, removes deleted ones
@@ -422,16 +259,18 @@ void QCocoaIntegration::updateScreens()
             // NSScreen documentation says do not cache the array returned from [NSScreen screens].
             // However in practice, we can identify a screen by its pointer: if resolution changes,
             // the NSScreen object will be the same instance, just with different values.
-            if (existingScr->osScreen() == scr) {
+            if (existingScr->nativeScreen() == scr) {
                 screen = existingScr;
                 break;
             }
         if (screen) {
             remainingScreens.remove(screen);
             screen->updateGeometry();
+            qCDebug(lcCocoaScreen) << "Updated properties of" << screen;
         } else {
             screen = new QCocoaScreen(i);
             mScreens.append(screen);
+            qCDebug(lcCocoaScreen) << "Adding" << screen;
             screenAdded(screen);
         }
         siblings << screen;
@@ -446,20 +285,28 @@ void QCocoaIntegration::updateScreens()
     // Now the leftovers in remainingScreens are no longer current, so we can delete them.
     foreach (QCocoaScreen* screen, remainingScreens) {
         mScreens.removeOne(screen);
+        // Prevent stale references to NSScreen during destroy
+        screen->m_screenIndex = -1;
+        qCDebug(lcCocoaScreen) << "Removing" << screen;
         destroyScreen(screen);
     }
 }
 
-QCocoaScreen *QCocoaIntegration::screenAtIndex(int index)
+QCocoaScreen *QCocoaIntegration::screenForNSScreen(NSScreen *nsScreen)
 {
-    if (index >= mScreens.count())
+    NSUInteger index = [[NSScreen screens] indexOfObject:nsScreen];
+    if (index == NSNotFound)
+        return 0;
+
+    if (index >= unsigned(mScreens.count()))
         updateScreens();
 
-    // It is possible that the screen got removed while updateScreens was called
-    // so we do a sanity check to be certain
-    if (index >= mScreens.count())
-        return 0;
-    return mScreens.at(index);
+    for (QCocoaScreen *screen : mScreens) {
+        if (screen->nativeScreen() == nsScreen)
+            return screen;
+    }
+
+    return 0;
 }
 
 bool QCocoaIntegration::hasCapability(QPlatformIntegration::Capability cap) const
@@ -486,6 +333,29 @@ bool QCocoaIntegration::hasCapability(QPlatformIntegration::Capability cap) cons
 QPlatformWindow *QCocoaIntegration::createPlatformWindow(QWindow *window) const
 {
     return new QCocoaWindow(window);
+}
+
+QPlatformWindow *QCocoaIntegration::createForeignWindow(QWindow *window, WId nativeHandle) const
+{
+    return new QCocoaWindow(window, nativeHandle);
+}
+
+class QCocoaOffscreenSurface : public QPlatformOffscreenSurface
+{
+public:
+    QCocoaOffscreenSurface(QOffscreenSurface *offscreenSurface) : QPlatformOffscreenSurface(offscreenSurface) {}
+
+    QSurfaceFormat format() const override
+    {
+        Q_ASSERT(offscreenSurface());
+        return offscreenSurface()->requestedFormat();
+    }
+    bool isValid() const override { return true; }
+};
+
+QPlatformOffscreenSurface *QCocoaIntegration::createPlatformOffscreenSurface(QOffscreenSurface *surface) const
+{
+    return new QCocoaOffscreenSurface(surface);
 }
 
 #ifndef QT_NO_OPENGL
@@ -531,10 +401,12 @@ QCocoaAccessibility *QCocoaIntegration::accessibility() const
 }
 #endif
 
+#ifndef QT_NO_CLIPBOARD
 QCocoaClipboard *QCocoaIntegration::clipboard() const
 {
     return mCocoaClipboard;
 }
+#endif
 
 QCocoaDrag *QCocoaIntegration::drag() const
 {
@@ -640,5 +512,34 @@ void QCocoaIntegration::beep() const
 {
     NSBeep();
 }
+
+void QCocoaIntegration::focusWindowChanged(QWindow *focusWindow)
+{
+    // Don't revert icon just because we lost focus
+    if (!focusWindow)
+        return;
+
+    static bool hasDefaultApplicationIcon = [](){
+        NSImage *genericApplicationIcon = [[NSWorkspace sharedWorkspace]
+            iconForFileType:NSFileTypeForHFSTypeCode(kGenericApplicationIcon)];
+        NSImage *applicationIcon = [NSImage imageNamed:NSImageNameApplicationIcon];
+
+        NSRect rect = NSMakeRect(0, 0, 32, 32);
+        return [applicationIcon CGImageForProposedRect:&rect context:nil hints:nil]
+            == [genericApplicationIcon CGImageForProposedRect:&rect context:nil hints:nil];
+    }();
+
+    // Don't let the window icon override an explicit application icon set in the Info.plist
+    if (!hasDefaultApplicationIcon)
+        return;
+
+    // Or an explicit application icon set on QGuiApplication
+    if (!qGuiApp->windowIcon().isNull())
+        return;
+
+    setApplicationIcon(focusWindow->icon());
+}
+
+#include "moc_qcocoaintegration.cpp"
 
 QT_END_NAMESPACE

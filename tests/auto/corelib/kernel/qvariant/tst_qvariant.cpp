@@ -77,10 +77,10 @@ public:
 
     enum MetaEnumTest_Enum0 { MetaEnumTest_Enum0_dummy = 2, MetaEnumTest_Enum0_value = 42, MetaEnsureSignedEnum0 = -1 };
     Q_ENUM(MetaEnumTest_Enum0)
-    enum MetaEnumTest_Enum1 { MetaEnumTest_Enum1_value = 42, MetaEnumTest_Enum1_bigValue = (Q_INT64_C(1) << 33) + 50 };
+    enum MetaEnumTest_Enum1 : qint64 { MetaEnumTest_Enum1_value = 42, MetaEnumTest_Enum1_bigValue = (Q_INT64_C(1) << 33) + 50 };
     Q_ENUM(MetaEnumTest_Enum1)
 
-    enum MetaEnumTest_Enum3 ENUM_SIZE(qint64) { MetaEnumTest_Enum3_value = -47, MetaEnumTest_Enum3_bigValue = (Q_INT64_C(1) << 56) + 5  };
+    enum MetaEnumTest_Enum3 ENUM_SIZE(qint64) { MetaEnumTest_Enum3_value = -47, MetaEnumTest_Enum3_bigValue = (Q_INT64_C(1) << 56) + 5, MetaEnumTest_Enum3_bigNegValue = -(Q_INT64_C(1) << 56) - 3 };
     Q_ENUM(MetaEnumTest_Enum3)
     enum MetaEnumTest_Enum4 ENUM_SIZE(quint64) { MetaEnumTest_Enum4_value = 47, MetaEnumTest_Enum4_bigValue = (Q_INT64_C(1) << 52) + 45 };
     Q_ENUM(MetaEnumTest_Enum4)
@@ -277,6 +277,8 @@ private slots:
     void compareSanity();
     void compareRich();
 
+    void nullConvert();
+
     void accessSequentialContainerKey();
 
 private:
@@ -369,6 +371,8 @@ void tst_QVariant::copy_constructor()
     QVERIFY(var8.isNull());
 }
 
+Q_DECLARE_METATYPE(int*)
+
 void tst_QVariant::isNull()
 {
     QVariant var;
@@ -400,6 +404,29 @@ void tst_QVariant::isNull()
     QVERIFY( !varLL.isNull() );
     QVariant var7(QString::null);
     QVERIFY(var7.isNull());
+    var7 = QVariant::fromValue<QString>(QString::null);
+    QVERIFY(var7.isNull());
+
+    QVariant var8(QMetaType::Nullptr, nullptr);
+    QVERIFY(var8.isNull());
+    var8 = QVariant::fromValue<std::nullptr_t>(nullptr);
+    QVERIFY(var8.isNull());
+    QVariant var9 = QVariant(QJsonValue(QJsonValue::Null));
+    QVERIFY(var9.isNull());
+    var9 = QVariant::fromValue<QJsonValue>(QJsonValue(QJsonValue::Null));
+    QVERIFY(var9.isNull());
+
+    QVariant var10(QMetaType::VoidStar, nullptr);
+    QVERIFY(var10.isNull());
+    var10 = QVariant::fromValue<void*>(nullptr);
+    QVERIFY(var10.isNull());
+
+    QVariant var11(QMetaType::QObjectStar, nullptr);
+    QVERIFY(var11.isNull());
+    var11 = QVariant::fromValue<QObject*>(nullptr);
+    QVERIFY(var11.isNull());
+
+    QVERIFY(QVariant::fromValue<int*>(nullptr).isNull());
 }
 
 void tst_QVariant::swap()
@@ -1035,6 +1062,7 @@ void tst_QVariant::toByteArray_data()
 
     QTest::newRow( "longlong" ) << QVariant( (qlonglong)34 ) << QByteArray( "34" );
     QTest::newRow( "ulonglong" ) << QVariant( (qulonglong)34 ) << QByteArray( "34" );
+    QTest::newRow( "nullptr" ) << QVariant::fromValue(nullptr) << QByteArray();
 }
 
 void tst_QVariant::toByteArray()
@@ -1044,7 +1072,13 @@ void tst_QVariant::toByteArray()
     QVERIFY( value.isValid() );
     QVERIFY( value.canConvert( QVariant::ByteArray ) );
     QByteArray ba = value.toByteArray();
+    QCOMPARE( ba.isNull(), result.isNull() );
     QCOMPARE( ba, result );
+
+    QVERIFY( value.convert( QVariant::ByteArray ) );
+    QCOMPARE( value.isNull(), result.isNull() );
+    QCOMPARE( value.toByteArray().isNull(), result.isNull() );
+    QCOMPARE( value.toByteArray(), result );
 }
 
 void tst_QVariant::toString_data()
@@ -1071,6 +1105,7 @@ void tst_QVariant::toString_data()
         QString( "123456789012" );
     QTest::newRow("QJsonValue") << QVariant(QJsonValue(QString("hello"))) << QString("hello");
     QTest::newRow("QJsonValue(Null)") << QVariant(QJsonValue(QJsonValue::Null)) << QString();
+    QTest::newRow("nullptr") << QVariant::fromValue(nullptr) << QString();
 }
 
 void tst_QVariant::toString()
@@ -1080,7 +1115,13 @@ void tst_QVariant::toString()
     QVERIFY( value.isValid() );
     QVERIFY( value.canConvert( QVariant::String ) );
     QString str = value.toString();
+    QCOMPARE( str.isNull(), result.isNull() );
     QCOMPARE( str, result );
+
+    QVERIFY( value.convert( QVariant::String ) );
+    QCOMPARE( value.isNull(), result.isNull() );
+    QCOMPARE( value.toString().isNull(), result.isNull() );
+    QCOMPARE( value.toString(), result );
 }
 
 void tst_QVariant::toDate_data()
@@ -1501,10 +1542,11 @@ void tst_QVariant::operator_eq_eq_data()
     // ### many other combinations missing
 
     {
-        // QUuid can convert to QString, but not the opposite
         QUuid uuid(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
         QTest::newRow("uuidstring") << QVariant(uuid) << QVariant(uuid.toString()) << true;
         QTest::newRow("stringuuid") << QVariant(uuid.toString()) << QVariant(uuid) << true;
+        QTest::newRow("uuidbytearray") << QVariant(uuid) << QVariant(uuid.toByteArray()) << true;
+        QTest::newRow("bytearrayuuid") << QVariant(uuid.toByteArray()) << QVariant(uuid) << true;
     }
 
     {
@@ -1744,6 +1786,10 @@ void tst_QVariant::compareNumbers_data() const
     QTest::newRow("double5") << qVariantFromValue(0.) << qVariantFromValue(-qInf()) << +1;
     QTest::newRow("double6") << qVariantFromValue(-double(qInf())) << qVariantFromValue(-qInf()) << 0;
     QTest::newRow("double7") << qVariantFromValue(qInf()) << qVariantFromValue(qInf()) << 0;
+    QTest::newRow("double8") << qVariantFromValue(-qInf()) << qVariantFromValue(qInf()) << -1;
+    QTest::newRow("double9") << qVariantFromValue(qQNaN()) << qVariantFromValue(0.) << INT_MAX;
+    QTest::newRow("double10") << qVariantFromValue(0.) << qVariantFromValue(qQNaN()) << INT_MAX;
+    QTest::newRow("double11") << qVariantFromValue(qQNaN()) << qVariantFromValue(qQNaN()) << INT_MAX;
 
     // mixed comparisons
     // fp + fp
@@ -1752,8 +1798,12 @@ void tst_QVariant::compareNumbers_data() const
     QTest::newRow("float+double3") << qVariantFromValue(0.f) << qVariantFromValue(-1.) << +1;
     QTest::newRow("float+double4") << qVariantFromValue(-float(qInf())) << qVariantFromValue(0.) << -1;
     QTest::newRow("float+double5") << qVariantFromValue(0.f) << qVariantFromValue(-qInf()) << +1;
-    QTest::newRow("float+double6") << qVariantFromValue(-float(qInf())) << qVariantFromValue(qInf()) << 0;
+    QTest::newRow("float+double6") << qVariantFromValue(-float(qInf())) << qVariantFromValue(-qInf()) << 0;
     QTest::newRow("float+double7") << qVariantFromValue(float(qInf())) << qVariantFromValue(qInf()) << 0;
+    QTest::newRow("float+double8") << qVariantFromValue(-float(qInf())) << qVariantFromValue(qInf()) << -1;
+    QTest::newRow("float+double9") << qVariantFromValue(qQNaN()) << qVariantFromValue(0.) << INT_MAX;
+    QTest::newRow("float+double10") << qVariantFromValue(0.) << qVariantFromValue(qQNaN()) << INT_MAX;
+    QTest::newRow("float+double11") << qVariantFromValue(qQNaN()) << qVariantFromValue(qQNaN()) << INT_MAX;
 
     // fp + int
     QTest::newRow("float+int1") << qVariantFromValue(0.f) << qVariantFromValue(0) << 0;
@@ -1967,7 +2017,7 @@ void tst_QVariant::compareNumbers() const
         QCOMPARE(v2, v1);
         QVERIFY(v2 >= v1);
         QVERIFY(!(v2 > v1));
-    } else {
+    } else if (expected == +1) {
         QVERIFY(!(v1 < v2));
         QVERIFY(!(v1 <= v2));
         QVERIFY(!(v1 == v2));
@@ -1979,6 +2029,9 @@ void tst_QVariant::compareNumbers() const
         QVERIFY(!(v2 == v1));
         QVERIFY(!(v2 >= v1));
         QVERIFY(!(v2 > v1));
+    } else {
+        // unorderable (NaN)
+        QVERIFY(!(v1 == v2));
     }
 }
 
@@ -2535,6 +2588,8 @@ void tst_QVariant::variantMap()
     QVariant v3 = QVariant(QMetaType::type("QMap<QString, QVariant>"), &map);
     QCOMPARE(qvariant_cast<QVariantMap>(v3).value("test").toInt(), 42);
 
+    QCOMPARE(v, QVariant(v.toHash()));
+
     // multi-keys
     map.insertMulti("test", 47);
     v = map;
@@ -2542,6 +2597,8 @@ void tst_QVariant::variantMap()
     QCOMPARE(map2, map);
     map2 = v.toMap();
     QCOMPARE(map2, map);
+
+    QCOMPARE(v, QVariant(v.toHash()));
 }
 
 void tst_QVariant::variantHash()
@@ -2564,6 +2621,8 @@ void tst_QVariant::variantHash()
     QVariant v3 = QVariant(QMetaType::type("QHash<QString, QVariant>"), &hash);
     QCOMPARE(qvariant_cast<QVariantHash>(v3).value("test").toInt(), 42);
 
+    QCOMPARE(v, QVariant(v.toMap()));
+
     // multi-keys
     hash.insertMulti("test", 47);
     v = hash;
@@ -2571,6 +2630,8 @@ void tst_QVariant::variantHash()
     QCOMPARE(hash2, hash);
     hash2 = v.toHash();
     QCOMPARE(hash2, hash);
+
+    QCOMPARE(v, QVariant(v.toMap()));
 }
 
 class CustomQObject : public QObject {
@@ -2617,7 +2678,7 @@ void tst_QVariant::qvariant_cast_QObject_data()
     QTest::newRow("null QObject") << QVariant::fromValue<QObject*>(0) << true << true;
     QTest::newRow("null derived QObject") << QVariant::fromValue<CustomQObject*>(0) << true << true;
     QTest::newRow("null custom object") << QVariant::fromValue<CustomNonQObject*>(0) << false << true;
-    QTest::newRow("null int") << QVariant::fromValue<int>(0) << false << true;
+    QTest::newRow("zero int") << QVariant::fromValue<int>(0) << false << false;
 }
 
 void tst_QVariant::qvariant_cast_QObject()
@@ -2635,12 +2696,14 @@ void tst_QVariant::qvariant_cast_QObject()
         QVERIFY(data.canConvert(QMetaType::QObjectStar));
         QVERIFY(data.canConvert(::qMetaTypeId<QObject*>()));
         QCOMPARE(data.value<QObject*>() == 0, isNull);
+        QCOMPARE(data.isNull(), isNull);
         QVERIFY(data.convert(QMetaType::QObjectStar));
         QCOMPARE(data.userType(), int(QMetaType::QObjectStar));
     } else {
         QVERIFY(!data.canConvert<QObject*>());
         QVERIFY(!data.canConvert(QMetaType::QObjectStar));
         QVERIFY(!data.canConvert(::qMetaTypeId<QObject*>()));
+        QCOMPARE(data.isNull(), isNull);
         QVERIFY(!data.value<QObject*>());
         QVERIFY(!data.convert(QMetaType::QObjectStar));
         QVERIFY(data.userType() != QMetaType::QObjectStar);
@@ -3372,21 +3435,6 @@ void tst_QVariant::toIntFromDouble() const
     QCOMPARE(result, 2147483630);
 }
 
-void tst_QVariant::setValue()
-{
-    QJsonDocument t; //we just take a value so that we're sure that it will be shared
-    QVariant v1 = QVariant::fromValue(t);
-    QVERIFY( v1.isDetached() );
-    QVariant v2 = v1;
-    QVERIFY( !v1.isDetached() );
-    QVERIFY( !v2.isDetached() );
-
-    v2.setValue(3); //set an integer value
-
-    QVERIFY( v1.isDetached() );
-    QVERIFY( v2.isDetached() );
-}
-
 void tst_QVariant::fpStringRoundtrip_data() const
 {
     QTest::addColumn<QVariant>("number");
@@ -3618,6 +3666,20 @@ Q_DECLARE_METATYPE(MyMovable *)
 Q_DECLARE_METATYPE(MyNotMovable *)
 Q_DECLARE_METATYPE(QSharedDataPointer<MyShared>)
 
+void tst_QVariant::setValue()
+{
+    MyNotMovable t; //we just take a value so that we're sure that it will be shared
+    QVariant v1 = QVariant::fromValue(t);
+    QVERIFY( v1.isDetached() );
+    QVariant v2 = v1;
+    QVERIFY( !v1.isDetached() );
+    QVERIFY( !v2.isDetached() );
+
+    v2.setValue(3); //set an integer value
+
+    QVERIFY( v1.isDetached() );
+    QVERIFY( v2.isDetached() );
+}
 
 void tst_QVariant::moreCustomTypes()
 {
@@ -3720,7 +3782,7 @@ void tst_QVariant::moreCustomTypes()
     {
         int i = 5;
         PLAY_WITH_VARIANT((void *)(&i), false, QString(), 0, false);
-        PLAY_WITH_VARIANT((void *)(0), false, QString(), 0, false);
+        PLAY_WITH_VARIANT((void *)(0), true, QString(), 0, false);
     }
 
     {
@@ -4609,7 +4671,7 @@ void tst_QVariant::pairElements()
 
 enum EnumTest_Enum0 { EnumTest_Enum0_value = 42, EnumTest_Enum0_negValue = -8 };
 Q_DECLARE_METATYPE(EnumTest_Enum0)
-enum EnumTest_Enum1 { EnumTest_Enum1_value = 42, EnumTest_Enum1_bigValue = (Q_INT64_C(1) << 33) + 50 };
+enum EnumTest_Enum1 : qint64 { EnumTest_Enum1_value = 42, EnumTest_Enum1_bigValue = (Q_INT64_C(1) << 33) + 50 };
 Q_DECLARE_METATYPE(EnumTest_Enum1)
 
 #if defined(Q_COMPILER_CLASS_ENUM)
@@ -4660,7 +4722,7 @@ template<typename Enum> void testVariant(Enum value, bool *ok)
     QVERIFY(var2.convert(QMetaType::Int));
     QCOMPARE(var2.value<int>(), static_cast<int>(value));
 
-    if (static_cast<qint64>(value) <= INT_MAX) {
+    if ((static_cast<qint64>(value) <= INT_MAX) && (static_cast<qint64>(value) >= INT_MIN)) {
         int intValue = static_cast<int>(value);
         QVariant intVar = intValue;
         QVERIFY(intVar.canConvert<Enum>());
@@ -4721,7 +4783,7 @@ template<typename Enum> void testVariantMeta(Enum value, bool *ok, const char *s
 
     QVariant strVar = QString::fromLatin1(string);
     QVERIFY(strVar.canConvert<Enum>());
-    if (value > INT_MAX) {
+    if ((static_cast<qint64>(value) > INT_MAX) || (static_cast<qint64>(value) < INT_MIN)) {
         QEXPECT_FAIL("", "QMetaEnum api uses 'int' as return type  QTBUG-27451", Abort);
         *ok = true;
     }
@@ -4743,6 +4805,7 @@ void tst_QVariant::metaEnums()
     METAENUMS_TEST(MetaEnumTest_Enum1_bigValue);
     METAENUMS_TEST(MetaEnumTest_Enum3_value);
     METAENUMS_TEST(MetaEnumTest_Enum3_bigValue);
+    METAENUMS_TEST(MetaEnumTest_Enum3_bigNegValue);
     METAENUMS_TEST(MetaEnumTest_Enum4_value);
     METAENUMS_TEST(MetaEnumTest_Enum4_bigValue);
     METAENUMS_TEST(MetaEnumTest_Enum5_value);
@@ -4830,6 +4893,33 @@ void tst_QVariant::compareRich()
                                  << QStringLiteral("d"));
 }
 
+void tst_QVariant::nullConvert()
+{
+    // Test quirks with QVariants different types of null states.
+
+    // null variant with no initialized value
+    QVariant nullVar(QVariant::String);
+    QVERIFY(nullVar.isValid());
+    QVERIFY(nullVar.isNull());
+    // We can not convert a variant with no value
+    QVERIFY(!nullVar.convert(QVariant::Url));
+    QCOMPARE(nullVar.type(), QVariant::Url);
+    QVERIFY(nullVar.isNull());
+
+    // variant initialized with null value
+    QVariant nullStr = QVariant::fromValue(QString());
+    QVERIFY(nullStr.isValid());
+    QVERIFY(nullStr.isNull());
+    // We can convert an initialized null value however
+    QVERIFY(nullStr.convert(QVariant::Url));
+    QCOMPARE(nullStr.type(), QVariant::Url);
+    QVERIFY(nullStr.isValid());
+    // QUrl does not have an isNull method
+    QVERIFY(!nullStr.isNull());
+    // The URL is not valid however
+    QVERIFY(!nullStr.toUrl().isValid());
+}
+
 void tst_QVariant::accessSequentialContainerKey()
 {
     QString nameResult;
@@ -4853,7 +4943,6 @@ void tst_QVariant::accessSequentialContainerKey()
 
     QCOMPARE(nameResult, QStringLiteral("Seven"));
 }
-
 
 QTEST_MAIN(tst_QVariant)
 #include "tst_qvariant.moc"

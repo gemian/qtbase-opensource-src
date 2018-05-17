@@ -40,6 +40,10 @@
 #ifndef QNETWORKACCESSMANAGER_H
 #define QNETWORKACCESSMANAGER_H
 
+#include <QtNetwork/qtnetworkglobal.h>
+#include <QtNetwork/qnetworkrequest.h>
+#include <QtCore/QString>
+#include <QtCore/QVector>
 #include <QtCore/QObject>
 #ifndef QT_NO_SSL
 #include <QtNetwork/QSslConfiguration>
@@ -48,7 +52,6 @@
 
 QT_BEGIN_NAMESPACE
 
-
 class QIODevice;
 class QAbstractNetworkCache;
 class QAuthenticator;
@@ -56,11 +59,11 @@ class QByteArray;
 template<typename T> class QList;
 class QNetworkCookie;
 class QNetworkCookieJar;
-class QNetworkRequest;
 class QNetworkReply;
 class QNetworkProxy;
 class QNetworkProxyFactory;
 class QSslError;
+class QHstsPolicy;
 #ifndef QT_NO_BEARERMANAGEMENT
 class QNetworkConfiguration;
 #endif
@@ -105,6 +108,8 @@ public:
 
     void clearAccessCache();
 
+    void clearConnectionCache();
+
 #ifndef QT_NO_NETWORKPROXY
     QNetworkProxy proxy() const;
     void setProxy(const QNetworkProxy &proxy);
@@ -118,6 +123,13 @@ public:
     QNetworkCookieJar *cookieJar() const;
     void setCookieJar(QNetworkCookieJar *cookieJar);
 
+    void setStrictTransportSecurityEnabled(bool enabled);
+    bool isStrictTransportSecurityEnabled() const;
+    void enableStrictTransportSecurityStore(bool enabled, const QString &storeDir = QString());
+    bool isStrictTransportSecurityStoreEnabled() const;
+    void addStrictTransportSecurityHosts(const QVector<QHstsPolicy> &knownHosts);
+    QVector<QHstsPolicy> strictTransportSecurityHosts() const;
+
     QNetworkReply *head(const QNetworkRequest &request);
     QNetworkReply *get(const QNetworkRequest &request);
     QNetworkReply *post(const QNetworkRequest &request, QIODevice *data);
@@ -128,6 +140,8 @@ public:
     QNetworkReply *put(const QNetworkRequest &request, QHttpMultiPart *multiPart);
     QNetworkReply *deleteResource(const QNetworkRequest &request);
     QNetworkReply *sendCustomRequest(const QNetworkRequest &request, const QByteArray &verb, QIODevice *data = Q_NULLPTR);
+    QNetworkReply *sendCustomRequest(const QNetworkRequest &request, const QByteArray &verb, const QByteArray &data);
+    QNetworkReply *sendCustomRequest(const QNetworkRequest &request, const QByteArray &verb, QHttpMultiPart *multiPart);
 
 #ifndef QT_NO_BEARERMANAGEMENT
     void setConfiguration(const QNetworkConfiguration &config);
@@ -143,6 +157,9 @@ public:
                                 const QSslConfiguration &sslConfiguration = QSslConfiguration::defaultConfiguration());
 #endif
     void connectToHost(const QString &hostName, quint16 port = 80);
+
+    void setRedirectPolicy(QNetworkRequest::RedirectPolicy policy);
+    QNetworkRequest::RedirectPolicy redirectPolicy() const;
 
 Q_SIGNALS:
 #ifndef QT_NO_NETWORKPROXY
@@ -173,6 +190,7 @@ private:
     friend class QNetworkReplyImplPrivate;
     friend class QNetworkReplyHttpImpl;
     friend class QNetworkReplyHttpImplPrivate;
+    friend class QNetworkReplyFileImpl;
 
     Q_DECLARE_PRIVATE(QNetworkAccessManager)
     Q_PRIVATE_SLOT(d_func(), void _q_replyFinished())

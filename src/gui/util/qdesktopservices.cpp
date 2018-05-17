@@ -177,6 +177,19 @@ void QOpenUrlHandlerRegistry::handlerDestroyed(QObject *handler)
     still fail to launch or fail to open the requested URL. This result will not be reported back
     to the application.
 
+    \warning URLs passed to this function on iOS will not load unless their schemes are
+    listed in the \c LSApplicationQueriesSchemes key of the application's Info.plist file.
+    For more information, see the Apple Developer Documentation for
+    \l{https://developer.apple.com/documentation/uikit/uiapplication/1622952-canopenurl}{canOpenURL(_:)}.
+    For example, the following lines enable URLs with the HTTPS scheme:
+
+    \code
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>https</string>
+    </array>
+    \endcode
+
     \sa setUrlHandler()
 */
 bool QDesktopServices::openUrl(const QUrl &url)
@@ -198,8 +211,15 @@ bool QDesktopServices::openUrl(const QUrl &url)
         return false;
 
     QPlatformIntegration *platformIntegration = QGuiApplicationPrivate::platformIntegration();
-    if (!platformIntegration)
+    if (Q_UNLIKELY(!platformIntegration)) {
+        QCoreApplication *application = QCoreApplication::instance();
+        if (Q_UNLIKELY(!application))
+            qWarning("QDesktopServices::openUrl: Please instantiate the QGuiApplication object "
+                     "first");
+        else if (Q_UNLIKELY(!qobject_cast<QGuiApplication *>(application)))
+            qWarning("QDesktopServices::openUrl: Application is not a GUI application");
         return false;
+    }
 
     QPlatformServices *platformServices = platformIntegration->services();
     if (!platformServices) {

@@ -45,7 +45,7 @@
 #include <xcb/xcb_keysyms.h>
 
 #include <xkbcommon/xkbcommon.h>
-#ifndef QT_NO_XKB
+#if QT_CONFIG(xkb)
 #include <xkbcommon/xkbcommon-x11.h>
 #endif
 
@@ -74,10 +74,10 @@ public:
     void updateXKBMods();
     quint32 xkbModMask(quint16 state);
     void updateXKBStateFromCore(quint16 state);
-#ifdef XCB_USE_XINPUT22
+#if QT_CONFIG(xinput2)
     void updateXKBStateFromXI(void *modInfo, void *groupInfo);
 #endif
-#ifndef QT_NO_XKB
+#if QT_CONFIG(xkb)
     // when XKEYBOARD is present on the X server
     int coreDeviceId() const { return core_device_id; }
     void updateXKBState(xcb_xkb_state_notify_event_t *state);
@@ -106,14 +106,14 @@ protected:
 private:
     void updateXKBStateFromState(struct xkb_state *kb_state, quint16 state);
 
-    bool m_config;
-    xcb_keycode_t m_autorepeat_code;
+    bool m_config = false;
+    xcb_keycode_t m_autorepeat_code = 0;
 
-    struct xkb_context *xkb_context;
-    struct xkb_keymap *xkb_keymap;
-    struct xkb_state *xkb_state;
+    struct xkb_context *xkb_context = nullptr;
+    struct xkb_keymap *xkb_keymap = nullptr;
+    struct xkb_state *xkb_state = nullptr;
     struct xkb_rule_names xkb_names;
-    mutable struct xkb_keymap *latin_keymap;
+    mutable struct xkb_keymap *latin_keymap = nullptr;
 
     struct _mod_masks {
         uint alt;
@@ -138,12 +138,12 @@ private:
         xkb_mod_index_t mod5;
     };
     _xkb_mods xkb_mods;
-#ifndef QT_NO_XKB
+#if QT_CONFIG(xkb)
     // when XKEYBOARD is present on the X server
     _mod_masks vmod_masks;
     int core_device_id;
 #endif
-    bool m_hasLatinLayout;
+    bool m_hasLatinLayout = false;
 };
 
 QT_END_NAMESPACE

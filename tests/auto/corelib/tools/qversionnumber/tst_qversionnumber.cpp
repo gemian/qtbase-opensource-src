@@ -29,6 +29,7 @@
 
 #include <QtTest/QtTest>
 #include <QtCore/qversionnumber.h>
+#include <QtCore/qlibraryinfo.h>
 
 class tst_QVersionNumber : public QObject
 {
@@ -79,6 +80,7 @@ private slots:
     void serialize_data();
     void serialize();
     void moveSemantics();
+    void qtVersion();
 };
 
 void tst_QVersionNumber::singleInstanceData()
@@ -132,7 +134,7 @@ void tst_QVersionNumber::singleInstanceData()
 
 namespace UglyOperator {
 // ugh, but the alternative (operator <<) is even worse...
-static inline QVector<int> operator+(QVector<int> v, int i) { v.push_back(i); return qMove(v); }
+static inline QVector<int> operator+(QVector<int> v, int i) { v.push_back(i); return v; }
 }
 
 void tst_QVersionNumber::comparisonData()
@@ -511,6 +513,14 @@ void tst_QVersionNumber::fromString()
     QCOMPARE(QVersionNumber::fromString(constructionString), expectedVersion);
     QCOMPARE(QVersionNumber::fromString(constructionString, &index), expectedVersion);
     QCOMPARE(index, suffixIndex);
+
+    QCOMPARE(QVersionNumber::fromString(QStringView(constructionString)), expectedVersion);
+    QCOMPARE(QVersionNumber::fromString(QStringView(constructionString), &index), expectedVersion);
+    QCOMPARE(index, suffixIndex);
+
+    QCOMPARE(QVersionNumber::fromString(QLatin1String(constructionString.toLatin1())), expectedVersion);
+    QCOMPARE(QVersionNumber::fromString(QLatin1String(constructionString.toLatin1()), &index), expectedVersion);
+    QCOMPARE(index, suffixIndex);
 }
 
 void tst_QVersionNumber::toString_data()
@@ -634,6 +644,17 @@ void tst_QVersionNumber::moveSemantics()
 #elif defined(Q_MSVC_2010)
     QSKIP("This test requires compiler generated move constructors and operators.");
 #endif
+}
+
+void tst_QVersionNumber::qtVersion()
+{
+    QVersionNumber v = QLibraryInfo::version();
+    QVERIFY(!v.isNull());
+    QCOMPARE(v.majorVersion(), QT_VERSION_MAJOR);
+    // we can't compare the minor and micro version:
+    // the library may change without the test being recompiled
+
+    QCOMPARE(v.toString(), QString(qVersion()));
 }
 
 QTEST_APPLESS_MAIN(tst_QVersionNumber)

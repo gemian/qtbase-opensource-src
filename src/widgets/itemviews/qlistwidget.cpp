@@ -39,7 +39,6 @@
 
 #include "qlistwidget.h"
 
-#ifndef QT_NO_LISTWIDGET
 #include <qitemdelegate.h>
 #include <private/qlistview_p.h>
 #include <private/qwidgetitemdata_p.h>
@@ -691,6 +690,9 @@ QListWidgetItem *QListWidgetItem::clone() const
     Sets the data for a given \a role to the given \a value. Reimplement this
     function if you need extra roles or special behavior for certain roles.
 
+    \note The default implementation treats Qt::EditRole and Qt::DisplayRole as
+    referring to the same data.
+
     \sa Qt::ItemDataRole, data()
 */
 void QListWidgetItem::setData(int role, const QVariant &value)
@@ -1149,6 +1151,8 @@ void QListWidgetPrivate::_q_dataChanged(const QModelIndex &topLeft,
     \ingroup model-view
     \inmodule QtWidgets
 
+    \image windows-listview.png
+
     QListWidget is a convenience class that provides a list view similar to the
     one supplied by QListView, but with a classic item-based interface for
     adding and removing items. QListWidget uses an internal model to manage
@@ -1190,15 +1194,6 @@ void QListWidgetPrivate::_q_dataChanged(const QModelIndex &topLeft,
     navigating with the keyboard or clicking on a different item. When the
     current item changes, the currentItemChanged() signal is emitted with the
     new current item and the item that was previously current.
-
-    \table 100%
-    \row \li \inlineimage windowsvista-listview.png Screenshot of a Windows Vista style list widget
-         \li \inlineimage macintosh-listview.png Screenshot of a Macintosh style table widget
-         \li \inlineimage fusion-listview.png Screenshot of a Fusion style table widget
-    \row \li A \l{Windows Vista Style Widget Gallery}{Windows Vista style} list widget.
-         \li A \l{Macintosh Style Widget Gallery}{Macintosh style} list widget.
-         \li A \l{Fusion Style Widget Gallery}{Fusion style} list widget.
-    \endtable
 
     \sa QListWidgetItem, QListView, QTreeView, {Model/View Programming},
         {Config Dialog Example}
@@ -1624,7 +1619,7 @@ void QListWidget::editItem(QListWidgetItem *item)
     Opens an editor for the given \a item. The editor remains open after
     editing.
 
-    \sa closePersistentEditor()
+    \sa closePersistentEditor(), isPersistentEditorOpen()
 */
 void QListWidget::openPersistentEditor(QListWidgetItem *item)
 {
@@ -1636,13 +1631,27 @@ void QListWidget::openPersistentEditor(QListWidgetItem *item)
 /*!
     Closes the persistent editor for the given \a item.
 
-    \sa openPersistentEditor()
+    \sa openPersistentEditor(), isPersistentEditorOpen()
 */
 void QListWidget::closePersistentEditor(QListWidgetItem *item)
 {
     Q_D(QListWidget);
     QModelIndex index = d->listModel()->index(item);
     QAbstractItemView::closePersistentEditor(index);
+}
+
+/*!
+    \since 5.10
+
+    Returns whether a persistent editor is open for item \a item.
+
+    \sa openPersistentEditor(), closePersistentEditor()
+*/
+bool QListWidget::isPersistentEditorOpen(QListWidgetItem *item) const
+{
+    Q_D(const QListWidget);
+    const QModelIndex index = d->listModel()->index(item);
+    return QAbstractItemView::isPersistentEditorOpen(index);
 }
 
 /*!
@@ -1976,5 +1985,3 @@ QT_END_NAMESPACE
 
 #include "moc_qlistwidget.cpp"
 #include "moc_qlistwidget_p.cpp"
-
-#endif // QT_NO_LISTWIDGET

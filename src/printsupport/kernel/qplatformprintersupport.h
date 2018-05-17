@@ -48,6 +48,7 @@
 // source and binary incompatible with future versions of Qt.
 //
 
+#include <QtPrintSupport/qtprintsupportglobal.h>
 #include <QtPrintSupport/qprinter.h>
 
 #include <QtCore/qstringlist.h>
@@ -71,7 +72,7 @@ public:
     QPlatformPrinterSupport();
     virtual ~QPlatformPrinterSupport();
 
-    virtual QPrintEngine *createNativePrintEngine(QPrinter::PrinterMode printerMode);
+    virtual QPrintEngine *createNativePrintEngine(QPrinter::PrinterMode printerMode, const QString &deviceId = QString());
     virtual QPaintEngine *createPaintEngine(QPrintEngine *, QPrinter::PrinterMode printerMode);
 
     virtual QPrintDevice createPrintDevice(const QString &id);

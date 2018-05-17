@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2018 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
@@ -53,7 +53,7 @@
 #include <qendian.h>
 #include <private/qstringiterator_p.h>
 
-#ifdef QT_ENABLE_HARFBUZZ_NG
+#if QT_CONFIG(harfbuzz)
 #  include "qharfbuzzng_p.h"
 #  include <harfbuzz/hb-ot.h>
 #endif
@@ -93,7 +93,7 @@ static inline bool qSafeFromBigEndian(const uchar *source, const uchar *end, T *
 
 // Harfbuzz helper functions
 
-#ifdef QT_ENABLE_HARFBUZZ_NG
+#if QT_CONFIG(harfbuzz)
 Q_GLOBAL_STATIC_WITH_ARGS(bool, useHarfbuzzNG,(qgetenv("QT_HARFBUZZ") != "old"))
 
 bool qt_useHarfbuzzNG()
@@ -257,6 +257,7 @@ QFontEngine::QFontEngine(Type type)
     cache_cost = 0;
     fsType = 0;
     symbol = false;
+    isSmoothlyScalable = false;
 
     glyphFormat = Format_None;
     m_subPixelPositionCount = 0;
@@ -296,7 +297,7 @@ QFixed QFontEngine::underlinePosition() const
 void *QFontEngine::harfbuzzFont() const
 {
     Q_ASSERT(type() != QFontEngine::Multi);
-#ifdef QT_ENABLE_HARFBUZZ_NG
+#if QT_CONFIG(harfbuzz)
     if (qt_useHarfbuzzNG())
         return hb_qt_font_get_for_engine(const_cast<QFontEngine *>(this));
 #endif
@@ -331,7 +332,7 @@ void *QFontEngine::harfbuzzFont() const
 void *QFontEngine::harfbuzzFace() const
 {
     Q_ASSERT(type() != QFontEngine::Multi);
-#ifdef QT_ENABLE_HARFBUZZ_NG
+#if QT_CONFIG(harfbuzz)
     if (qt_useHarfbuzzNG())
         return hb_qt_face_get_for_engine(const_cast<QFontEngine *>(this));
 #endif
@@ -358,12 +359,10 @@ bool QFontEngine::supportsScript(QChar::Script script) const
     // ### TODO: This only works for scripts that require OpenType. More generally
     // for scripts that do not require OpenType we should just look at the list of
     // supported writing systems in the font's OS/2 table.
-    if (!((script >= QChar::Script_Syriac && script <= QChar::Script_Sinhala)
-          || script == QChar::Script_Khmer || script == QChar::Script_Nko)) {
+    if (!scriptRequiresOpenType(script))
         return true;
-    }
 
-#ifdef QT_ENABLE_HARFBUZZ_NG
+#if QT_CONFIG(harfbuzz)
     if (qt_useHarfbuzzNG()) {
 #if defined(Q_OS_DARWIN)
         // in AAT fonts, 'gsub' table is effectively replaced by 'mort'/'morx' table
@@ -418,6 +417,13 @@ glyph_metrics_t QFontEngine::boundingBox(glyph_t glyph, const QTransform &matrix
     return metrics;
 }
 
+QFixed QFontEngine::calculatedCapHeight() const
+{
+    const glyph_t glyph = glyphIndex('H');
+    glyph_metrics_t bb = const_cast<QFontEngine *>(this)->boundingBox(glyph);
+    return bb.height;
+}
+
 QFixed QFontEngine::xHeight() const
 {
     const glyph_t glyph = glyphIndex('x');
@@ -435,6 +441,11 @@ QFixed QFontEngine::averageCharWidth() const
 bool QFontEngine::supportsTransformation(const QTransform &transform) const
 {
     return transform.type() < QTransform::TxProject;
+}
+
+bool QFontEngine::expectsGammaCorrectedBlending() const
+{
+    return true;
 }
 
 void QFontEngine::getGlyphPositions(const QGlyphLayout &glyphs, const QTransform &matrix, QTextItem::RenderFlags flags,
@@ -1260,7 +1271,7 @@ const uchar *QFontEngine::getCMap(const uchar *table, uint tableSize, bool *isSy
         if (!qSafeFromBigEndian(maps + 8 * n, endPtr, &platformId))
             return 0;
 
-        quint16 platformSpecificId;
+        quint16 platformSpecificId = 0;
         if (!qSafeFromBigEndian(maps + 8 * n + 2, endPtr, &platformSpecificId))
             return 0;
 
@@ -1700,6 +1711,11 @@ QFixed QFontEngineBox::ascent() const
     return _size;
 }
 
+QFixed QFontEngineBox::capHeight() const
+{
+    return _size;
+}
+
 QFixed QFontEngineBox::descent() const
 {
     return 0;
@@ -1829,7 +1845,12 @@ QFontEngine *QFontEngineMulti::loadEngine(int at)
     request.styleStrategy |= QFont::NoFontMerging;
     request.family = fallbackFamilyAt(at - 1);
 
-    if (QFontEngine *engine = QFontDatabase::findFont(request, m_script)) {
+    // At this point, the main script of the text has already been considered
+    // when fetching the list of fallback families from the database, and the
+    // info about the actual script of the characters may have been discarded,
+    // so we do not check for writing system support, but instead just load
+    // the family indiscriminately.
+    if (QFontEngine *engine = QFontDatabase::findFont(request, QFontDatabase::Any)) {
         engine->fontDef.weight = request.weight;
         if (request.style > QFont::StyleNormal)
             engine->fontDef.style = request.style;
@@ -1842,7 +1863,11 @@ QFontEngine *QFontEngineMulti::loadEngine(int at)
 glyph_t QFontEngineMulti::glyphIndex(uint ucs4) const
 {
     glyph_t glyph = engine(0)->glyphIndex(ucs4);
-    if (glyph == 0 && ucs4 != QChar::LineSeparator) {
+    if (glyph == 0
+            && ucs4 != QChar::LineSeparator
+            && ucs4 != QChar::LineFeed
+            && ucs4 != QChar::CarriageReturn
+            && ucs4 != QChar::ParagraphSeparator) {
         if (!m_fallbackFamiliesQueried)
             const_cast<QFontEngineMulti *>(this)->ensureFallbackFamiliesQueried();
         for (int x = 1, n = qMin(m_engines.size(), 256); x < n; ++x) {
@@ -1878,9 +1903,38 @@ bool QFontEngineMulti::stringToCMap(const QChar *str, int len,
 
     int glyph_pos = 0;
     QStringIterator it(str, str + len);
+
+    int lastFallback = -1;
     while (it.hasNext()) {
         const uint ucs4 = it.peekNext();
-        if (glyphs->glyphs[glyph_pos] == 0 && ucs4 != QChar::LineSeparator) {
+
+        // If we applied a fallback font to previous glyph, and the current is either
+        // ZWJ or ZWNJ, we should also try applying the same fallback font to that, in order
+        // to get the correct shaping rules applied.
+        if (lastFallback >= 0 && (ucs4 == QChar(0x200d) || ucs4 == QChar(0x200c))) {
+            QFontEngine *engine = m_engines.at(lastFallback);
+            glyph_t glyph = engine->glyphIndex(ucs4);
+            if (glyph != 0) {
+                glyphs->glyphs[glyph_pos] = glyph;
+                if (!(flags & GlyphIndicesOnly)) {
+                    QGlyphLayout g = glyphs->mid(glyph_pos, 1);
+                    engine->recalcAdvances(&g, flags);
+                }
+
+                // set the high byte to indicate which engine the glyph came from
+                glyphs->glyphs[glyph_pos] |= (lastFallback << 24);
+            } else {
+                lastFallback = -1;
+            }
+        } else {
+            lastFallback = -1;
+        }
+
+        if (glyphs->glyphs[glyph_pos] == 0
+                && ucs4 != QChar::LineSeparator
+                && ucs4 != QChar::LineFeed
+                && ucs4 != QChar::CarriageReturn
+                && ucs4 != QChar::ParagraphSeparator) {
             if (!m_fallbackFamiliesQueried)
                 const_cast<QFontEngineMulti *>(this)->ensureFallbackFamiliesQueried();
             for (int x = 1, n = qMin(m_engines.size(), 256); x < n; ++x) {
@@ -1904,6 +1958,9 @@ bool QFontEngineMulti::stringToCMap(const QChar *str, int len,
                         QGlyphLayout g = glyphs->mid(glyph_pos, 1);
                         engine->recalcAdvances(&g, flags);
                     }
+
+                    lastFallback = x;
+
                     // set the high byte to indicate which engine the glyph came from
                     glyphs->glyphs[glyph_pos] |= (x << 24);
                     break;
@@ -2151,6 +2208,9 @@ glyph_metrics_t QFontEngineMulti::boundingBox(glyph_t glyph)
 
 QFixed QFontEngineMulti::ascent() const
 { return engine(0)->ascent(); }
+
+QFixed QFontEngineMulti::capHeight() const
+{ return engine(0)->capHeight(); }
 
 QFixed QFontEngineMulti::descent() const
 { return engine(0)->descent(); }

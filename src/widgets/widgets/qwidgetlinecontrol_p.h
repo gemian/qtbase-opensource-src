@@ -51,9 +51,8 @@
 // We mean it.
 //
 
-#include "QtCore/qglobal.h"
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 
-#ifndef QT_NO_LINEEDIT
 #include "private/qwidget_p.h"
 #include "QtWidgets/qlineedit.h"
 #include "QtGui/qtextlayout.h"
@@ -62,8 +61,11 @@
 #include "QtGui/qclipboard.h"
 #include "QtGui/qinputmethod.h"
 #include "QtCore/qpoint.h"
+#if QT_CONFIG(completer)
 #include "QtWidgets/qcompleter.h"
+#endif
 #include "QtCore/qthread.h"
+#include "QtGui/private/qinputcontrol_p.h"
 
 #include "qplatformdefs.h"
 
@@ -73,16 +75,18 @@
 #  undef DrawText
 #endif
 
+QT_REQUIRE_CONFIG(lineedit);
+
 QT_BEGIN_NAMESPACE
 
-
-class Q_WIDGETS_EXPORT QWidgetLineControl : public QObject
+class Q_WIDGETS_EXPORT QWidgetLineControl : public QInputControl
 {
     Q_OBJECT
 
 public:
     QWidgetLineControl(const QString &txt = QString())
-        : m_cursor(0), m_preeditCursor(0), m_cursorWidth(0), m_layoutDirection(Qt::LayoutDirectionAuto),
+        : QInputControl(LineEdit)
+        , m_cursor(0), m_preeditCursor(0), m_cursorWidth(0), m_layoutDirection(Qt::LayoutDirectionAuto),
         m_hideCursor(false), m_separator(0), m_readOnly(0),
         m_dragEnabled(0), m_echoMode(0), m_textDirty(0), m_selDirty(0),
         m_validInput(1), m_blinkStatus(0), m_blinkEnabled(false), m_blinkTimer(0), m_deleteAllTimer(0),
@@ -91,7 +95,7 @@ public:
         m_selstart(0), m_selend(0), m_passwordEchoEditing(false)
         , m_passwordEchoTimer(0)
         , m_passwordMaskDelay(-1)
-#if defined(Q_DEAD_CODE_FROM_QT4_MAC)
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
         , m_threadChecks(false)
         , m_textLayoutThread(0)
  #endif
@@ -248,6 +252,11 @@ public:
 
     QString displayText() const { return m_textLayout.text(); }
 
+    QString surroundingText() const
+    {
+        return m_text.isNull() ? QString::fromLatin1("") : m_text;
+    }
+
     void backspace();
     void del();
     void deselect() { internalDeselect(); finishChange(); }
@@ -282,7 +291,7 @@ public:
     void setValidator(const QValidator *v) { m_validator = const_cast<QValidator*>(v); }
 #endif
 
-#ifndef QT_NO_COMPLETER
+#if QT_CONFIG(completer)
     QCompleter *completer() const { return m_completer; }
     /* Note that you must set the widget for the completer separately */
     void setCompleter(const QCompleter *c) { m_completer = const_cast<QCompleter*>(c); }
@@ -382,14 +391,14 @@ public:
 
     QTextLayout *textLayout() const
     {
-#if defined(Q_DEAD_CODE_FROM_QT4_MAC)
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
         if (m_threadChecks && QThread::currentThread() != m_textLayoutThread)
             redoTextLayout();
 #endif
         return &m_textLayout;
     }
 
-#if defined(Q_DEAD_CODE_FROM_QT4_MAC)
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     void setThreadChecks(bool threadChecks)
     {
         m_threadChecks = threadChecks;
@@ -454,7 +463,7 @@ private:
     QPointer<QValidator> m_validator;
 #endif
     QPointer<QCompleter> m_completer;
-#ifndef QT_NO_COMPLETER
+#if QT_CONFIG(completer)
     bool advanceToEnabledItem(int dir);
 #endif
 
@@ -512,7 +521,7 @@ private:
     }
 
     int redoTextLayout() const;
-#if defined(Q_DEAD_CODE_FROM_QT4_MAC)
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     bool m_threadChecks;
     mutable QThread *m_textLayoutThread;
 #endif
@@ -554,7 +563,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_LINEEDIT
 
 #endif // QWIDGETLINECONTROL_P_H

@@ -51,9 +51,10 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <private/qwidget_p.h>
 
-#ifndef QT_NO_QCOLUMNVIEW
+QT_REQUIRE_CONFIG(columnview);
 
 QT_BEGIN_NAMESPACE
 
@@ -96,7 +97,5 @@ public:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_QCOLUMNVIEW
 
 #endif //QCOLUMNVIEWGRIP_P_H

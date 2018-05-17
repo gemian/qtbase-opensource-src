@@ -102,6 +102,7 @@ public:
         , requestedFormat(QSurfaceFormat::defaultFormat())
         , screen(0)
         , size(1, 1)
+        , nativeHandle(nullptr)
     {
     }
 
@@ -115,18 +116,21 @@ public:
     QSurfaceFormat requestedFormat;
     QScreen *screen;
     QSize size;
+    void *nativeHandle;
 };
 
 
 /*!
-    Creates an offscreen surface for the \a targetScreen.
+    \since 5.10
+
+    Creates an offscreen surface for the \a targetScreen with the given \a parent.
 
     The underlying platform surface is not created until create() is called.
 
     \sa setScreen(), create()
 */
-QOffscreenSurface::QOffscreenSurface(QScreen *targetScreen)
-    : QObject(*new QOffscreenSurfacePrivate(), 0)
+QOffscreenSurface::QOffscreenSurface(QScreen *targetScreen, QObject *parent)
+    : QObject(*new QOffscreenSurfacePrivate(), parent)
     , QSurface(Offscreen)
 {
     Q_D(QOffscreenSurface);
@@ -139,6 +143,18 @@ QOffscreenSurface::QOffscreenSurface(QScreen *targetScreen)
     Q_ASSERT(d->screen);
 
     connect(d->screen, SIGNAL(destroyed(QObject*)), this, SLOT(screenDestroyed(QObject*)));
+}
+
+/*!
+    Creates an offscreen surface for the \a targetScreen.
+
+    The underlying platform surface is not created until create() is called.
+
+    \sa setScreen(), create()
+*/
+QOffscreenSurface::QOffscreenSurface(QScreen *targetScreen)
+    : QOffscreenSurface(targetScreen, nullptr)
+{
 }
 
 
@@ -217,6 +233,8 @@ void QOffscreenSurface::destroy()
         delete d->offscreenWindow;
         d->offscreenWindow = 0;
     }
+
+    d->nativeHandle = nullptr;
 }
 
 /*!
@@ -313,7 +331,7 @@ void QOffscreenSurface::setScreen(QScreen *newScreen)
 {
     Q_D(QOffscreenSurface);
     if (!newScreen)
-        newScreen = QGuiApplication::primaryScreen();
+        newScreen = QCoreApplication::instance() ? QGuiApplication::primaryScreen() : nullptr;
     if (newScreen != d->screen) {
         const bool wasCreated = d->platformOffscreenSurface != 0 || d->offscreenWindow != 0;
         if (wasCreated)
@@ -328,6 +346,26 @@ void QOffscreenSurface::setScreen(QScreen *newScreen)
         }
         emit screenChanged(newScreen);
     }
+}
+
+/*!
+    Sets the native handle to which the offscreen surface is connected to \a handle.
+
+    The native handle will be resolved in the create() function. Calling
+    this function after create() will not re-create a native surface.
+
+    \note The interpretation of the native handle is platform specific.  Only
+    some platforms will support adopting native handles of offscreen surfaces
+    and platforms that do not implement this support will ignore the handle.
+
+    \since 5.9
+    \sa nativeHandle()
+*/
+
+void QOffscreenSurface::setNativeHandle(void *handle)
+{
+    Q_D(QOffscreenSurface);
+    d->nativeHandle = handle;
 }
 
 /*!
@@ -359,6 +397,19 @@ QPlatformOffscreenSurface *QOffscreenSurface::handle() const
 {
     Q_D(const QOffscreenSurface);
     return d->platformOffscreenSurface;
+}
+
+/*!
+    Returns an optional native handle to which the offscreen surface is connected.
+
+    \since 5.9
+    \sa setNativeHandle()
+*/
+
+void *QOffscreenSurface::nativeHandle() const
+{
+    Q_D(const QOffscreenSurface);
+    return d->nativeHandle;
 }
 
 /*!

@@ -40,12 +40,12 @@
 #ifndef QSPINBOX_H
 #define QSPINBOX_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qabstractspinbox.h>
 
+QT_REQUIRE_CONFIG(spinbox);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_SPINBOX
 
 class QSpinBoxPrivate;
 class Q_WIDGETS_EXPORT QSpinBox : public QAbstractSpinBox
@@ -90,11 +90,11 @@ public:
     void setDisplayIntegerBase(int base);
 
 protected:
-    bool event(QEvent *event);
-    virtual QValidator::State validate(QString &input, int &pos) const;
+    bool event(QEvent *event) override;
+    QValidator::State validate(QString &input, int &pos) const override;
     virtual int valueFromText(const QString &text) const;
     virtual QString textFromValue(int val) const;
-    virtual void fixup(QString &str) const;
+    void fixup(QString &str) const override;
 
 
 public Q_SLOTS:
@@ -150,10 +150,10 @@ public:
     int decimals() const;
     void setDecimals(int prec);
 
-    virtual QValidator::State validate(QString &input, int &pos) const;
+    QValidator::State validate(QString &input, int &pos) const override;
     virtual double valueFromText(const QString &text) const;
     virtual QString textFromValue(double val) const;
-    virtual void fixup(QString &str) const;
+    void fixup(QString &str) const override;
 
 public Q_SLOTS:
     void setValue(double val);
@@ -166,8 +166,6 @@ private:
     Q_DISABLE_COPY(QDoubleSpinBox)
     Q_DECLARE_PRIVATE(QDoubleSpinBox)
 };
-
-#endif // QT_NO_SPINBOX
 
 QT_END_NAMESPACE
 

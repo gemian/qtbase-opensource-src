@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include "private/qcore_unix_p.h"
 
 #include <sys/types.h>
@@ -164,22 +165,12 @@ static inline int qt_safe_connect(int sockfd, const struct sockaddr *addr, QT_SO
 
 // VxWorks' headers specify 'int' instead of '...' for the 3rd ioctl() parameter.
 template <typename T>
-static inline int qt_safe_ioctl(int sockfd, int request, T arg)
+static inline int qt_safe_ioctl(int sockfd, unsigned long request, T arg)
 {
 #ifdef Q_OS_VXWORKS
     return ::ioctl(sockfd, request, (int) arg);
 #else
     return ::ioctl(sockfd, request, arg);
-#endif
-}
-
-// VxWorks' headers do not specify any const modifiers
-static inline in_addr_t qt_safe_inet_addr(const char *cp)
-{
-#ifdef Q_OS_VXWORKS
-    return ::inet_addr((char *) cp);
-#else
-    return ::inet_addr(cp);
 #endif
 }
 

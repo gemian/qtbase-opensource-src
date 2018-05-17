@@ -739,16 +739,14 @@ void tst_QGL::openGLVersionCheck()
     // However, the complicated parts are in openGLVersionFlags(const QString &versionString)
     // tested above
 
-#if defined(QT_OPENGL_ES_1)
-    QVERIFY(QGLFormat::openGLVersionFlags() & QGLFormat::OpenGL_ES_Common_Version_1_0);
-#elif defined(QT_OPENGL_ES_2)
+#if defined(QT_OPENGL_ES_2)
     QVERIFY(QGLFormat::openGLVersionFlags() & QGLFormat::OpenGL_ES_Version_2_0);
 #else
     if (QOpenGLContext::currentContext()->isOpenGLES())
         QVERIFY(QGLFormat::openGLVersionFlags() & QGLFormat::OpenGL_ES_Version_2_0);
     else
         QVERIFY(QGLFormat::openGLVersionFlags() & QGLFormat::OpenGL_Version_1_1);
-#endif //defined(QT_OPENGL_ES_1)
+#endif //defined(QT_OPENGL_ES_2)
 }
 #endif //QT_BUILD_INTERNAL
 
@@ -870,7 +868,7 @@ void tst_QGL::graphicsViewClipping()
 
     scene.setSceneRect(view.viewport()->rect());
 
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    QVERIFY(QTest::qWaitForWindowExposed(view.viewport()->windowHandle()));
     #ifdef Q_OS_MAC
         // The black rectangle jumps from the center to the upper left for some reason.
         QTest::qWait(100);
@@ -1171,6 +1169,10 @@ void tst_QGL::currentFboSync()
     QGLWidget glw;
     glw.makeCurrent();
 
+    // For some reason we offer inter-operatibility between QGL and QOpenGL
+    // paint engines. (?!) Let's check if the two engines can be used to perform
+    // drawing in turns on different targets within the same context.
+
     {
         QGLFramebufferObject fbo1(256, 256, QGLFramebufferObject::CombinedDepthStencil);
 
@@ -1193,7 +1195,9 @@ void tst_QGL::currentFboSync()
 
         QGLFramebufferObject::bindDefault();
 
-        QCOMPARE(fbo1.toImage(), fbo2Image);
+        // Convert the QGLFBO's result since QOpenGLFBO uses a wider
+        // variety of possible return formats.
+        QCOMPARE(fbo1.toImage().convertToFormat(fbo2Image.format()), fbo2Image);
     }
 
     {
@@ -2138,7 +2142,7 @@ void tst_QGL::textureCleanup()
     QGLWidget w;
     w.resize(200,200);
     w.show();
-    QTest::qWaitForWindowExposed(&w);
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
     w.makeCurrent();
 
     // Test pixmaps which have been loaded via QPixmapCache are removed from the texture cache

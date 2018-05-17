@@ -40,6 +40,7 @@
 #ifndef QTEXTOPTION_H
 #define QTEXTOPTION_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qchar.h>
 #include <QtCore/qmetatype.h>
@@ -116,8 +117,13 @@ public:
     inline void setFlags(Flags flags);
     inline Flags flags() const { return Flags(f); }
 
-    inline void setTabStop(qreal tabStop);
-    inline qreal tabStop() const { return tab; }
+#if QT_DEPRECATED_SINCE(5, 10)
+    QT_DEPRECATED inline void setTabStop(qreal tabStop);
+    QT_DEPRECATED inline qreal tabStop() const { return tabStopDistance(); }
+#endif
+
+    inline void setTabStopDistance(qreal tabStopDistance);
+    inline qreal tabStopDistance() const { return tab; }
 
     void setTabArray(const QList<qreal> &tabStops);
     QList<qreal> tabArray() const;
@@ -148,7 +154,12 @@ inline void QTextOption::setAlignment(Qt::Alignment aalignment)
 inline void QTextOption::setFlags(Flags aflags)
 { f = aflags; }
 
+#if QT_DEPRECATED_SINCE(5, 10)
 inline void QTextOption::setTabStop(qreal atabStop)
+{ setTabStopDistance(atabStop); }
+#endif
+
+inline void QTextOption::setTabStopDistance(qreal atabStop)
 { tab = atabStop; }
 
 QT_END_NAMESPACE

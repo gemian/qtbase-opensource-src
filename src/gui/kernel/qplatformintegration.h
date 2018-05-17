@@ -49,6 +49,7 @@
 // source and binary incompatible with future versions of Qt.
 //
 
+#include <QtGui/qtguiglobal.h>
 #include <QtGui/qwindowdefs.h>
 #include <qpa/qplatformscreen.h>
 #include <QtGui/qsurfaceformat.h>
@@ -77,6 +78,8 @@ class QPlatformSessionManager;
 class QKeyEvent;
 class QPlatformOffscreenSurface;
 class QOffscreenSurface;
+class QPlatformVulkanInstance;
+class QVulkanInstance;
 
 class Q_GUI_EXPORT QPlatformIntegration
 {
@@ -98,7 +101,8 @@ public:
         RasterGLSurface,
         AllGLFunctionsQueryable,
         ApplicationIcon,
-        SwitchableWidgetComposition
+        SwitchableWidgetComposition,
+        TopStackedNativeChildWindows
     };
 
     virtual ~QPlatformIntegration() { }
@@ -107,6 +111,7 @@ public:
 
     virtual QPlatformPixmap *createPlatformPixmap(QPlatformPixmap::PixelType type) const;
     virtual QPlatformWindow *createPlatformWindow(QWindow *window) const = 0;
+    virtual QPlatformWindow *createForeignWindow(QWindow *, WId) const { return 0; }
     virtual QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const = 0;
 #ifndef QT_NO_OPENGL
     virtual QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const;
@@ -155,7 +160,10 @@ public:
         MousePressAndHoldInterval,
         TabFocusBehavior,
         ReplayMousePressOutsidePopup,
-        ItemViewActivateItemOnSingleClick
+        ItemViewActivateItemOnSingleClick,
+        UiEffects,
+        WheelScrollLines,
+        ShowShortcutsInContextMenus,
     };
 
     virtual QVariant styleHint(StyleHint hint) const;
@@ -183,6 +191,10 @@ public:
     void removeScreen(QScreen *screen);
 
     virtual void beep() const;
+
+#if QT_CONFIG(vulkan)
+    virtual QPlatformVulkanInstance *createPlatformVulkanInstance(QVulkanInstance *instance) const;
+#endif
 
 protected:
     void screenAdded(QPlatformScreen *screen, bool isPrimary = false);

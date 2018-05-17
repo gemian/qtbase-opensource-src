@@ -51,12 +51,14 @@
 // We mean it.
 //
 
-#ifndef QT_NO_LOCALSOCKET
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 
 #include "qlocalsocket.h"
 #include "private/qiodevice_p.h"
 
 #include <qtimer.h>
+
+QT_REQUIRE_CONFIG(localserver);
 
 #if defined(QT_LOCALSOCKET_TCP)
 #   include "qtcpsocket.h"
@@ -97,12 +99,12 @@ public:
         QTcpSocket::setSocketError(error);
     }
 
-    inline qint64 readData(char *data, qint64 maxSize)
+    inline qint64 readData(char *data, qint64 maxSize) override
     {
         return QTcpSocket::readData(data, maxSize);
     }
 
-    inline qint64 writeData(const char *data, qint64 maxSize)
+    inline qint64 writeData(const char *data, qint64 maxSize) override
     {
         return QTcpSocket::writeData(data, maxSize);
     }
@@ -158,8 +160,6 @@ public:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_LOCALSOCKET
 
 #endif // QLOCALSOCKET_P_H
 

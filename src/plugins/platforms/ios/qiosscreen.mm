@@ -47,6 +47,7 @@
 #include "quiview.h"
 
 #include <QtGui/private/qwindow_p.h>
+#include <private/qcoregraphics_p.h>
 
 #include <sys/sysctl.h>
 
@@ -143,21 +144,25 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
     self = [super init];
     if (self) {
         m_screen = screen;
+#ifndef Q_OS_TVOS
         [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
         [[NSNotificationCenter defaultCenter]
             addObserver:self
             selector:@selector(orientationChanged:)
             name:@"UIDeviceOrientationDidChangeNotification" object:nil];
+#endif
     }
     return self;
 }
 
 - (void)dealloc
 {
+#ifndef Q_OS_TVOS
     [[UIDevice currentDevice] endGeneratingDeviceOrientationNotifications];
     [[NSNotificationCenter defaultCenter]
         removeObserver:self
         name:@"UIDeviceOrientationDidChangeNotification" object:nil];
+#endif
     [super dealloc];
 }
 
@@ -169,16 +174,53 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 
 @end
 
+@interface UIScreen (Compatibility)
+@property (nonatomic, readonly) CGRect qt_applicationFrame;
+@end
+
+@implementation UIScreen (Compatibility)
+- (CGRect)qt_applicationFrame
+{
+#ifdef Q_OS_IOS
+    return self.applicationFrame;
+#else
+    return self.bounds;
+#endif
+}
+@end
+
 // -------------------------------------------------------------------------
+
+@implementation QUIWindow
+
+- (id)initWithFrame:(CGRect)frame
+{
+    if ((self = [super initWithFrame:frame]))
+        self->_sendingEvent = NO;
+
+    return self;
+}
+
+- (void)sendEvent:(UIEvent *)event
+{
+    QScopedValueRollback<BOOL> sendingEvent(self->_sendingEvent, YES);
+    [super sendEvent:event];
+}
+
+@end
+
+// -------------------------------------------------------------------------
+
+QT_BEGIN_NAMESPACE
 
 /*!
     Returns the model identifier of the device.
-
-    When running under the simulator, the identifier will not
-    match the simulated device, but will be x86_64 or i386.
 */
 static QString deviceModelIdentifier()
 {
+#if TARGET_OS_SIMULATOR
+    return QString::fromLocal8Bit(qgetenv("SIMULATOR_MODEL_IDENTIFIER"));
+#else
     static const char key[] = "hw.machine";
 
     size_t size;
@@ -188,6 +230,7 @@ static QString deviceModelIdentifier()
     sysctlbyname(key, &value, &size, NULL, 0);
 
     return QString::fromLatin1(value);
+#endif
 }
 
 QIOSScreen::QIOSScreen(UIScreen *screen)
@@ -196,25 +239,30 @@ QIOSScreen::QIOSScreen(UIScreen *screen)
     , m_uiWindow(0)
     , m_orientationListener(0)
 {
-    if (screen == [UIScreen mainScreen]) {
-        QString deviceIdentifier = deviceModelIdentifier();
+    QString deviceIdentifier = deviceModelIdentifier();
 
+    if (screen == [UIScreen mainScreen] && !deviceIdentifier.startsWith("AppleTV")) {
         // Based on https://en.wikipedia.org/wiki/List_of_iOS_devices#Display
 
         // iPhone (1st gen), 3G, 3GS, and iPod Touch (1st–3rd gen) are 18-bit devices
-        if (deviceIdentifier.contains(QRegularExpression("^(iPhone1,[12]|iPhone2,1|iPod[1-3],1)$")))
-            m_depth = 18;
-        else
-            m_depth = 24;
+        static QRegularExpression lowBitDepthDevices("^(iPhone1,[12]|iPhone2,1|iPod[1-3],1)$");
+        m_depth = deviceIdentifier.contains(lowBitDepthDevices) ? 18 : 24;
 
-        if (deviceIdentifier.contains(QRegularExpression("^iPhone(7,1|8,2)$"))) {
-            // iPhone 6 Plus or iPhone 6S Plus
+        static QRegularExpression iPhoneXModels("^iPhone(10,[36])$");
+        static QRegularExpression iPhonePlusModels("^iPhone(7,1|8,2|9,[24]|10,[25])$");
+        static QRegularExpression iPadMiniModels("^iPad(2,[567]|4,[4-9]|5,[12])$");
+
+        if (deviceIdentifier.contains(iPhoneXModels)) {
+            m_physicalDpi = 458;
+        } else if (deviceIdentifier.contains(iPhonePlusModels)) {
             m_physicalDpi = 401;
-        } else if (deviceIdentifier.contains(QRegularExpression("^iPad(1,1|2,[1-4]|3,[1-6]|4,[1-3]|5,[3-4]|6,[7-8])$"))) {
-            // All iPads except the iPad Mini series
-            m_physicalDpi = 132 * devicePixelRatio();
+        } else if (deviceIdentifier.startsWith("iPad")) {
+            if (deviceIdentifier.contains(iPadMiniModels))
+                m_physicalDpi = 163 * devicePixelRatio();
+            else
+                m_physicalDpi = 132 * devicePixelRatio();
         } else {
-            // All non-Plus iPhones, and iPad Minis
+            // All normal iPhones, and iPods
             m_physicalDpi = 163 * devicePixelRatio();
         }
     } else {
@@ -232,7 +280,7 @@ QIOSScreen::QIOSScreen(UIScreen *screen)
 
     if (!m_uiWindow) {
         // Create a window and associated view-controller that we can use
-        m_uiWindow = [[UIWindow alloc] initWithFrame:[m_uiScreen bounds]];
+        m_uiWindow = [[QUIWindow alloc] initWithFrame:[m_uiScreen bounds]];
         m_uiWindow.rootViewController = [[[QIOSViewController alloc] initWithQIOSScreen:this] autorelease];
     }
 
@@ -251,24 +299,35 @@ QIOSScreen::~QIOSScreen()
     [m_uiWindow release];
 }
 
+QString QIOSScreen::name() const
+{
+    if (m_uiScreen == [UIScreen mainScreen]) {
+        return QString::fromNSString([UIDevice currentDevice].model)
+            + QLatin1String(" built-in display");
+    } else {
+        return QLatin1String("External display");
+    }
+}
+
 void QIOSScreen::updateProperties()
 {
     QRect previousGeometry = m_geometry;
     QRect previousAvailableGeometry = m_availableGeometry;
 
-    m_geometry = fromCGRect(m_uiScreen.bounds).toRect();
-    m_availableGeometry = fromCGRect(m_uiScreen.applicationFrame).toRect();
+    m_geometry = QRectF::fromCGRect(m_uiScreen.bounds).toRect();
 
+    // The application frame doesn't take safe area insets into account, and
+    // the safe area insets are not available before the UIWindow is shown,
+    // and do not take split-view constraints into account, so we have to
+    // combine the two to get the correct available geometry.
+    QRect applicationFrame = QRectF::fromCGRect(m_uiScreen.qt_applicationFrame).toRect();
+    UIEdgeInsets safeAreaInsets = m_uiWindow.qt_safeAreaInsets;
+    m_availableGeometry = m_geometry.adjusted(safeAreaInsets.left, safeAreaInsets.top,
+        -safeAreaInsets.right, -safeAreaInsets.bottom).intersected(applicationFrame);
+
+#ifndef Q_OS_TVOS
     if (m_uiScreen == [UIScreen mainScreen]) {
         Qt::ScreenOrientation statusBarOrientation = toQtScreenOrientation(UIDeviceOrientation([UIApplication sharedApplication].statusBarOrientation));
-
-        if (QSysInfo::MacintoshVersion < QSysInfo::MV_IOS_8_0) {
-            // On iOS < 8.0 the UIScreen geometry is always in portait, and the system applies
-            // the screen rotation to the root view-controller's view instead of directly to the
-            // screen, like iOS 8 and above does.
-            m_geometry = mapBetween(Qt::PortraitOrientation, statusBarOrientation, m_geometry);
-            m_availableGeometry = transformBetween(Qt::PortraitOrientation, statusBarOrientation, m_geometry).mapRect(m_availableGeometry);
-        }
 
         QIOSViewController *qtViewController = [m_uiWindow.rootViewController isKindOfClass:[QIOSViewController class]] ?
             static_cast<QIOSViewController *>(m_uiWindow.rootViewController) : nil;
@@ -286,22 +345,18 @@ void QIOSScreen::updateProperties()
             m_availableGeometry = transform.mapRect(m_availableGeometry);
         }
     }
+#endif
 
     if (m_geometry != previousGeometry) {
-        QRectF physicalGeometry;
-        if (QSysInfo::MacintoshVersion >= QSysInfo::MV_IOS_8_0) {
-             // We can't use the primaryOrientation of screen(), as we haven't reported the new geometry yet
-            Qt::ScreenOrientation primaryOrientation = m_geometry.width() >= m_geometry.height() ?
-                Qt::LandscapeOrientation : Qt::PortraitOrientation;
+        // We can't use the primaryOrientation of screen(), as we haven't reported the new geometry yet
+        Qt::ScreenOrientation primaryOrientation = m_geometry.width() >= m_geometry.height() ?
+            Qt::LandscapeOrientation : Qt::PortraitOrientation;
 
-            // On iPhone 6+ devices, or when display zoom is enabled, the render buffer is scaled
-            // before being output on the physical display. We have to take this into account when
-            // computing the physical size. Note that unlike the native bounds, the physical size
-            // follows the primary orientation of the screen.
-            physicalGeometry = mapBetween(nativeOrientation(), primaryOrientation, fromCGRect(m_uiScreen.nativeBounds).toRect());
-        } else {
-            physicalGeometry = QRectF(0, 0, m_geometry.width() * devicePixelRatio(), m_geometry.height() * devicePixelRatio());
-        }
+        // On iPhone 6+ devices, or when display zoom is enabled, the render buffer is scaled
+        // before being output on the physical display. We have to take this into account when
+        // computing the physical size. Note that unlike the native bounds, the physical size
+        // follows the primary orientation of the screen.
+        const QRectF physicalGeometry = mapBetween(nativeOrientation(), primaryOrientation, QRectF::fromCGRect(m_uiScreen.nativeBounds).toRect());
 
         static const qreal millimetersPerInch = 25.4;
         m_physicalSize = physicalGeometry.size() / m_physicalDpi * millimetersPerInch;
@@ -390,13 +445,24 @@ qreal QIOSScreen::devicePixelRatio() const
     return [m_uiScreen scale];
 }
 
+qreal QIOSScreen::refreshRate() const
+{
+#if QT_DARWIN_PLATFORM_SDK_EQUAL_OR_ABOVE(__MAC_NA, 100300, 110000, __WATCHOS_NA)
+    if (__builtin_available(iOS 10.3, tvOS 11, *))
+        return m_uiScreen.maximumFramesPerSecond;
+#endif
+
+    return 60.0;
+}
+
 Qt::ScreenOrientation QIOSScreen::nativeOrientation() const
 {
     CGRect nativeBounds =
-#if QT_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__IPHONE_8_0)
-        QSysInfo::MacintoshVersion >= QSysInfo::MV_IOS_8_0 ? m_uiScreen.nativeBounds :
-#endif
+#if defined(Q_OS_IOS)
+        m_uiScreen.nativeBounds;
+#else
         m_uiScreen.bounds;
+#endif
 
     // All known iOS devices have a native orientation of portrait, but to
     // be on the safe side we compare the width and height of the bounds.
@@ -406,6 +472,9 @@ Qt::ScreenOrientation QIOSScreen::nativeOrientation() const
 
 Qt::ScreenOrientation QIOSScreen::orientation() const
 {
+#ifdef Q_OS_TVOS
+    return Qt::PrimaryOrientation;
+#else
     // Auxiliary screens are always the same orientation as their primary orientation
     if (m_uiScreen != [UIScreen mainScreen])
         return Qt::PrimaryOrientation;
@@ -430,6 +499,7 @@ Qt::ScreenOrientation QIOSScreen::orientation() const
     }
 
     return toQtScreenOrientation(deviceOrientation);
+#endif
 }
 
 void QIOSScreen::setOrientationUpdateMask(Qt::ScreenOrientations mask)
@@ -441,6 +511,38 @@ void QIOSScreen::setOrientationUpdateMask(Qt::ScreenOrientations mask)
         m_orientationListener = [[QIOSOrientationListener alloc] initWithQIOSScreen:this];
         updateProperties();
     }
+}
+
+QPixmap QIOSScreen::grabWindow(WId window, int x, int y, int width, int height) const
+{
+    if (window && ![reinterpret_cast<id>(window) isKindOfClass:[UIView class]])
+        return QPixmap();
+
+    UIView *view = window ? reinterpret_cast<UIView *>(window) : m_uiWindow;
+
+    if (width < 0)
+        width = qMax(view.bounds.size.width - x, CGFloat(0));
+    if (height < 0)
+        height = qMax(view.bounds.size.height - y, CGFloat(0));
+
+    CGRect captureRect = [m_uiWindow convertRect:CGRectMake(x, y, width, height) fromView:view];
+    captureRect = CGRectIntersection(captureRect, m_uiWindow.bounds);
+
+    UIGraphicsBeginImageContextWithOptions(captureRect.size, NO, 0.0);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    CGContextTranslateCTM(context, -captureRect.origin.x, -captureRect.origin.y);
+
+    // Draws the complete view hierarchy of m_uiWindow into the given rect, which
+    // needs to be the same aspect ratio as the m_uiWindow's size. Since we've
+    // translated the graphics context, and are potentially drawing into a smaller
+    // context than the full window, the resulting image will be a subsection of the
+    // full screen.
+    [m_uiWindow drawViewHierarchyInRect:m_uiWindow.bounds afterScreenUpdates:NO];
+
+    UIImage *screenshot = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+
+    return QPixmap::fromImage(qt_mac_toQImage(screenshot.CGImage));
 }
 
 UIScreen *QIOSScreen::uiScreen() const

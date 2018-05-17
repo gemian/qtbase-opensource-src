@@ -48,6 +48,7 @@
 #include <qendian.h>
 #include <qstring.h>
 #include <qdatetime.h>
+#include <qrandom.h>
 
 #ifdef Q_OS_WIN
 #include <qmutex.h>
@@ -357,7 +358,7 @@ QAuthenticatorPrivate::QAuthenticatorPrivate()
     , phase(Start)
     , nonceCount(0)
 {
-    cnonce = QCryptographicHash::hash(QByteArray::number(qrand(), 16) + QByteArray::number(qrand(), 16),
+    cnonce = QCryptographicHash::hash(QByteArray::number(QRandomGenerator::system()->generate64(), 16),
                                       QCryptographicHash::Md5).toHex();
     nonceCount = 0;
 }
@@ -1271,14 +1272,10 @@ static QByteArray qEncodeNtlmv2Response(const QAuthenticatorPrivate *ctx,
     if(timeArray.size()) {
         ds.writeRawData(timeArray.constData(), timeArray.size());
     } else {
-        QDateTime currentTime(QDate::currentDate(),
-                              QTime::currentTime(), Qt::UTC);
-
-        // number of seconds between 1601 and epoc(1970)
+        // number of seconds between 1601 and the epoch (1970)
         // 369 years, 89 leap years
         // ((369 * 365) + 89) * 24 * 3600 = 11644473600
-
-        time = currentTime.toTime_t() + Q_UINT64_C(11644473600);
+        time = QDateTime::currentSecsSinceEpoch() + 11644473600;
 
         // represented as 100 nano seconds
         time = time * Q_UINT64_C(10000000);
@@ -1449,21 +1446,16 @@ static PSecurityFunctionTable pSecurityFunctionTable = NULL;
 
 static bool q_NTLM_SSPI_library_load()
 {
-    QMutexLocker locker(QMutexPool::globalInstanceGet((void *)&pSecurityFunctionTable));
+    static QBasicMutex mutex;
+    QMutexLocker l(&mutex);
 
     // Initialize security interface
     if (pSecurityFunctionTable == NULL) {
         securityDLLHandle = LoadLibrary(L"secur32.dll");
         if (securityDLLHandle != NULL) {
-#if defined(Q_OS_WINCE)
-            INIT_SECURITY_INTERFACE pInitSecurityInterface =
-            (INIT_SECURITY_INTERFACE)GetProcAddress(securityDLLHandle,
-                                                    L"InitSecurityInterfaceW");
-#else
             INIT_SECURITY_INTERFACE pInitSecurityInterface =
             (INIT_SECURITY_INTERFACE)GetProcAddress(securityDLLHandle,
                                                     "InitSecurityInterfaceW");
-#endif
             if (pInitSecurityInterface != NULL)
                 pSecurityFunctionTable = pInitSecurityInterface();
         }

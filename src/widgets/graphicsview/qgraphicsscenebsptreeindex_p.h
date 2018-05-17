@@ -51,9 +51,7 @@
 #ifndef QGRAPHICSBSPTREEINDEX_H
 #define QGRAPHICSBSPTREEINDEX_H
 
-#include <QtCore/qglobal.h>
-
-#if !defined(QT_NO_GRAPHICSVIEW)
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 
 #include "qgraphicssceneindex_p.h"
 #include "qgraphicsitem_p.h"
@@ -61,6 +59,8 @@
 
 #include <QtCore/qrect.h>
 #include <QtCore/qlist.h>
+
+QT_REQUIRE_CONFIG(graphicsview);
 
 QT_BEGIN_NAMESPACE
 
@@ -198,7 +198,5 @@ static inline bool QRectF_intersects(const QRectF &s, const QRectF &r)
 }
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_GRAPHICSVIEW
 
 #endif // QGRAPHICSBSPTREEINDEX_H

@@ -40,13 +40,13 @@
 #ifndef QTEXTBROWSER_H
 #define QTEXTBROWSER_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qtextedit.h>
 #include <QtCore/qurl.h>
 
+QT_REQUIRE_CONFIG(textbrowser);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_TEXTBROWSER
 
 class QTextBrowserPrivate;
 
@@ -120,8 +120,6 @@ private:
     Q_PRIVATE_SLOT(d_func(), void _q_activateAnchor(const QString &))
     Q_PRIVATE_SLOT(d_func(), void _q_highlightLink(const QString &))
 };
-
-#endif // QT_NO_TEXTBROWSER
 
 QT_END_NAMESPACE
 

@@ -43,8 +43,6 @@
 #include "private/qnoncontiguousbytedevice_p.h"
 #include <QStringList>
 
-#ifndef QT_NO_FTP
-
 QT_BEGIN_NAMESPACE
 
 enum {
@@ -114,7 +112,7 @@ QNetworkAccessFtpBackend::~QNetworkAccessFtpBackend()
     //if backend destroyed while in use, then abort (this is the code path from QNetworkReply::abort)
     if (ftp && state != Disconnecting)
         ftp->abort();
-    disconnectFromFtp();
+    disconnectFromFtp(RemoveCachedConnection);
 }
 
 void QNetworkAccessFtpBackend::open()
@@ -382,5 +380,3 @@ void QNetworkAccessFtpBackend::ftpRawCommandReply(int code, const QString &text)
 }
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_FTP

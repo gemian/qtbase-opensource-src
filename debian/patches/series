@@ -1,0 +1,17 @@
+# Backported from upstream.
+dead_key_symbols.diff
+extend_mariadb_define_check.diff
+resources_for_examples.diff
+mesa_18.diff
+fix_loading_opengl.diff
+hidpi_scale_at_192.diff
+
+# Debian specific.
+gnukfreebsd.diff
+no_htmlinfo_example.diff
+remove_privacy_breachs.diff
+link_fbclient.diff
+gnukfreebsd_linker_warnings.diff
+armv4.diff
+nonlinux_utime.diff
+no_arc4random_buf.diff

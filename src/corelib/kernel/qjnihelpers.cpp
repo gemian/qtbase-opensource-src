@@ -38,16 +38,31 @@
 ****************************************************************************/
 
 #include "qjnihelpers_p.h"
+#include "qjni_p.h"
 #include "qmutex.h"
 #include "qlist.h"
 #include "qsemaphore.h"
 #include "qsharedpointer.h"
 #include "qvector.h"
+#include "qthread.h"
 #include <QtCore/qrunnable.h>
 
 #include <deque>
+#include <memory>
 
 QT_BEGIN_NAMESPACE
+
+namespace QtAndroidPrivate {
+    // *Listener virtual function implementations.
+    // Defined out-of-line to pin the vtable/type_info.
+    ActivityResultListener::~ActivityResultListener() {}
+    NewIntentListener::~NewIntentListener() {}
+    ResumePauseListener::~ResumePauseListener() {}
+    void ResumePauseListener::handlePause() {}
+    void ResumePauseListener::handleResume() {}
+    GenericMotionEventListener::~GenericMotionEventListener() {}
+    KeyEventListener::~KeyEventListener() {}
+}
 
 static JavaVM *g_javaVM = Q_NULLPTR;
 static jobject g_jActivity = Q_NULLPTR;
@@ -58,20 +73,44 @@ static jclass g_jNativeClass = Q_NULLPTR;
 static jmethodID g_runPendingCppRunnablesMethodID = Q_NULLPTR;
 static jmethodID g_hideSplashScreenMethodID = Q_NULLPTR;
 Q_GLOBAL_STATIC(std::deque<QtAndroidPrivate::Runnable>, g_pendingRunnables);
-Q_GLOBAL_STATIC(QMutex, g_pendingRunnablesMutex);
+static QBasicMutex g_pendingRunnablesMutex;
+
+Q_GLOBAL_STATIC_WITH_ARGS(QtAndroidPrivate::OnBindListener*, g_onBindListener, (nullptr));
+Q_GLOBAL_STATIC(QMutex, g_onBindListenerMutex);
+Q_GLOBAL_STATIC(QSemaphore, g_waitForServiceSetupSemaphore);
+Q_GLOBAL_STATIC(QAtomicInt, g_serviceSetupLockers);
+
+class PermissionsResultClass : public QObject
+{
+    Q_OBJECT
+public:
+    PermissionsResultClass(const QtAndroidPrivate::PermissionsResultFunc &func) : m_func(func) {}
+    Q_INVOKABLE void sendResult(const QtAndroidPrivate::PermissionsHash &result) { m_func(result); delete this;}
+
+private:
+    QtAndroidPrivate::PermissionsResultFunc m_func;
+};
+
+typedef QHash<int, PermissionsResultClass*> PendingPermissionRequestsHash;
+Q_GLOBAL_STATIC(PendingPermissionRequestsHash, g_pendingPermissionRequests);
+static QBasicMutex g_pendingPermissionRequestsMutex;
+static int nextRequestCode()
+{
+    static QBasicAtomicInt counter = Q_BASIC_ATOMIC_INITIALIZER(0);
+    return counter.fetchAndAddRelaxed(1);
+}
 
 // function called from Java from Android UI thread
 static void runPendingCppRunnables(JNIEnv */*env*/, jobject /*obj*/)
 {
     for (;;) { // run all posted runnables
-        g_pendingRunnablesMutex->lock();
+        QMutexLocker locker(&g_pendingRunnablesMutex);
         if (g_pendingRunnables->empty()) {
-            g_pendingRunnablesMutex->unlock();
             break;
         }
         QtAndroidPrivate::Runnable runnable(std::move(g_pendingRunnables->front()));
         g_pendingRunnables->pop_front();
-        g_pendingRunnablesMutex->unlock();
+        locker.unlock();
         runnable(); // run it outside the sync block!
     }
 }
@@ -81,8 +120,40 @@ namespace {
         QMutex mutex;
         QVector<QtAndroidPrivate::GenericMotionEventListener *> listeners;
     };
+
+    enum {
+        PERMISSION_GRANTED = 0
+    };
 }
 Q_GLOBAL_STATIC(GenericMotionEventListeners, g_genericMotionEventListeners)
+
+static void sendRequestPermissionsResult(JNIEnv *env, jobject /*obj*/, jint requestCode,
+                                         jobjectArray permissions, jintArray grantResults)
+{
+    QMutexLocker locker(&g_pendingPermissionRequestsMutex);
+    auto it = g_pendingPermissionRequests->find(requestCode);
+    if (it == g_pendingPermissionRequests->end()) {
+        // show an error or something ?
+        return;
+    }
+    auto request = *it;
+    g_pendingPermissionRequests->erase(it);
+    locker.unlock();
+
+    Qt::ConnectionType connection = QThread::currentThread() == request->thread() ? Qt::DirectConnection : Qt::QueuedConnection;
+    QtAndroidPrivate::PermissionsHash hash;
+    const int size = env->GetArrayLength(permissions);
+    std::unique_ptr<jint[]> results(new jint[size]);
+    env->GetIntArrayRegion(grantResults, 0, size, results.get());
+    for (int i = 0 ; i < size; ++i) {
+        const auto &permission = QJNIObjectPrivate(env->GetObjectArrayElement(permissions, i)).toString();
+        auto value = results[i] == PERMISSION_GRANTED ?
+                            QtAndroidPrivate::PermissionsResult::Granted :
+                            QtAndroidPrivate::PermissionsResult::Denied;
+        hash[permission] = value;
+    }
+    QMetaObject::invokeMethod(request, "sendResult", connection, Q_ARG(QtAndroidPrivate::PermissionsHash, hash));
+}
 
 static jboolean dispatchGenericMotionEvent(JNIEnv *, jclass, jobject event)
 {
@@ -328,7 +399,8 @@ jint QtAndroidPrivate::initJNI(JavaVM *vm, JNIEnv *env)
         {"dispatchGenericMotionEvent", "(Landroid/view/MotionEvent;)Z", reinterpret_cast<void *>(dispatchGenericMotionEvent)},
         {"dispatchKeyEvent", "(Landroid/view/KeyEvent;)Z", reinterpret_cast<void *>(dispatchKeyEvent)},
         {"setNativeActivity", "(Landroid/app/Activity;)V", reinterpret_cast<void *>(setNativeActivity)},
-        {"setNativeService", "(Landroid/app/Service;)V", reinterpret_cast<void *>(setNativeService)}
+        {"setNativeService", "(Landroid/app/Service;)V", reinterpret_cast<void *>(setNativeService)},
+        {"sendRequestPermissionsResult", "(I[Ljava/lang/String;[I)V", reinterpret_cast<void *>(sendRequestPermissionsResult)},
     };
 
     const bool regOk = (env->RegisterNatives(jQtNative, methods, sizeof(methods) / sizeof(methods[0])) == JNI_OK);
@@ -337,12 +409,13 @@ jint QtAndroidPrivate::initJNI(JavaVM *vm, JNIEnv *env)
         return JNI_ERR;
 
     g_runPendingCppRunnablesMethodID = env->GetStaticMethodID(jQtNative,
-                                                       "runPendingCppRunnablesOnUiThread",
+                                                       "runPendingCppRunnablesOnAndroidThread",
                                                        "()V");
-    g_hideSplashScreenMethodID = env->GetStaticMethodID(jQtNative, "hideSplashScreen", "()V");
+    g_hideSplashScreenMethodID = env->GetStaticMethodID(jQtNative, "hideSplashScreen", "(I)V");
     g_jNativeClass = static_cast<jclass>(env->NewGlobalRef(jQtNative));
     env->DeleteLocalRef(jQtNative);
 
+    qRegisterMetaType<QtAndroidPrivate::PermissionsHash>();
     return JNI_OK;
 }
 
@@ -355,6 +428,16 @@ jobject QtAndroidPrivate::activity()
 jobject QtAndroidPrivate::service()
 {
     return g_jService;
+}
+
+jobject QtAndroidPrivate::context()
+{
+    if (g_jActivity)
+        return g_jActivity;
+    if (g_jService)
+        return g_jService;
+
+    return 0;
 }
 
 JavaVM *QtAndroidPrivate::javaVM()
@@ -383,10 +466,10 @@ void QtAndroidPrivate::runOnUiThread(QRunnable *runnable, JNIEnv *env)
 
 void QtAndroidPrivate::runOnAndroidThread(const QtAndroidPrivate::Runnable &runnable, JNIEnv *env)
 {
-    g_pendingRunnablesMutex->lock();
+    QMutexLocker locker(&g_pendingRunnablesMutex);
     const bool triggerRun = g_pendingRunnables->empty();
     g_pendingRunnables->push_back(runnable);
-    g_pendingRunnablesMutex->unlock();
+    locker.unlock();
     if (triggerRun)
         env->CallStaticVoidMethod(g_jNativeClass, g_runPendingCppRunnablesMethodID);
 }
@@ -399,6 +482,70 @@ void QtAndroidPrivate::runOnAndroidThreadSync(const QtAndroidPrivate::Runnable &
         sem->release();
     }, env);
     sem->tryAcquire(1, timeoutMs);
+}
+
+void QtAndroidPrivate::requestPermissions(JNIEnv *env, const QStringList &permissions, const QtAndroidPrivate::PermissionsResultFunc &callbackFunc, bool directCall)
+{
+    if (androidSdkVersion() < 23 || !activity()) {
+        QHash<QString, QtAndroidPrivate::PermissionsResult> res;
+        for (const auto &perm : permissions)
+            res[perm] = checkPermission(perm);
+        callbackFunc(res);
+        return;
+    }
+    // Check API 23+ permissions
+    const int requestCode = nextRequestCode();
+    if (!directCall) {
+        QMutexLocker locker(&g_pendingPermissionRequestsMutex);
+        (*g_pendingPermissionRequests)[requestCode] = new PermissionsResultClass(callbackFunc);
+    }
+
+    runOnAndroidThread([permissions, callbackFunc, requestCode, directCall] {
+        if (directCall) {
+            QMutexLocker locker(&g_pendingPermissionRequestsMutex);
+            (*g_pendingPermissionRequests)[requestCode] = new PermissionsResultClass(callbackFunc);
+        }
+
+        QJNIEnvironmentPrivate env;
+        auto array = env->NewObjectArray(permissions.size(), env->FindClass("java/lang/String"), nullptr);
+        int index = 0;
+        for (const auto &perm : permissions)
+            env->SetObjectArrayElement(array, index++, QJNIObjectPrivate::fromString(perm).object());
+        QJNIObjectPrivate(activity()).callMethod<void>("requestPermissions", "([Ljava/lang/String;I)V", array, requestCode);
+        env->DeleteLocalRef(array);
+    }, env);
+}
+
+QtAndroidPrivate::PermissionsHash QtAndroidPrivate::requestPermissionsSync(JNIEnv *env, const QStringList &permissions, int timeoutMs)
+{
+    QSharedPointer<QHash<QString, QtAndroidPrivate::PermissionsResult>> res(new QHash<QString, QtAndroidPrivate::PermissionsResult>());
+    QSharedPointer<QSemaphore> sem(new QSemaphore);
+    requestPermissions(env, permissions, [sem, res](const QHash<QString, PermissionsResult> &result){
+        *res = result;
+        sem->release();
+    }, true);
+    if (sem->tryAcquire(1, timeoutMs))
+        return std::move(*res);
+    else // mustn't touch *res
+        return QHash<QString, QtAndroidPrivate::PermissionsResult>();
+}
+
+QtAndroidPrivate::PermissionsResult QtAndroidPrivate::checkPermission(const QString &permission)
+{
+    const auto res = QJNIObjectPrivate::callStaticMethod<jint>("org/qtproject/qt5/android/QtNative",
+                                                               "checkSelfPermission",
+                                                               "(Ljava/lang/String;)I",
+                                                               QJNIObjectPrivate::fromString(permission).object());
+    return res == PERMISSION_GRANTED ? PermissionsResult::Granted : PermissionsResult::Denied;
+}
+
+bool QtAndroidPrivate::shouldShowRequestPermissionRationale(const QString &permission)
+{
+    if (androidSdkVersion() < 23 || !activity())
+        return false;
+
+    return QJNIObjectPrivate(activity()).callMethod<jboolean>("shouldShowRequestPermissionRationale", "(Ljava/lang/String;)Z",
+                                                              QJNIObjectPrivate::fromString(permission).object());
 }
 
 void QtAndroidPrivate::registerGenericMotionEventListener(QtAndroidPrivate::GenericMotionEventListener *listener)
@@ -425,9 +572,38 @@ void QtAndroidPrivate::unregisterKeyEventListener(QtAndroidPrivate::KeyEventList
     g_keyEventListeners()->listeners.removeOne(listener);
 }
 
-void QtAndroidPrivate::hideSplashScreen(JNIEnv *env)
+void QtAndroidPrivate::hideSplashScreen(JNIEnv *env, int duration)
 {
-    env->CallStaticVoidMethod(g_jNativeClass, g_hideSplashScreenMethodID);
+    env->CallStaticVoidMethod(g_jNativeClass, g_hideSplashScreenMethodID, duration);
+}
+
+void QtAndroidPrivate::waitForServiceSetup()
+{
+    g_waitForServiceSetupSemaphore->acquire();
+}
+
+int QtAndroidPrivate::acuqireServiceSetup(int flags)
+{
+    g_serviceSetupLockers->ref();
+    return flags;
+}
+
+void QtAndroidPrivate::setOnBindListener(QtAndroidPrivate::OnBindListener *listener)
+{
+    QMutexLocker lock(g_onBindListenerMutex);
+    *g_onBindListener = listener;
+    if (!g_serviceSetupLockers->deref())
+        g_waitForServiceSetupSemaphore->release();
+}
+
+jobject QtAndroidPrivate::callOnBindListener(jobject intent)
+{
+    QMutexLocker lock(g_onBindListenerMutex);
+    if (g_onBindListener)
+        return (*g_onBindListener)->onBind(intent);
+    return nullptr;
 }
 
 QT_END_NAMESPACE
+
+#include "qjnihelpers.moc"

@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtCore/private/qglobal_p.h>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qlist.h>
 
@@ -65,6 +66,14 @@ class QRingBuffer
 public:
     explicit inline QRingBuffer(int growth = QRINGBUFFER_CHUNKSIZE) :
         head(0), tail(0), tailBuffer(0), basicBlockSize(growth), bufferSize(0) { }
+
+    inline void setChunkSize(int size) {
+        basicBlockSize = size;
+    }
+
+    inline int chunkSize() const {
+        return basicBlockSize;
+    }
 
     inline qint64 nextDataBlockSize() const {
         return (tailBuffer == 0 ? tail : buffers.first().size()) - head;
@@ -149,6 +158,8 @@ private:
     int basicBlockSize;
     qint64 bufferSize;
 };
+
+Q_DECLARE_TYPEINFO(QRingBuffer, Q_MOVABLE_TYPE);
 
 QT_END_NAMESPACE
 

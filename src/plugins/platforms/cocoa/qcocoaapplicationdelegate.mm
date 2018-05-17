@@ -122,7 +122,6 @@ QT_END_NAMESPACE
 {
     sharedCocoaApplicationDelegate = nil;
     [dockMenu release];
-    [qtMenuLoader release];
     if (reflectionDelegate) {
         [[NSApplication sharedApplication] setDelegate:reflectionDelegate];
         [reflectionDelegate release];
@@ -169,24 +168,12 @@ QT_END_NAMESPACE
     return [[dockMenu retain] autorelease];
 }
 
-- (void)setMenuLoader:(QCocoaMenuLoader *)menuLoader
-{
-    [menuLoader retain];
-    [qtMenuLoader release];
-    qtMenuLoader = menuLoader;
-}
-
-- (QCocoaMenuLoader *)menuLoader
-{
-    return [[qtMenuLoader retain] autorelease];
-}
-
 - (BOOL) canQuit
 {
     [[NSApp mainMenu] cancelTracking];
 
     bool handle_quit = true;
-    NSMenuItem *quitMenuItem = [[[QCocoaApplicationDelegate sharedDelegate] menuLoader] quitMenuItem];
+    NSMenuItem *quitMenuItem = [[QT_MANGLE_NAMESPACE(QCocoaMenuLoader) sharedMenuLoader] quitMenuItem];
     if (!QGuiApplicationPrivate::instance()->modalWindowList.isEmpty()
         && [quitMenuItem isEnabled]) {
         int visible = 0;
@@ -295,13 +282,17 @@ QT_END_NAMESPACE
 {
     Q_UNUSED(aNotification);
     inLaunch = false;
-    // qt_release_apple_event_handler();
 
-
-    // Insert code here to initialize your application
+    if (qEnvironmentVariableIsEmpty("QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM")) {
+        if (__builtin_available(macOS 10.12, *)) {
+            // Move the application window to front to avoid launching behind the terminal.
+            // Ignoring other apps is necessary (we must ignore the terminal), but makes
+            // Qt apps play slightly less nice with other apps when lanching from Finder
+            // (See the activateIgnoringOtherApps docs.)
+            [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
+        }
+    }
 }
-
-
 
 - (void)application:(NSApplication *)sender openFiles:(NSArray *)filenames
 {
@@ -309,7 +300,7 @@ QT_END_NAMESPACE
     Q_UNUSED(sender);
 
     for (NSString *fileName in filenames) {
-        QString qtFileName = QCFString::toQString(fileName);
+        QString qtFileName = QString::fromNSString(fileName);
         if (inLaunch) {
             // We need to be careful because Cocoa will be nice enough to take
             // command line arguments and send them to us as events. Given the history
@@ -337,6 +328,24 @@ QT_END_NAMESPACE
     return NO; // Someday qApp->quitOnLastWindowClosed(); when QApp and NSApp work closer together.
 }
 
+- (void)applicationWillHide:(NSNotification *)notification
+{
+    if (reflectionDelegate
+        && [reflectionDelegate respondsToSelector:@selector(applicationWillHide:)]) {
+        [reflectionDelegate applicationWillHide:notification];
+    }
+
+    // When the application is hidden Qt will hide the popup windows associated with
+    // it when it has lost the activation for the application. However, when it gets
+    // to this point it believes the popup windows to be hidden already due to the
+    // fact that the application itself is hidden, which will cause a problem when
+    // the application is made visible again.
+    const QWindowList topLevelWindows = QGuiApplication::topLevelWindows();
+    for (QWindow *topLevelWindow : qAsConst(topLevelWindows)) {
+        if ((topLevelWindow->type() & Qt::Popup) == Qt::Popup && topLevelWindow->isVisible())
+            topLevelWindow->hide();
+    }
+}
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification
 {
@@ -437,7 +446,7 @@ QT_END_NAMESPACE
 {
     Q_UNUSED(replyEvent);
     NSString *urlString = [[event paramDescriptorForKeyword:keyDirectObject] stringValue];
-    QWindowSystemInterface::handleFileOpenEvent(QUrl(QCFString::toQString(urlString)));
+    QWindowSystemInterface::handleFileOpenEvent(QUrl(QString::fromNSString(urlString)));
 }
 
 - (void)appleEventQuit:(NSAppleEventDescriptor *)event withReplyEvent:(NSAppleEventDescriptor *)replyEvent
@@ -445,12 +454,6 @@ QT_END_NAMESPACE
     Q_UNUSED(event);
     Q_UNUSED(replyEvent);
     [NSApp terminate:self];
-}
-
-- (void)qtDispatcherToQAction:(id)sender
-{
-    Q_UNUSED(sender);
-    [qtMenuLoader qtDispatcherToQPAMenuItem:sender];
 }
 
 @end

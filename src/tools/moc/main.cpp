@@ -1,6 +1,7 @@
 /****************************************************************************
 **
 ** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2016 Intel Corporation.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the tools applications of the Qt Toolkit.
@@ -200,20 +201,24 @@ int runMoc(int argc, char **argv)
                                      .arg(mocOutputRevision).arg(QString::fromLatin1(QT_VERSION_STR)));
     parser.addHelpOption();
     parser.addVersionOption();
+    parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
 
     QCommandLineOption outputOption(QStringLiteral("o"));
     outputOption.setDescription(QStringLiteral("Write output to file rather than stdout."));
     outputOption.setValueName(QStringLiteral("file"));
+    outputOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(outputOption);
 
     QCommandLineOption includePathOption(QStringLiteral("I"));
     includePathOption.setDescription(QStringLiteral("Add dir to the include path for header files."));
     includePathOption.setValueName(QStringLiteral("dir"));
+    includePathOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(includePathOption);
 
     QCommandLineOption macFrameworkOption(QStringLiteral("F"));
     macFrameworkOption.setDescription(QStringLiteral("Add Mac framework to the include path for header files."));
     macFrameworkOption.setValueName(QStringLiteral("framework"));
+    macFrameworkOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(macFrameworkOption);
 
     QCommandLineOption preprocessOption(QStringLiteral("E"));
@@ -223,17 +228,25 @@ int runMoc(int argc, char **argv)
     QCommandLineOption defineOption(QStringLiteral("D"));
     defineOption.setDescription(QStringLiteral("Define macro, with optional definition."));
     defineOption.setValueName(QStringLiteral("macro[=def]"));
+    defineOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(defineOption);
 
     QCommandLineOption undefineOption(QStringLiteral("U"));
     undefineOption.setDescription(QStringLiteral("Undefine macro."));
     undefineOption.setValueName(QStringLiteral("macro"));
+    undefineOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(undefineOption);
 
     QCommandLineOption metadataOption(QStringLiteral("M"));
     metadataOption.setDescription(QStringLiteral("Add key/value pair to plugin meta data"));
     metadataOption.setValueName(QStringLiteral("key=value"));
+    metadataOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(metadataOption);
+
+    QCommandLineOption compilerFlavorOption(QStringLiteral("compiler-flavor"));
+    compilerFlavorOption.setDescription(QStringLiteral("Set the compiler flavor: either \"msvc\" or \"unix\"."));
+    compilerFlavorOption.setValueName(QStringLiteral("flavor"));
+    parser.addOption(compilerFlavorOption);
 
     QCommandLineOption noIncludeOption(QStringLiteral("i"));
     noIncludeOption.setDescription(QStringLiteral("Do not generate an #include statement."));
@@ -242,21 +255,30 @@ int runMoc(int argc, char **argv)
     QCommandLineOption pathPrefixOption(QStringLiteral("p"));
     pathPrefixOption.setDescription(QStringLiteral("Path prefix for included file."));
     pathPrefixOption.setValueName(QStringLiteral("path"));
+    pathPrefixOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(pathPrefixOption);
 
     QCommandLineOption forceIncludeOption(QStringLiteral("f"));
     forceIncludeOption.setDescription(QStringLiteral("Force #include <file> (overwrite default)."));
     forceIncludeOption.setValueName(QStringLiteral("file"));
+    forceIncludeOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(forceIncludeOption);
 
     QCommandLineOption prependIncludeOption(QStringLiteral("b"));
     prependIncludeOption.setDescription(QStringLiteral("Prepend #include <file> (preserve default include)."));
     prependIncludeOption.setValueName(QStringLiteral("file"));
+    prependIncludeOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(prependIncludeOption);
+
+    QCommandLineOption includeOption(QStringLiteral("include"));
+    includeOption.setDescription(QStringLiteral("Parse <file> as an #include before the main source(s)."));
+    includeOption.setValueName(QStringLiteral("file"));
+    parser.addOption(includeOption);
 
     QCommandLineOption noNotesWarningsCompatOption(QStringLiteral("n"));
     noNotesWarningsCompatOption.setDescription(QStringLiteral("Do not display notes (-nn) or warnings (-nw). Compatibility option."));
     noNotesWarningsCompatOption.setValueName(QStringLiteral("which"));
+    noNotesWarningsCompatOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(noNotesWarningsCompatOption);
 
     QCommandLineOption noNotesOption(QStringLiteral("no-notes"));
@@ -284,7 +306,7 @@ int runMoc(int argc, char **argv)
 
     const QStringList files = parser.positionalArguments();
     if (files.count() > 1) {
-        error(qPrintable(QStringLiteral("Too many input files specified: '") + files.join(QStringLiteral("' '")) + QLatin1Char('\'')));
+        error(qPrintable(QLatin1String("Too many input files specified: '") + files.join(QLatin1String("' '")) + QLatin1Char('\'')));
         parser.showHelp(1);
     } else if (!files.isEmpty()) {
         filename = files.first();
@@ -313,9 +335,32 @@ int runMoc(int argc, char **argv)
         if (parser.isSet(pathPrefixOption))
             moc.includePath = QFile::encodeName(parser.value(pathPrefixOption));
     }
+
     const auto includePaths = parser.values(includePathOption);
     for (const QString &path : includePaths)
         pp.includes += Preprocessor::IncludePath(QFile::encodeName(path));
+    QString compilerFlavor = parser.value(compilerFlavorOption);
+    if (compilerFlavor.isEmpty() || compilerFlavor == QLatin1String("unix")) {
+        // traditional Unix compilers use both CPATH and CPLUS_INCLUDE_PATH
+        // $CPATH feeds to #include <...> and #include "...", whereas
+        // CPLUS_INCLUDE_PATH is equivalent to GCC's -isystem, so we parse later
+        const auto cpath = qgetenv("CPATH").split(QDir::listSeparator().toLatin1());
+        for (const QByteArray &p : cpath)
+            pp.includes += Preprocessor::IncludePath(p);
+        const auto cplus_include_path = qgetenv("CPLUS_INCLUDE_PATH").split(QDir::listSeparator().toLatin1());
+        for (const QByteArray &p : cplus_include_path)
+            pp.includes += Preprocessor::IncludePath(p);
+    } else if (compilerFlavor == QLatin1String("msvc")) {
+        // MSVC uses one environment variable: INCLUDE
+        const auto include = qgetenv("INCLUDE").split(QDir::listSeparator().toLatin1());
+        for (const QByteArray &p : include)
+            pp.includes += Preprocessor::IncludePath(p);
+    } else {
+        error(qPrintable(QLatin1String("Unknown compiler flavor '") + compilerFlavor +
+                         QLatin1String("'; valid values are: msvc, unix.")));
+        parser.showHelp(1);
+    }
+
     const auto macFrameworks = parser.values(macFrameworkOption);
     for (const QString &path : macFrameworks) {
         // minimalistic framework support for the mac
@@ -351,9 +396,9 @@ int runMoc(int argc, char **argv)
         pp.macros.remove(macro);
     }
     const QStringList noNotesCompatValues = parser.values(noNotesWarningsCompatOption);
-    if (parser.isSet(noNotesOption) || noNotesCompatValues.contains(QStringLiteral("n")))
+    if (parser.isSet(noNotesOption) || noNotesCompatValues.contains(QLatin1String("n")))
         moc.displayNotes = false;
-    if (parser.isSet(noWarningsOption) || noNotesCompatValues.contains(QStringLiteral("w")))
+    if (parser.isSet(noWarningsOption) || noNotesCompatValues.contains(QLatin1String("w")))
         moc.displayWarnings = moc.displayNotes = false;
 
     if (autoInclude) {
@@ -410,7 +455,28 @@ int runMoc(int argc, char **argv)
     moc.includes = pp.includes;
 
     // 1. preprocess
-    moc.symbols = pp.preprocessed(moc.filename, &in);
+    const auto includeFiles = parser.values(includeOption);
+    for (const QString &includeName : includeFiles) {
+        QByteArray rawName = pp.resolveInclude(QFile::encodeName(includeName), moc.filename);
+        if (rawName.isEmpty()) {
+            fprintf(stderr, "Warning: Failed to resolve include \"%s\" for moc file %s\n",
+                    includeName.toLocal8Bit().constData(),
+                    moc.filename.isEmpty() ? "<standard input>" : moc.filename.constData());
+        } else {
+            QFile f(QFile::decodeName(rawName));
+            if (f.open(QIODevice::ReadOnly)) {
+                moc.symbols += Symbol(0, MOC_INCLUDE_BEGIN, rawName);
+                moc.symbols += pp.preprocessed(rawName, &f);
+                moc.symbols += Symbol(0, MOC_INCLUDE_END, rawName);
+            } else {
+                fprintf(stderr, "Warning: Cannot open %s included by moc file %s: %s\n",
+                        rawName.constData(),
+                        moc.filename.isEmpty() ? "<standard input>" : moc.filename.constData(),
+                        f.errorString().toLocal8Bit().constData());
+            }
+        }
+    }
+    moc.symbols += pp.preprocessed(moc.filename, &in);
 
     if (!pp.preprocessOnly) {
         // 2. parse
@@ -420,8 +486,8 @@ int runMoc(int argc, char **argv)
     // 3. and output meta object code
 
     if (output.size()) { // output file specified
-#if defined(_MSC_VER) && _MSC_VER >= 1400
-        if (fopen_s(&out, QFile::encodeName(output).constData(), "w"))
+#if defined(_MSC_VER)
+        if (_wfopen_s(&out, reinterpret_cast<const wchar_t *>(output.utf16()), L"w") != 0)
 #else
         out = fopen(QFile::encodeName(output).constData(), "w"); // create output file
         if (!out)

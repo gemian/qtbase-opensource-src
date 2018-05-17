@@ -51,6 +51,8 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
+
 #include <qthread.h>
 #include <qmutex.h>
 #include <qwaitcondition.h>
@@ -63,6 +65,8 @@
 #include <qelapsedtimer.h>
 
 #include <private/qfilesystemengine_p.h>
+
+QT_REQUIRE_CONFIG(filesystemmodel);
 
 QT_BEGIN_NAMESPACE
 
@@ -80,7 +84,8 @@ public:
     bool operator ==(const QExtendedInformation &fileInfo) const {
        return mFileInfo == fileInfo.mFileInfo
        && displayType == fileInfo.displayType
-       && permissions() == fileInfo.permissions();
+       && permissions() == fileInfo.permissions()
+       && lastModified() == fileInfo.lastModified();
     }
 
 #ifndef QT_NO_FSFILEENGINE
@@ -148,8 +153,6 @@ private :
 
 class QFileIconProvider;
 
-#ifndef QT_NO_FILESYSTEMMODEL
-
 class Q_AUTOTEST_EXPORT QFileInfoGatherer : public QThread
 {
 Q_OBJECT
@@ -178,6 +181,10 @@ public Q_SLOTS:
     void setResolveSymlinks(bool enable);
     void setIconProvider(QFileIconProvider *provider);
 
+private Q_SLOTS:
+    void driveAdded();
+    void driveRemoved();
+
 private:
     void run() Q_DECL_OVERRIDE;
     // called by run():
@@ -202,9 +209,6 @@ private:
     QFileIconProvider *m_iconProvider; // not accessed by run()
     QFileIconProvider defaultProvider;
 };
-#endif // QT_NO_FILESYSTEMMODEL
-
 
 QT_END_NAMESPACE
 #endif // QFILEINFOGATHERER_H
-

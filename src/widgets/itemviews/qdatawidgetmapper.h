@@ -40,12 +40,12 @@
 #ifndef QDATAWIDGETMAPPER_H
 #define QDATAWIDGETMAPPER_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include "QtCore/qobject.h"
 
-#ifndef QT_NO_DATAWIDGETMAPPER
+QT_REQUIRE_CONFIG(datawidgetmapper);
 
 QT_BEGIN_NAMESPACE
-
 
 class QAbstractItemDelegate;
 class QAbstractItemModel;
@@ -116,6 +116,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QT_NO_DATAWIDGETMAPPER
 #endif
-

@@ -299,6 +299,9 @@ static void qDBusNewConnection(DBusServer *server, DBusConnection *connection, v
     Q_ASSERT(connection);
     Q_ASSERT(data);
 
+    if (!QDBusConnectionManager::instance())
+        return;
+
     // keep the connection alive
     q_dbus_connection_ref(connection);
     QDBusConnectionPrivate *serverConnection = static_cast<QDBusConnectionPrivate *>(data);
@@ -1772,7 +1775,7 @@ static QDBusConnection::ConnectionCapabilities connectionCapabilies(DBusConnecti
 # if DBUS_VERSION-0 >= 0x010400
     can_send_type = dbus_connection_can_send_type;
 # endif
-#elif !defined(QT_NO_LIBRARY)
+#elif QT_CONFIG(library)
     // run-time check if the next functions are available
     can_send_type = (can_send_type_t)qdbus_resolve_conditionally("dbus_connection_can_send_type");
 #endif
@@ -2200,20 +2203,16 @@ bool QDBusConnectionPrivate::connectSignal(const QString &service,
     // check the slot
     QDBusConnectionPrivate::SignalHook hook;
     QString key;
-    QString name2 = name;
-    if (name2.isNull())
-        name2.detach();
 
     hook.signature = signature;
     if (!prepareHook(hook, key, service, path, interface, name, argumentMatch, receiver, slot, 0, false))
         return false;           // don't connect
 
     Q_ASSERT(thread() != QThread::currentThread());
-    emit signalNeedsConnecting(key, hook);
-    return true;
+    return emit signalNeedsConnecting(key, hook);
 }
 
-void QDBusConnectionPrivate::addSignalHook(const QString &key, const SignalHook &hook)
+bool QDBusConnectionPrivate::addSignalHook(const QString &key, const SignalHook &hook)
 {
     QDBusWriteLocker locker(ConnectAction, this);
 
@@ -2229,7 +2228,7 @@ void QDBusConnectionPrivate::addSignalHook(const QString &key, const SignalHook 
             entry.midx == hook.midx &&
             entry.argumentMatch == hook.argumentMatch) {
             // no need to compare the parameters if it's the same slot
-            return;        // already there
+            return false;     // already there
         }
     }
 
@@ -2241,7 +2240,7 @@ void QDBusConnectionPrivate::addSignalHook(const QString &key, const SignalHook 
 
     if (mit != matchRefCounts.end()) { // Match already present
         mit.value() = mit.value() + 1;
-        return;
+        return true;
     }
 
     matchRefCounts.insert(hook.matchRule, 1);
@@ -2268,6 +2267,7 @@ void QDBusConnectionPrivate::addSignalHook(const QString &key, const SignalHook 
             }
         }
     }
+    return true;
 }
 
 bool QDBusConnectionPrivate::disconnectSignal(const QString &service,

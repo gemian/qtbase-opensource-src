@@ -50,6 +50,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtCore/qabstractitemmodel.h>
 #include <private/qabstractitemmodel_p.h>
 #include <QtCore/qpair.h>
@@ -58,7 +59,7 @@
 #include <private/qtreeview_p.h>
 #include <QtWidgets/qheaderview.h>
 
-#ifndef QT_NO_TREEWIDGET
+QT_REQUIRE_CONFIG(treewidget);
 
 QT_BEGIN_NAMESPACE
 
@@ -240,7 +241,5 @@ public:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_TREEWIDGET
 
 #endif // QTREEWIDGET_P_H

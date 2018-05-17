@@ -40,6 +40,7 @@ class NmakeMakefileGenerator : public Win32MakefileGenerator
     void writeImplicitRulesPart(QTextStream &t);
     void writeBuildRulesPart(QTextStream &t);
     void writeLinkCommand(QTextStream &t, const QString &extraFlags = QString(), const QString &extraInlineFileContent = QString());
+    void writeResponseFileFiles(QTextStream &t, const ProStringList &files);
     int msvcVersion() const;
     void init();
     static QStringList sourceFilesForImplicitRulesFilter();
@@ -51,7 +52,8 @@ protected:
     virtual QStringList &findDependencies(const QString &file);
     QString var(const ProKey &value) const;
     QString precompH, precompObj, precompPch;
-    bool usePCH;
+    QString precompObjC, precompPchC;
+    bool usePCH, usePCHC;
 
 public:
     NmakeMakefileGenerator();

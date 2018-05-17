@@ -522,13 +522,13 @@ static void getLineBreaks(const ushort *string, quint32 len, QCharAttributes *at
                 // do not change breaks before and after the expression
                 for (quint32 j = nestart + 1; j < pos; ++j)
                     attributes[j].lineBreak = false;
-                // fall through
+                Q_FALLTHROUGH();
             case LB::NS::None:
                 nelast = LB::NS::XX; // reset state
                 break;
             case LB::NS::Start:
                 nestart = i;
-                // fall through
+                Q_FALLTHROUGH();
             default:
                 nelast = necur;
                 break;
@@ -714,7 +714,7 @@ Q_CORE_EXPORT void initScripts(const ushort *string, int length, uchar *scripts)
         }
 
         // Never break between a combining mark (gc= Mc, Mn or Me) and its base character.
-        // Thus, a combining mark — whatever its script property value is — should inherit
+        // Thus, a combining mark - whatever its script property value is - should inherit
         // the script property value of its base character.
         static const int test = (FLAG(QChar::Mark_NonSpacing) | FLAG(QChar::Mark_SpacingCombining) | FLAG(QChar::Mark_Enclosing));
         if (Q_UNLIKELY(FLAG(prop->category) & test))

@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QtGui/qguiapplication.h>
 
 #include <QtCore/QPointF>
@@ -65,10 +66,10 @@
 
 QT_BEGIN_NAMESPACE
 
+class QColorProfile;
 class QPlatformIntegration;
 class QPlatformTheme;
 class QPlatformDragQtResponse;
-struct QDrawHelperGammaTables;
 #ifndef QT_NO_DRAGANDDROP
 class QDrag;
 #endif // QT_NO_DRAGANDDROP
@@ -131,6 +132,8 @@ public:
     static void processActivatedEvent(QWindowSystemInterfacePrivate::ActivatedWindowEvent *e);
     static void processWindowStateChangedEvent(QWindowSystemInterfacePrivate::WindowStateChangedEvent *e);
     static void processWindowScreenChangedEvent(QWindowSystemInterfacePrivate::WindowScreenChangedEvent *e);
+
+    static void processSafeAreaMarginsChangedEvent(QWindowSystemInterfacePrivate::SafeAreaMarginsChangedEvent *e);
 
     static void processWindowSystemEvent(QWindowSystemInterfacePrivate::WindowSystemEvent *e);
 
@@ -198,8 +201,8 @@ public:
     static void hideModalWindow(QWindow *window);
     static void updateBlockedStatus(QWindow *window);
     virtual bool isWindowBlocked(QWindow *window, QWindow **blockingWindow = 0) const;
+    virtual bool popupActive() { return false; }
 
-    static Qt::MouseButtons buttons;
     static ulong mousePressTime;
     static Qt::MouseButton mousePressButton;
     static int mousePressX;
@@ -291,7 +294,8 @@ public:
 
     static QInputDeviceManager *inputDeviceManager();
 
-    const QDrawHelperGammaTables *gammaTables();
+    const QColorProfile *colorProfileForA8Text();
+    const QColorProfile *colorProfileForA32Text();
 
     // hook reimplemented in QApplication to apply the QStyle function on the QIcon
     virtual QPixmap applyQIconStyleHelper(QIcon::Mode, const QPixmap &basePixmap) const { return basePixmap; }
@@ -315,7 +319,8 @@ private:
     static QGuiApplicationPrivate *self;
     static QTouchDevice *m_fakeTouchDevice;
     static int m_fakeMouseSourcePointId;
-    QAtomicPointer<QDrawHelperGammaTables> m_gammaTables;
+    QAtomicPointer<QColorProfile> m_a8ColorProfile;
+    QAtomicPointer<QColorProfile> m_a32ColorProfile;
 
     bool ownGlobalShareContext;
 

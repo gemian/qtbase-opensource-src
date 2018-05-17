@@ -51,17 +51,20 @@
 // We mean it.
 //
 
-#include "QtCore/qglobal.h"
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 
-#ifndef QT_NO_LINEEDIT
 #include "private/qwidget_p.h"
 #include "QtWidgets/qlineedit.h"
+#if QT_CONFIG(toolbutton)
 #include "QtWidgets/qtoolbutton.h"
+#endif
 #include "QtGui/qtextlayout.h"
 #include "QtGui/qicon.h"
 #include "QtWidgets/qstyleoption.h"
 #include "QtCore/qbasictimer.h"
+#if QT_CONFIG(completer)
 #include "QtWidgets/qcompleter.h"
+#endif
 #include "QtCore/qpointer.h"
 #include "QtCore/qmimedata.h"
 
@@ -69,12 +72,14 @@
 
 #include <algorithm>
 
+QT_REQUIRE_CONFIG(lineedit);
+
 QT_BEGIN_NAMESPACE
 
 class QLineEditPrivate;
 
 // QLineEditIconButton: This is a simple helper class that represents clickable icons that fade in with text
-
+#if QT_CONFIG(toolbutton)
 class Q_AUTOTEST_EXPORT QLineEditIconButton : public QToolButton
 {
     Q_OBJECT
@@ -103,6 +108,7 @@ private:
 
     qreal m_opacity;
 };
+#endif // QT_CONFIG(toolbutton)
 
 class Q_AUTOTEST_EXPORT QLineEditPrivate : public QWidgetPrivate
 {
@@ -200,7 +206,7 @@ public:
 #endif
     void _q_selectionChanged();
     void _q_updateNeeded(const QRect &);
-#ifndef QT_NO_COMPLETER
+#if QT_CONFIG(completer)
     void _q_completionHighlighted(const QString &);
 #endif
     QPoint mousePressPos;
@@ -234,17 +240,22 @@ public:
     int effectiveRightTextMargin() const;
 
 private:
-    typedef QPair<QLineEdit::ActionPosition, int> PositionIndexPair;
+    struct SideWidgetLocation {
+        QLineEdit::ActionPosition position;
+        int index;
 
-    PositionIndexPair findSideWidget(const QAction *a) const;
+        bool isValid() const { return index >= 0; }
+    };
+    friend class QTypeInfo<SideWidgetLocation>;
+
+    SideWidgetLocation findSideWidget(const QAction *a) const;
 
     SideWidgetEntryList leadingSideWidgets;
     SideWidgetEntryList trailingSideWidgets;
     int lastTextSize;
 };
 Q_DECLARE_TYPEINFO(QLineEditPrivate::SideWidgetEntry, Q_PRIMITIVE_TYPE);
-
-#endif // QT_NO_LINEEDIT
+Q_DECLARE_TYPEINFO(QLineEditPrivate::SideWidgetLocation, Q_PRIMITIVE_TYPE);
 
 QT_END_NAMESPACE
 

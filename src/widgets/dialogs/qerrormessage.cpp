@@ -39,13 +39,13 @@
 
 #include "qerrormessage.h"
 
-#ifndef QT_NO_ERRORMESSAGE
-
 #include "qapplication.h"
 #include "qcheckbox.h"
 #include "qlabel.h"
 #include "qlayout.h"
+#if QT_CONFIG(messagebox)
 #include "qmessagebox.h"
+#endif
 #include "qpushbutton.h"
 #include "qstringlist.h"
 #include "qtextedit.h"
@@ -60,12 +60,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef Q_OS_WINCE
-extern bool qt_wince_is_mobile();    //defined in qguifunctions_wince.cpp
-extern bool qt_wince_is_high_dpi();  //defined in qguifunctions_wince.cpp
-#endif
-
 QT_BEGIN_NAMESPACE
+
+namespace {
+struct Message {
+    QString content;
+    QString type;
+};
+}
 
 class QErrorMessagePrivate : public QDialogPrivate
 {
@@ -75,7 +77,7 @@ public:
     QCheckBox * again;
     QTextEdit * errors;
     QLabel * icon;
-    std::queue<QPair<QString, QString> > pending;
+    std::queue<Message> pending;
     QSet<QString> doNotShow;
     QSet<QString> doNotShowType;
     QString currentMessage;
@@ -100,32 +102,12 @@ public:
 
 QSize QErrorMessageTextView::minimumSizeHint() const
 {
-#ifdef Q_OS_WINCE
-    if (qt_wince_is_mobile())
-         if (qt_wince_is_high_dpi())
-            return QSize(200, 200);
-         else
-             return QSize(100, 100);
-    else
-      return QSize(70, 70);
-#else
     return QSize(50, 50);
-#endif
 }
 
 QSize QErrorMessageTextView::sizeHint() const
 {
-#ifdef Q_OS_WINCE
-    if (qt_wince_is_mobile())
-         if (qt_wince_is_high_dpi())
-            return QSize(400, 200);
-         else
-             return QSize(320, 120);
-    else
-      return QSize(300, 100);
-#else
     return QSize(250, 75);
-#endif //Q_OS_WINCE
 }
 
 /*!
@@ -179,26 +161,35 @@ static void deleteStaticcQErrorMessage() // post-routine
 
 static bool metFatal = false;
 
+static QString msgType2i18nString(QtMsgType t)
+{
+    Q_STATIC_ASSERT(QtDebugMsg == 0);
+    Q_STATIC_ASSERT(QtWarningMsg == 1);
+    Q_STATIC_ASSERT(QtCriticalMsg == 2);
+    Q_STATIC_ASSERT(QtFatalMsg == 3);
+    Q_STATIC_ASSERT(QtInfoMsg == 4);
+
+    // adjust the array below if any of the above fire...
+
+    const char * const messages[] = {
+        QT_TRANSLATE_NOOP("QErrorMessage", "Debug Message:"),
+        QT_TRANSLATE_NOOP("QErrorMessage", "Warning:"),
+        QT_TRANSLATE_NOOP("QErrorMessage", "Critical Error:"),
+        QT_TRANSLATE_NOOP("QErrorMessage", "Fatal Error:"),
+        QT_TRANSLATE_NOOP("QErrorMessage", "Information:"),
+    };
+    Q_ASSERT(size_t(t) < sizeof messages / sizeof *messages);
+
+    return QCoreApplication::translate("QErrorMessage", messages[t]);
+}
+
 static void jump(QtMsgType t, const QMessageLogContext & /*context*/, const QString &m)
 {
     if (!qtMessageHandler)
         return;
 
-    QString rich;
-
-    switch (t) {
-    case QtDebugMsg:
-    default:
-        rich = QErrorMessage::tr("Debug Message:");
-        break;
-    case QtWarningMsg:
-        rich = QErrorMessage::tr("Warning:");
-        break;
-    case QtFatalMsg:
-        rich = QErrorMessage::tr("Fatal Error:");
-    }
-    rich = QString::fromLatin1("<p><b>%1</b></p>").arg(rich);
-    rich += Qt::convertFromPlainText(m, Qt::WhiteSpaceNormal);
+    QString rich = QLatin1String("<p><b>") + msgType2i18nString(t) + QLatin1String("</b></p>")
+                   + Qt::convertFromPlainText(m, Qt::WhiteSpaceNormal);
 
     // ### work around text engine quirk
     if (rich.endsWith(QLatin1String("</p>")))
@@ -243,14 +234,11 @@ QErrorMessage::QErrorMessage(QWidget * parent)
     grid->setColumnStretch(1, 42);
     grid->setRowStretch(0, 42);
 
-#ifndef QT_NO_MESSAGEBOX
+#if QT_CONFIG(messagebox)
     d->icon->setPixmap(QMessageBox::standardIcon(QMessageBox::Information));
     d->icon->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
 #endif
     d->again->setChecked(true);
-#if defined(Q_OS_WINCE)
-    d->ok->setFixedSize(0,0);
-#endif
     d->ok->setFocus();
 
     d->retranslateStrings();
@@ -325,9 +313,8 @@ bool QErrorMessagePrivate::isMessageToBeShown(const QString &message, const QStr
 bool QErrorMessagePrivate::nextPending()
 {
     while (!pending.empty()) {
-        QPair<QString,QString> &pendingMessage = pending.front();
-        QString message = qMove(pendingMessage.first);
-        QString type = qMove(pendingMessage.second);
+        QString message = std::move(pending.front().content);
+        QString type = std::move(pending.front().type);
         pending.pop();
         if (isMessageToBeShown(message, type)) {
 #ifndef QT_NO_TEXTHTMLPARSER
@@ -377,7 +364,7 @@ void QErrorMessage::showMessage(const QString &message, const QString &type)
     Q_D(QErrorMessage);
     if (!d->isMessageToBeShown(message, type))
         return;
-    d->pending.push(qMakePair(message, type));
+    d->pending.push({message, type});
     if (!isVisible() && d->nextPending())
         show();
 }
@@ -403,5 +390,3 @@ void QErrorMessagePrivate::retranslateStrings()
 QT_END_NAMESPACE
 
 #include "moc_qerrormessage.cpp"
-
-#endif // QT_NO_ERRORMESSAGE

@@ -197,23 +197,32 @@ private slots:
         // Check whether QT_LOGGING_CONF is picked up from environment
         //
 
+        Q_ASSERT(!qApp); // Rules should not require an app to resolve
+
+        qputenv("QT_LOGGING_RULES", "qt.foo.bar=true");
+        QLoggingCategory qtEnabledByLoggingRule("qt.foo.bar");
+        QCOMPARE(qtEnabledByLoggingRule.isDebugEnabled(), true);
+        QLoggingCategory qtDisabledByDefault("qt.foo.baz");
+        QCOMPARE(qtDisabledByDefault.isDebugEnabled(), false);
+
+        QLoggingRegistry &registry = *QLoggingRegistry::instance();
+        QCOMPARE(registry.ruleSets[QLoggingRegistry::ApiRules].size(), 0);
+        QCOMPARE(registry.ruleSets[QLoggingRegistry::ConfigRules].size(), 0);
+        QCOMPARE(registry.ruleSets[QLoggingRegistry::EnvironmentRules].size(), 1);
+
+        qunsetenv("QT_LOGGING_RULES");
         qputenv("QT_LOGGING_CONF", QFINDTESTDATA("qtlogging.ini").toLocal8Bit());
+        registry.initializeRules();
 
-        QLoggingRegistry registry;
-        registry.init();
-
-        QCOMPARE(registry.apiRules.size(), 0);
-        QCOMPARE(registry.configRules.size(), 0);
-        QCOMPARE(registry.envRules.size(), 1);
-
-        QCOMPARE(registry.rules.size(), 1);
+        QCOMPARE(registry.ruleSets[QLoggingRegistry::ApiRules].size(), 0);
+        QCOMPARE(registry.ruleSets[QLoggingRegistry::ConfigRules].size(), 0);
+        QCOMPARE(registry.ruleSets[QLoggingRegistry::EnvironmentRules].size(), 1);
 
         // check that QT_LOGGING_RULES take precedence
         qputenv("QT_LOGGING_RULES", "Digia.*=true");
-        registry.init();
-        QCOMPARE(registry.envRules.size(), 2);
-        QCOMPARE(registry.envRules.at(1).enabled, true);
-        QCOMPARE(registry.rules.size(), 2);
+        registry.initializeRules();
+        QCOMPARE(registry.ruleSets[QLoggingRegistry::EnvironmentRules].size(), 2);
+        QCOMPARE(registry.ruleSets[QLoggingRegistry::EnvironmentRules].at(1).enabled, true);
     }
 
     void QLoggingRegistry_config()
@@ -237,8 +246,8 @@ private slots:
         file.close();
 
         QLoggingRegistry registry;
-        registry.init();
-        QCOMPARE(registry.configRules.size(), 1);
+        registry.initializeRules();
+        QCOMPARE(registry.ruleSets[QLoggingRegistry::ConfigRules].size(), 1);
 
         // remove file again
         QVERIFY(file.remove());
@@ -260,10 +269,9 @@ private slots:
         QLoggingRegistry *registry = QLoggingRegistry::instance();
 
         // empty all rules , check default
-        registry->rules.clear();
-        registry->apiRules.clear();
-        registry->configRules.clear();
-        registry->envRules.clear();
+        registry->ruleSets[QLoggingRegistry::ApiRules].clear();
+        registry->ruleSets[QLoggingRegistry::ConfigRules].clear();
+        registry->ruleSets[QLoggingRegistry::EnvironmentRules].clear();
         registry->updateRules();
 
         QVERIFY(cat.isWarningEnabled());
@@ -271,7 +279,7 @@ private slots:
         // set Config rule
         QLoggingSettingsParser parser;
         parser.setContent("[Rules]\nDigia.*=false");
-        registry->configRules=parser.rules();
+        registry->ruleSets[QLoggingRegistry::ConfigRules] = parser.rules();
         registry->updateRules();
 
         QVERIFY(!cat.isWarningEnabled());
@@ -283,7 +291,7 @@ private slots:
 
         // set Env rule, should overwrite Config one
         parser.setContent("Digia.*=false");
-        registry->envRules=parser.rules();
+        registry->ruleSets[QLoggingRegistry::EnvironmentRules] = parser.rules();
         registry->updateRules();
 
         QVERIFY(!cat.isWarningEnabled());
@@ -304,6 +312,6 @@ private slots:
     }
 };
 
-QTEST_MAIN(tst_QLoggingRegistry)
+QTEST_APPLESS_MAIN(tst_QLoggingRegistry)
 
 #include "tst_qloggingregistry.moc"

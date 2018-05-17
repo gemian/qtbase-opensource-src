@@ -190,6 +190,12 @@
     \overload
 */
 
+/*! \fn void QVarLengthArray::shrink_to_fit()
+    \since 5.10
+
+    Same as squeeze(). Provided for STL-compatibility.
+*/
+
 /*! \fn bool QVarLengthArray::isEmpty() const
 
     Returns \c true if the array has size 0; otherwise returns \c false.
@@ -300,6 +306,34 @@
 
     Appends item \a t to the array, extending the array if necessary.
     Provided for STL-compatibility.
+*/
+
+/*!
+    \fn void QVarLengthArray::append(T &&t)
+    \overload append
+    \since 5.9
+
+    \note Unlike the lvalue overload of append(), passing a reference to
+    an object that is already an element of \c *this leads to undefined
+    behavior:
+
+    \code
+    vla.append(std::move(vla[0])); // BUG: passing an object that is already in the container
+    \endcode
+*/
+
+/*!
+    \fn void QVarLengthArray::push_back(T &&t)
+    \overload push_back
+    \since 5.9
+
+    \note Unlike the lvalue overload of push_back(), passing a reference to
+    an object that is already an element of \c *this leads to undefined
+    behavior:
+
+    \code
+    vla.push_back(std::move(vla[0])); // BUG: passing an object that is already in the container
+    \endcode
 */
 
 /*!

@@ -48,10 +48,8 @@
 #include <QScreen>
 #include <QSizeGrip>
 
-#include "../../../qtest-config.h"
-
 QT_BEGIN_NAMESPACE
-#if !defined(Q_DEAD_CODE_FROM_QT4_WIN)
+#if 1 // Used to be excluded in Qt4 for Q_WS_WIN
 extern bool qt_tab_all_widgets();
 #endif
 QT_END_NAMESPACE
@@ -161,7 +159,7 @@ private slots:
     void showShaded();
     void showNormal_data();
     void showNormal();
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
     void setOpaqueResizeAndMove_data();
     void setOpaqueResizeAndMove();
 #endif
@@ -184,7 +182,7 @@ private slots:
     void explicitlyHiddenWidget();
     void resizeTimer();
     void fixedMinMaxSize();
-#if !defined (Q_OS_MAC) && !defined (Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     void replaceMenuBarWhileMaximized();
     void closeOnDoubleClick_data();
     void closeOnDoubleClick();
@@ -575,10 +573,6 @@ void tst_QMdiSubWindow::showShaded()
     window->showNormal();
     QTest::qWait(250);
 
-#ifdef Q_OS_WINCE
-    QSKIP("Until we have a QEvent::WindowFlagsChange event, this will skip");
-#endif
-
     const QSize minimumSizeHint = window->minimumSizeHint();
     QVERIFY(minimumSizeHint.height() < 300);
     const int maxHeightDiff = 300 - minimumSizeHint.height();
@@ -669,7 +663,7 @@ private:
     int _count;
 };
 
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
 void tst_QMdiSubWindow::setOpaqueResizeAndMove_data()
 {
     QTest::addColumn<bool>("opaqueMode");
@@ -1010,7 +1004,7 @@ void tst_QMdiSubWindow::setSystemMenu()
     systemMenu->hide();
     QVERIFY(!qApp->activePopupWidget());
 
-#if !defined (Q_OS_MAC) && !defined (Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     // System menu in menu bar.
     subWindow->showMaximized();
     QVERIFY(subWindow->isMaximized());
@@ -1043,7 +1037,7 @@ void tst_QMdiSubWindow::setSystemMenu()
     systemMenu->hide();
     QVERIFY(!qApp->activePopupWidget());
 
-#if !defined (Q_OS_MAC) && !defined (Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     // System menu in menu bar in reverse mode.
     subWindow->showMaximized();
     QVERIFY(subWindow->isMaximized());
@@ -1474,7 +1468,7 @@ void tst_QMdiSubWindow::hideAndShow()
     QVERIFY(!menuBar->cornerWidget(Qt::TopRightCorner));
     QMdiSubWindow *subWindow = mdiArea->addSubWindow(new QTextEdit);
     subWindow->showMaximized();
-#if !defined (Q_OS_MAC) && !defined (Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     QVERIFY(menuBar->cornerWidget(Qt::TopRightCorner));
     QCOMPARE(menuBar->cornerWidget(Qt::TopRightCorner), subWindow->maximizedButtonsWidget());
 #endif
@@ -1489,7 +1483,7 @@ void tst_QMdiSubWindow::hideAndShow()
     // Show QMdiArea.
     tabWidget->setCurrentIndex(0);
 
-#if !defined (Q_OS_MAC) && !defined (Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     QVERIFY(menuBar->cornerWidget(Qt::TopRightCorner));
     QVERIFY(subWindow->maximizedButtonsWidget());
     QVERIFY(subWindow->maximizedSystemMenuIconWidget());
@@ -1511,7 +1505,7 @@ void tst_QMdiSubWindow::hideAndShow()
     QVERIFY(subWindow);
     QCOMPARE(mdiArea->activeSubWindow(), subWindow);
 
-#if !defined (Q_OS_MAC) && !defined (Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     QVERIFY(menuBar->cornerWidget(Qt::TopRightCorner));
 #if defined Q_OS_QNX
     QEXPECT_FAIL("", "QTBUG-38231", Abort);
@@ -1539,7 +1533,7 @@ void tst_QMdiSubWindow::hideAndShow()
     QVERIFY(!menuBar->cornerWidget(Qt::TopRightCorner));
 
     subWindow->show();
-#if !defined (Q_OS_MAC) && !defined (Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     QVERIFY(subWindow->maximizedButtonsWidget());
     QVERIFY(subWindow->maximizedSystemMenuIconWidget());
     QCOMPARE(menuBar->cornerWidget(Qt::TopRightCorner), subWindow->maximizedButtonsWidget());
@@ -1553,7 +1547,7 @@ void tst_QMdiSubWindow::hideAndShow()
 
     // Show QMainWindow.
     mainWindow.show();
-#if !defined (Q_OS_MAC) && !defined (Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     QVERIFY(subWindow->maximizedButtonsWidget());
     QVERIFY(subWindow->maximizedSystemMenuIconWidget());
     QCOMPARE(menuBar->cornerWidget(Qt::TopRightCorner), subWindow->maximizedButtonsWidget());
@@ -1723,7 +1717,7 @@ void tst_QMdiSubWindow::fixedMinMaxSize()
     QCOMPARE(subWindow->size(), minimumSize);
 }
 
-#if !defined( Q_OS_MAC) && !defined( Q_OS_WINCE)
+#if !defined( Q_OS_DARWIN)
 void tst_QMdiSubWindow::replaceMenuBarWhileMaximized()
 {
 

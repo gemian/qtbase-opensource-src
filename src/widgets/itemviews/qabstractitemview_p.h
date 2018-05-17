@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qabstractscrollarea_p.h"
 #include "private/qabstractitemmodel_p.h"
 #include "QtWidgets/qapplication.h"
@@ -63,7 +64,7 @@
 #include "QtCore/qbasictimer.h"
 #include "QtCore/qelapsedtimer.h"
 
-#ifndef QT_NO_ITEMVIEWS
+QT_REQUIRE_CONFIG(itemviews);
 
 QT_BEGIN_NAMESPACE
 
@@ -87,18 +88,6 @@ template <>
 class QTypeInfo<QItemViewPaintPair> : public QTypeInfoMerger<QItemViewPaintPair, QRect, QModelIndex> {};
 
 typedef QVector<QItemViewPaintPair> QItemViewPaintPairs;
-
-class QEmptyModel : public QAbstractItemModel
-{
-public:
-    explicit QEmptyModel(QObject *parent = 0) : QAbstractItemModel(parent) {}
-    QModelIndex index(int, int, const QModelIndex &) const { return QModelIndex(); }
-    QModelIndex parent(const QModelIndex &) const { return QModelIndex(); }
-    int rowCount(const QModelIndex &) const { return 0; }
-    int columnCount(const QModelIndex &) const { return 0; }
-    bool hasChildren(const QModelIndex &) const { return false; }
-    QVariant data(const QModelIndex &, int) const { return QVariant(); }
-};
 
 class Q_AUTOTEST_EXPORT QAbstractItemViewPrivate : public QAbstractScrollAreaPrivate
 {
@@ -322,7 +311,7 @@ public:
     }
 
     // reimplemented from QAbstractScrollAreaPrivate
-    virtual QPoint contentsOffset() const {
+    QPoint contentsOffset() const override {
         Q_Q(const QAbstractItemView);
         return QPoint(q->horizontalOffset(), q->verticalOffset());
     }
@@ -487,7 +476,5 @@ inline int qBinarySearch(const QVector<T> &vec, const T &item, int start, int en
 }
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_ITEMVIEWS
 
 #endif // QABSTRACTITEMVIEW_P_H

@@ -51,9 +51,13 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include "qnetworkaccessmanager.h"
 #include "qnetworkaccesscache_p.h"
 #include "qnetworkaccessbackend_p.h"
+#include "qnetworkrequest.h"
+#include "qhstsstore_p.h"
+#include "qhsts_p.h"
 #include "private/qobject_p.h"
 #include "QtNetwork/qnetworkproxy.h"
 #include "QtNetwork/qnetworksession.h"
@@ -74,7 +78,7 @@ class QNetworkAccessManagerPrivate: public QObjectPrivate
 public:
     QNetworkAccessManagerPrivate()
         : networkCache(0), cookieJar(0),
-          httpThread(0),
+          thread(0),
 #ifndef QT_NO_NETWORKPROXY
           proxyFactory(0),
 #endif
@@ -90,6 +94,7 @@ public:
 #endif
           cookieJarCreated(false),
           defaultAccessControl(true),
+          redirectPolicy(QNetworkRequest::ManualRedirectPolicy),
           authenticationManager(QSharedPointer<QNetworkAccessAuthenticationManager>::create())
     {
 #ifndef QT_NO_BEARERMANAGEMENT
@@ -106,6 +111,9 @@ public:
 #endif
     }
     ~QNetworkAccessManagerPrivate();
+
+    QThread * createThread();
+    void destroyThread();
 
     void _q_replyFinished();
     void _q_replyEncrypted();
@@ -163,7 +171,7 @@ public:
 
     QNetworkCookieJar *cookieJar;
 
-    QThread *httpThread;
+    QThread *thread;
 
 
 #ifndef QT_NO_NETWORKPROXY
@@ -189,6 +197,7 @@ public:
 
     bool cookieJarCreated;
     bool defaultAccessControl;
+    QNetworkRequest::RedirectPolicy redirectPolicy;
 
     // The cache with authorization data:
     QSharedPointer<QNetworkAccessAuthenticationManager> authenticationManager;
@@ -198,7 +207,14 @@ public:
     QNetworkAccessCache objectCache;
     static inline QNetworkAccessCache *getObjectCache(QNetworkAccessBackend *backend)
     { return &backend->manager->objectCache; }
-    Q_AUTOTEST_EXPORT static void clearCache(QNetworkAccessManager *manager);
+
+    Q_AUTOTEST_EXPORT static void clearAuthenticationCache(QNetworkAccessManager *manager);
+    Q_AUTOTEST_EXPORT static void clearConnectionCache(QNetworkAccessManager *manager);
+
+    QHstsCache stsCache;
+    QScopedPointer<QHstsStore> stsStore;
+    bool stsEnabled = false;
+
 #ifndef QT_NO_BEARERMANAGEMENT
     Q_AUTOTEST_EXPORT static const QWeakPointer<const QNetworkSession> getNetworkSession(const QNetworkAccessManager *manager);
 #endif

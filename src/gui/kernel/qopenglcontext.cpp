@@ -848,14 +848,15 @@ QAbstractOpenGLFunctions *QOpenGLContext::versionFunctions(const QOpenGLVersionP
 
     // Create object if suitable one not cached
     QAbstractOpenGLFunctions* funcs = 0;
-    if (!d->versionFunctions.contains(vp)) {
+    auto it = d->versionFunctions.constFind(vp);
+    if (it == d->versionFunctions.constEnd()) {
         funcs = QOpenGLVersionFunctionsFactory::create(vp);
         if (funcs) {
             funcs->setOwningContext(this);
             d->versionFunctions.insert(vp, funcs);
         }
     } else {
-        funcs = d->versionFunctions.value(vp);
+        funcs = it.value();
     }
 
     if (funcs && QOpenGLContext::currentContext() == this)
@@ -936,17 +937,26 @@ GLuint QOpenGLContext::defaultFramebufferObject() const
 
 /*!
     Makes the context current in the current thread, against the given
-    \a surface. Returns \c true if successful.
+    \a surface. Returns \c true if successful; otherwise returns \c false.
+    The latter may happen if the surface is not exposed, or the graphics
+    hardware is not available due to e.g. the application being suspended.
 
     If \a surface is 0 this is equivalent to calling doneCurrent().
 
-    Do not call this function from a different thread than the one the
+    Avoid calling this function from a different thread than the one the
     QOpenGLContext instance lives in. If you wish to use QOpenGLContext from a
     different thread you should first call make sure it's not current in the
     current thread, by calling doneCurrent() if necessary. Then call
     moveToThread(otherThread) before using it in the other thread.
 
-    \sa functions(), doneCurrent()
+    By default Qt employs a check that enforces the above condition on the
+    thread affinity. It is still possible to disable this check by setting the
+    \c{Qt::AA_DontCheckOpenGLContextThreadAffinity} application attribute. Be
+    sure to understand the consequences of using QObjects from outside
+    the thread they live in, as explained in the
+    \l{QObject#Thread Affinity}{QObject thread affinity} documentation.
+
+    \sa functions(), doneCurrent(), Qt::AA_DontCheckOpenGLContextThreadAffinity
 */
 bool QOpenGLContext::makeCurrent(QSurface *surface)
 {
@@ -954,8 +964,10 @@ bool QOpenGLContext::makeCurrent(QSurface *surface)
     if (!isValid())
         return false;
 
-    if (Q_UNLIKELY(thread() != QThread::currentThread()))
+    if (Q_UNLIKELY(!qApp->testAttribute(Qt::AA_DontCheckOpenGLContextThreadAffinity)
+                   && thread() != QThread::currentThread())) {
         qFatal("Cannot make QOpenGLContext current in a different thread");
+    }
 
     if (!surface) {
         doneCurrent();
@@ -972,6 +984,42 @@ bool QOpenGLContext::makeCurrent(QSurface *surface)
     QOpenGLContext *previous = QOpenGLContextPrivate::setCurrentContext(this);
 
     if (d->platformGLContext->makeCurrent(surface->surfaceHandle())) {
+        static bool needsWorkaroundSet = false;
+        static bool needsWorkaround = false;
+
+        if (!needsWorkaroundSet) {
+            QByteArray env;
+#ifdef Q_OS_ANDROID
+            env = qgetenv(QByteArrayLiteral("QT_ANDROID_DISABLE_GLYPH_CACHE_WORKAROUND"));
+            needsWorkaround = env.isEmpty() || env == QByteArrayLiteral("0") || env == QByteArrayLiteral("false");
+#endif
+            env = qgetenv(QByteArrayLiteral("QT_ENABLE_GLYPH_CACHE_WORKAROUND"));
+            if (env == QByteArrayLiteral("1") || env == QByteArrayLiteral("true"))
+                needsWorkaround = true;
+
+            if (!needsWorkaround) {
+                const char *rendererString = reinterpret_cast<const char *>(functions()->glGetString(GL_RENDERER));
+                if (rendererString)
+                    needsWorkaround =
+                            qstrncmp(rendererString, "Mali-4xx", 6) == 0 // Mali-400, Mali-450
+                            || qstrcmp(rendererString, "Mali-T880") == 0
+                            || qstrncmp(rendererString, "Adreno (TM) 2xx", 13) == 0 // Adreno 200, 203, 205
+                            || qstrncmp(rendererString, "Adreno 2xx", 8) == 0 // Same as above but without the '(TM)'
+                            || qstrncmp(rendererString, "Adreno (TM) 30x", 14) == 0 // Adreno 302, 305
+                            || qstrncmp(rendererString, "Adreno 30x", 9) == 0 // Same as above but without the '(TM)'
+                            || qstrncmp(rendererString, "Adreno (TM) 4xx", 13) == 0 // Adreno 405, 418, 420, 430
+                            || qstrncmp(rendererString, "Adreno 4xx", 8) == 0 // Same as above but without the '(TM)'
+                            || qstrcmp(rendererString, "GC800 core") == 0
+                            || qstrcmp(rendererString, "GC1000 core") == 0
+                            || strstr(rendererString, "GC2000") != 0
+                            || qstrcmp(rendererString, "Immersion.16") == 0;
+            }
+            needsWorkaroundSet = true;
+        }
+
+        if (needsWorkaround)
+            d->workaround_brokenFBOReadBack = true;
+
         d->surface = surface;
 
         d->shareGroup->d_func()->deletePendingResources(this);
@@ -1631,6 +1679,61 @@ void QOpenGLMultiGroupSharedResource::cleanup(QOpenGLContextGroup *group, QOpenG
     Q_ASSERT(m_groups.contains(group));
     m_groups.removeOne(group);
 }
+
+#ifndef QT_NO_DEBUG_STREAM
+QDebug operator<<(QDebug debug, const QOpenGLVersionProfile &vp)
+{
+    QDebugStateSaver saver(debug);
+    debug.nospace();
+    debug << "QOpenGLVersionProfile(";
+    if (vp.isValid()) {
+        debug << vp.version().first << '.' << vp.version().second
+            << ", profile=" << vp.profile();
+    } else {
+        debug << "invalid";
+    }
+    debug << ')';
+    return debug;
+}
+
+QDebug operator<<(QDebug debug, const QOpenGLContext *ctx)
+{
+    QDebugStateSaver saver(debug);
+    debug.nospace();
+    debug.noquote();
+    debug << "QOpenGLContext(";
+    if (ctx)  {
+        debug << static_cast<const void *>(ctx);
+        if (ctx->isValid()) {
+            debug << ", nativeHandle=" << ctx->nativeHandle()
+                << ", format=" << ctx->format();
+            if (const QSurface *sf = ctx->surface())
+                debug << ", surface=" << sf;
+            if (const QScreen *s = ctx->screen())
+                debug << ", screen=\"" << s->name() << '"';
+        } else {
+            debug << ", invalid";
+        }
+    } else {
+        debug << '0';
+    }
+    debug << ')';
+    return debug;
+}
+
+QDebug operator<<(QDebug debug, const QOpenGLContextGroup *cg)
+{
+    QDebugStateSaver saver(debug);
+    debug.nospace();
+    debug << "QOpenGLContextGroup(";
+    if (cg)
+        debug << cg->shares();
+    else
+        debug << '0';
+    debug << ')';
+    return debug;
+}
+#endif // QT_NO_DEBUG_STREAM
 
 #include "moc_qopenglcontext.cpp"
 

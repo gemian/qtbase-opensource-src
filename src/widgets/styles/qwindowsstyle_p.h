@@ -51,16 +51,17 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtWidgets/qcommonstyle.h>
 
 QT_BEGIN_NAMESPACE
 
 
-#if !defined(QT_NO_STYLE_WINDOWS)
+#if QT_CONFIG(style_windows)
 
 class QWindowsStylePrivate;
 
-class QWindowsStyle : public QCommonStyle
+class Q_WIDGETS_EXPORT QWindowsStyle : public QCommonStyle
 {
     Q_OBJECT
 public:
@@ -105,7 +106,7 @@ private:
     Q_DECLARE_PRIVATE(QWindowsStyle)
 };
 
-#endif // QT_NO_STYLE_WINDOWS
+#endif // style_windows
 
 QT_END_NAMESPACE
 

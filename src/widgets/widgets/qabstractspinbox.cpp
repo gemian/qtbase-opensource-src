@@ -39,19 +39,20 @@
 
 #include <qplatformdefs.h>
 #include <private/qabstractspinbox_p.h>
+#if QT_CONFIG(datetimeparser)
 #include <private/qdatetimeparser_p.h>
+#endif
 #include <private/qlineedit_p.h>
 #include <qabstractspinbox.h>
-
-#ifndef QT_NO_SPINBOX
 
 #include <qapplication.h>
 #include <qstylehints.h>
 #include <qclipboard.h>
 #include <qdatetime.h>
-#include <qdatetimeedit.h>
 #include <qevent.h>
+#if QT_CONFIG(menu)
 #include <qmenu.h>
+#endif
 #include <qpainter.h>
 #include <qpalette.h>
 #include <qstylepainter.h>
@@ -694,6 +695,10 @@ void QAbstractSpinBox::setLineEdit(QLineEdit *lineEdit)
                 this, SLOT(_q_editorTextChanged(QString)));
         connect(d->edit, SIGNAL(cursorPositionChanged(int,int)),
                 this, SLOT(_q_editorCursorPositionChanged(int,int)));
+        connect(d->edit, SIGNAL(cursorPositionChanged(int,int)),
+                this, SLOT(updateMicroFocus()));
+        connect(d->edit->d_func()->control, SIGNAL(updateMicroFocus()),
+                this, SLOT(updateMicroFocus()));
     }
     d->updateEditFieldGeometry();
     d->edit->setContextMenuPolicy(Qt::NoContextMenu);
@@ -976,6 +981,7 @@ void QAbstractSpinBox::keyPressEvent(QKeyEvent *event)
     case Qt::Key_PageDown:
         steps *= 10;
         isPgUpOrDown = true;
+        Q_FALLTHROUGH();
     case Qt::Key_Up:
     case Qt::Key_Down: {
 #ifdef QT_KEYPAD_NAVIGATION
@@ -1114,7 +1120,7 @@ void QAbstractSpinBox::keyReleaseEvent(QKeyEvent *event)
     \reimp
 */
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 void QAbstractSpinBox::wheelEvent(QWheelEvent *event)
 {
     Q_D(QAbstractSpinBox);
@@ -1246,11 +1252,9 @@ void QAbstractSpinBox::timerEvent(QTimerEvent *event)
     \reimp
 */
 
+#if QT_CONFIG(contextmenu)
 void QAbstractSpinBox::contextMenuEvent(QContextMenuEvent *event)
 {
-#ifdef QT_NO_CONTEXTMENU
-    Q_UNUSED(event);
-#else
     Q_D(QAbstractSpinBox);
 
     QPointer<QMenu> menu = d->edit->createStandardContextMenu();
@@ -1286,8 +1290,8 @@ void QAbstractSpinBox::contextMenuEvent(QContextMenuEvent *event)
         }
     }
     event->accept();
-#endif // QT_NO_CONTEXTMENU
 }
+#endif // QT_CONFIG(contextmenu)
 
 /*!
     \reimp
@@ -1957,12 +1961,15 @@ QVariant operator+(const QVariant &arg1, const QVariant &arg2)
         break;
     }
     case QVariant::Double: ret = QVariant(arg1.toDouble() + arg2.toDouble()); break;
+#if QT_CONFIG(datetimeparser)
     case QVariant::DateTime: {
         QDateTime a2 = arg2.toDateTime();
         QDateTime a1 = arg1.toDateTime().addDays(QDATETIMEEDIT_DATETIME_MIN.daysTo(a2));
         a1.setTime(a1.time().addMSecs(QTime().msecsTo(a2.time())));
         ret = QVariant(a1);
+        break;
     }
+#endif // datetimeparser
     default: break;
     }
     return ret;
@@ -2017,6 +2024,7 @@ QVariant operator*(const QVariant &arg1, double multiplier)
         ret = static_cast<int>(qBound<double>(INT_MIN, arg1.toInt() * multiplier, INT_MAX));
         break;
     case QVariant::Double: ret = QVariant(arg1.toDouble() * multiplier); break;
+#if QT_CONFIG(datetimeparser)
     case QVariant::DateTime: {
         double days = QDATETIMEEDIT_DATE_MIN.daysTo(arg1.toDateTime().date()) * multiplier;
         int daysInt = (int)days;
@@ -2026,6 +2034,7 @@ QVariant operator*(const QVariant &arg1, double multiplier)
         ret = QDateTime(QDate().addDays(int(days)), QTime().addMSecs(msecs));
         break;
     }
+#endif // datetimeparser
     default: ret = arg1; break;
     }
 
@@ -2048,11 +2057,14 @@ double operator/(const QVariant &arg1, const QVariant &arg2)
         a1 = arg1.toDouble();
         a2 = arg2.toDouble();
         break;
+#if QT_CONFIG(datetimeparser)
     case QVariant::DateTime:
         a1 = QDATETIMEEDIT_DATE_MIN.daysTo(arg1.toDate());
         a2 = QDATETIMEEDIT_DATE_MIN.daysTo(arg2.toDate());
         a1 += (double)QDATETIMEEDIT_TIME_MIN.msecsTo(arg1.toDateTime().time()) / (long)(3600 * 24 * 1000);
         a2 += (double)QDATETIMEEDIT_TIME_MIN.msecsTo(arg2.toDateTime().time()) / (long)(3600 * 24 * 1000);
+        break;
+#endif // datetimeparser
     default: break;
     }
 
@@ -2113,11 +2125,12 @@ int QAbstractSpinBoxPrivate::variantCompare(const QVariant &arg1, const QVariant
     case QVariant::Invalid:
         if (arg2.type() == QVariant::Invalid)
             return 0;
+        Q_FALLTHROUGH();
     default:
         Q_ASSERT_X(0, "QAbstractSpinBoxPrivate::variantCompare",
                    qPrintable(QString::fromLatin1("Internal error 3 (%1 %2)").
-                              arg(QString::fromLatin1(arg1.typeName())).
-                              arg(QString::fromLatin1(arg2.typeName()))));
+                              arg(QString::fromLatin1(arg1.typeName()),
+                                  QString::fromLatin1(arg2.typeName()))));
     }
     return -2;
 }
@@ -2139,5 +2152,3 @@ QVariant QAbstractSpinBoxPrivate::variantBound(const QVariant &min,
 QT_END_NAMESPACE
 
 #include "moc_qabstractspinbox.cpp"
-
-#endif // QT_NO_SPINBOX

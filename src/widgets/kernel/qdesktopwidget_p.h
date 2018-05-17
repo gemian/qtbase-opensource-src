@@ -51,10 +51,12 @@
 #ifndef QDESKTOPWIDGET_P_H
 #define QDESKTOPWIDGET_P_H
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QDesktopWidget"
 #include "private/qwidget_p.h"
 
 #include <QtCore/qalgorithms.h>
+#include <QtGui/qscreen.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -84,6 +86,29 @@ public:
     void _q_updateScreens();
     void _q_availableGeometryChanged();
     QDesktopScreenWidget *widgetForScreen(QScreen *qScreen) const;
+
+    static bool isVirtualDesktop();
+
+    static QRect geometry();
+    static QSize size();
+    static int width();
+    static int height();
+
+    static int numScreens();
+    static int primaryScreen();
+
+    static int screenNumber(const QWidget *widget = nullptr);
+    static int screenNumber(const QPoint &);
+
+    static const QRect screenGeometry(int screen = -1);
+    static const QRect screenGeometry(const QWidget *widget);
+    static const QRect screenGeometry(const QPoint &point)
+    { return screenGeometry(screenNumber(point)); }
+
+    static const QRect availableGeometry(int screen = -1);
+    static const QRect availableGeometry(const QWidget *widget);
+    static const QRect availableGeometry(const QPoint &point)
+    { return availableGeometry(screenNumber(point)); }
 
     QList<QDesktopScreenWidget *> screens;
 };

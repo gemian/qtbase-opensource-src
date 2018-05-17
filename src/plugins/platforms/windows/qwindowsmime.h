@@ -40,7 +40,7 @@
 #ifndef QWINDOWSMIME_H
 #define QWINDOWSMIME_H
 
-#include "qtwindows_additional.h"
+#include <QtCore/qt_windows.h>
 
 #include <QtCore/QVector>
 #include <QtCore/QList>
@@ -96,7 +96,7 @@ private:
     void ensureInitialized() const;
 
     mutable QList<QWindowsMime *> m_mimes;
-    mutable int m_internalMimeCount;
+    mutable int m_internalMimeCount = 0;
 };
 
 #ifndef QT_NO_DEBUG_STREAM

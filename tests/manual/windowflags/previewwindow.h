@@ -32,26 +32,26 @@
 #include <QDialog>
 
 QT_BEGIN_NAMESPACE
-class QPushButton;
-class QTextEdit;
+class QPlainTextEdit;
 QT_END_NAMESPACE
 
-class PreviewWindow : public QWidget
+class PreviewWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    PreviewWindow(QWidget *parent = 0);
+    PreviewWidget(QWidget *parent = 0);
 
     void setWindowFlags(Qt::WindowFlags flags);
 
+public slots:
+    void updateInfo();
+
+protected:
+    bool event(QEvent *) override;
+
 private:
-    QTextEdit *textEdit;
-    QPushButton *closeButton;
-    QPushButton *showNormalButton;
-    QPushButton *showMinimizedButton;
-    QPushButton *showMaximizedButton;
-    QPushButton *showFullScreenButton;
+    QPlainTextEdit *textEdit;
 };
 
 class PreviewDialog : public QDialog
@@ -63,13 +63,14 @@ public:
 
     void setWindowFlags(Qt::WindowFlags flags);
 
+public slots:
+    void updateInfo();
+
+protected:
+    bool event(QEvent *) override;
+
 private:
-    QTextEdit *textEdit;
-    QPushButton *closeButton;
-    QPushButton *showNormalButton;
-    QPushButton *showMinimizedButton;
-    QPushButton *showMaximizedButton;
-    QPushButton *showFullScreenButton;
+    QPlainTextEdit *textEdit;
 };
 
 #endif

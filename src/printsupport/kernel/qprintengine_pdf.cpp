@@ -58,10 +58,12 @@
 
 QT_BEGIN_NAMESPACE
 
-QPdfPrintEngine::QPdfPrintEngine(QPrinter::PrinterMode m)
+QPdfPrintEngine::QPdfPrintEngine(QPrinter::PrinterMode m, QPdfEngine::PdfVersion version)
     : QPdfEngine(*new QPdfPrintEnginePrivate(m))
 {
     state = QPrinter::Idle;
+
+    setPdfVersion(version);
 }
 
 QPdfPrintEngine::QPdfPrintEngine(QPdfPrintEnginePrivate &p)
@@ -150,7 +152,7 @@ void QPdfPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &va
         else
             d->m_pageLayout.setMode(QPageLayout::StandardMode);
         break;
-    case PPK_CopyCount: // fallthrough
+    case PPK_CopyCount:
     case PPK_NumberOfCopies:
         d->copies = value.toInt();
         break;
@@ -379,7 +381,7 @@ void QPdfPrintEnginePrivate::closePrintDevice()
     #endif
         fd = -1;
         delete outDevice;
-        outDevice = 0;
+        outDevice = nullptr;
     }
 }
 

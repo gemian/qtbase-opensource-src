@@ -70,7 +70,7 @@ public:
         setTargetState(target);
     }
 
-    virtual bool eventTest(QEvent *e) Q_DECL_OVERRIDE
+    bool eventTest(QEvent *e) override
     {
         if (QSignalTransition::eventTest(e)) {
             QVariant key = static_cast<QStateMachine::SignalEvent*>(e)->arguments().at(0);
@@ -91,13 +91,12 @@ public:
         : QEventTransition(this, QEvent::Timer)
     {
         setTargetState(target);
-        qsrand((uint)QDateTime::currentDateTime().toTime_t());
         startTimer(1000);
     }
 
-    virtual bool eventTest(QEvent *e) Q_DECL_OVERRIDE
+    bool eventTest(QEvent *e) override
     {
-        return QEventTransition::eventTest(e) && ((qrand() % 50) == 0);
+        return QEventTransition::eventTest(e) && QRandomGenerator::global()->bounded(50) == 0;
     }
 };
 //! [4]

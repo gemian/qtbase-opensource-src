@@ -40,6 +40,7 @@
 #ifndef QDBUSCONNECTIONINTERFACE_H
 #define QDBUSCONNECTIONINTERFACE_H
 
+#include <QtDBus/qtdbusglobal.h>
 #include <QtCore/qstringlist.h>
 
 #include <QtDBus/qdbusabstractinterface.h>
@@ -60,7 +61,6 @@ class QByteArray;
 class Q_DBUS_EXPORT QDBusConnectionInterface: public QDBusAbstractInterface
 {
     Q_OBJECT
-    Q_ENUMS(ServiceQueueOptions ServiceReplacementOptions RegisterServiceReply)
     friend class QDBusConnectionPrivate;
     static inline const char *staticInterfaceName();
 
@@ -75,15 +75,18 @@ public:
         QueueService,
         ReplaceExistingService
     };
+    Q_ENUM(ServiceQueueOptions)
     enum ServiceReplacementOptions {
         DontAllowReplacement,
         AllowReplacement
     };
+    Q_ENUM(ServiceReplacementOptions)
     enum RegisterServiceReply {
         ServiceNotRegistered = 0,
         ServiceRegistered,
         ServiceQueued
     };
+    Q_ENUM(RegisterServiceReply)
 
 public Q_SLOTS:
     QDBusReply<QStringList> registeredServiceNames() const;

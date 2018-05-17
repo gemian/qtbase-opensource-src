@@ -41,9 +41,7 @@
 #define QMACCLIPBOARD_H
 
 #include <QtGui>
-#include <QtPlatformSupport/private/qmacmime_p.h>
-
-#undef slots
+#include <QtClipboardSupport/private/qmacmime_p.h>
 
 #import <AppKit/AppKit.h>
 

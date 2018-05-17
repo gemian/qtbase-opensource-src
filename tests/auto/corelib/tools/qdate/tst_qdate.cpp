@@ -1033,7 +1033,8 @@ void tst_QDate::fromStringFormat_data()
     QTest::addColumn<QString>("format");
     QTest::addColumn<QDate>("expected");
 
-    //get localized names
+    // Undo this (inline the C-locale versions) for ### Qt 6
+    // Get localized names:
     QString january = QDate::longMonthName(1);
     QString february = QDate::longMonthName(2);
     QString march = QDate::longMonthName(3);
@@ -1145,6 +1146,7 @@ void tst_QDate::toStringDateFormat_data()
     QTest::newRow("year < 0") << QDate(-1,1,1) << Qt::ISODate << QString();
     QTest::newRow("year > 9999") << QDate(-1,1,1) << Qt::ISODate << QString();
     QTest::newRow("RFC2822Date") << QDate(1974,12,1) << Qt::RFC2822Date << QString("01 Dec 1974");
+    QTest::newRow("ISODateWithMs") << QDate(1974,12,1) << Qt::ISODateWithMs << QString("1974-12-01");
 }
 
 void tst_QDate::toStringDateFormat()
@@ -1488,7 +1490,7 @@ void tst_QDate::roundtrip() const
 
 void tst_QDate::qdebug() const
 {
-    QTest::ignoreMessage(QtDebugMsg, "QDate(\"\")");
+    QTest::ignoreMessage(QtDebugMsg, "QDate(Invalid)");
     qDebug() << QDate();
     QTest::ignoreMessage(QtDebugMsg, "QDate(\"1983-08-07\")");
     qDebug() << QDate(1983, 8, 7);

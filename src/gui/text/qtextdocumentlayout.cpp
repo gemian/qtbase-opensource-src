@@ -295,7 +295,7 @@ static inline bool isEmptyBlockBeforeTable(const QTextBlock &block, const QTextB
            ;
 }
 
-static inline bool isEmptyBlockBeforeTable(QTextFrame::Iterator it)
+static inline bool isEmptyBlockBeforeTable(const QTextFrame::Iterator &it)
 {
     QTextFrame::Iterator next = it; ++next;
     if (it.currentFrame())
@@ -419,7 +419,7 @@ static bool operator<(int pos, const QCheckPoint &checkPoint)
 
 #endif
 
-static void fillBackground(QPainter *p, const QRectF &rect, QBrush brush, const QPointF &origin, QRectF gradientRect = QRectF())
+static void fillBackground(QPainter *p, const QRectF &rect, QBrush brush, const QPointF &origin, const QRectF &gradientRect = QRectF())
 {
     p->save();
     if (brush.style() >= Qt::LinearGradientPattern && brush.style() <= Qt::ConicalGradientPattern) {
@@ -834,6 +834,8 @@ void QTextDocumentLayoutPrivate::drawBorder(QPainter *painter, const QRectF &rec
 
 #ifndef QT_NO_CSSPARSER
     QCss::BorderStyle cssStyle = static_cast<QCss::BorderStyle>(style + 1);
+#else
+    Q_UNUSED(style);
 #endif //QT_NO_CSSPARSER
 
     bool turn_off_antialiasing = !(painter->renderHints() & QPainter::Antialiasing);
@@ -1504,7 +1506,7 @@ void QTextDocumentLayoutPrivate::drawListItem(const QPointF &offset, QPainter *p
     painter->restore();
 }
 
-static QFixed flowPosition(const QTextFrame::iterator it)
+static QFixed flowPosition(const QTextFrame::iterator &it)
 {
     if (it.atEnd())
         return 0;
@@ -2921,11 +2923,11 @@ void QTextDocumentLayout::documentChanged(int from, int oldLength, int length)
 {
     Q_D(QTextDocumentLayout);
 
-    QTextBlock startIt = document()->findBlock(from);
+    QTextBlock blockIt = document()->findBlock(from);
     QTextBlock endIt = document()->findBlock(qMax(0, from + length - 1));
     if (endIt.isValid())
         endIt = endIt.next();
-    for (QTextBlock blockIt = startIt; blockIt.isValid() && blockIt != endIt; blockIt = blockIt.next())
+     for (; blockIt.isValid() && blockIt != endIt; blockIt = blockIt.next())
          blockIt.clearLayout();
 
     if (d->docPrivate->pageSize.isNull())
@@ -2966,9 +2968,6 @@ void QTextDocumentLayout::documentChanged(int from, int oldLength, int length)
         d->layoutTimer.start(10, this);
 
     d->insideDocumentChange = false;
-
-    for (QTextBlock blockIt = startIt; blockIt.isValid() && blockIt != endIt; blockIt = blockIt.next())
-         emit updateBlock(blockIt);
 
     if (d->showLayoutProgress) {
         const QSizeF newSize = dynamicDocumentSize();

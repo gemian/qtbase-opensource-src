@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtCore/private/qglobal_p.h>
 #include "qmetatype.h"
 
 QT_BEGIN_NAMESPACE
@@ -128,7 +129,7 @@ public:
     QMetaType::Constructor constructor;
     QMetaType::Destructor destructor;
     int size;
-    quint32 flags; // same as QMetaType::TypeFlags
+    QMetaType::TypeFlags::Int flags;
     const QMetaObject *metaObject;
 };
 

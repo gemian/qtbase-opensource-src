@@ -71,7 +71,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_CORE_EXPORT unsigned int qt_int_sqrt(unsigned int n);
+Q_CORE_EXPORT Q_DECL_CONST_FUNCTION unsigned int qt_int_sqrt(unsigned int n);
 
 /*!
     Returns \c true if the string \a text is likely to be rich text;
@@ -94,7 +94,7 @@ bool Qt::mightBeRichText(const QString& text)
         ++start;
 
     // skip a leading <?xml ... ?> as for example with xhtml
-    if (text.mid(start, 5) == QLatin1String("<?xml")) {
+    if (text.midRef(start, 5).compare(QLatin1String("<?xml")) == 0) {
         while (start < text.length()) {
             if (text.at(start) == QLatin1Char('?')
                 && start + 2 < text.length()
@@ -109,12 +109,12 @@ bool Qt::mightBeRichText(const QString& text)
             ++start;
     }
 
-    if (text.mid(start, 5).toLower() == QLatin1String("<!doc"))
+    if (text.midRef(start, 5).compare(QLatin1String("<!doc"), Qt::CaseInsensitive) == 0)
         return true;
     int open = start;
     while (open < text.length() && text.at(open) != QLatin1Char('<')
             && text.at(open) != QLatin1Char('\n')) {
-        if (text.at(open) == QLatin1Char('&') &&  text.mid(open+1,3) == QLatin1String("lt;"))
+        if (text.at(open) == QLatin1Char('&') &&  text.midRef(open + 1, 3) == QLatin1String("lt;"))
             return true; // support desperate attempt of user to see <...>
         ++open;
     }
@@ -133,7 +133,7 @@ bool Qt::mightBeRichText(const QString& text)
                     return false; // that's not a tag
             }
 #ifndef QT_NO_TEXTHTMLPARSER
-            return QTextHtmlParser::lookupElement(tag.toLower()) != -1;
+            return QTextHtmlParser::lookupElement(std::move(tag).toLower()) != -1;
 #else
             return false;
 #endif // QT_NO_TEXTHTMLPARSER
@@ -1145,8 +1145,30 @@ void QTextDocument::setMetaInformation(MetaInformation info, const QString &stri
 }
 
 /*!
+    Returns the raw text contained in the document without any
+    formatting information. If you want formatting information
+    use a QTextCursor instead.
+
+    \since 5.9
+    \sa toPlainText()
+*/
+QString QTextDocument::toRawText() const
+{
+    Q_D(const QTextDocument);
+    return d->plainText();
+}
+
+/*!
     Returns the plain text contained in the document. If you want
     formatting information use a QTextCursor instead.
+
+    This function returns the same as toRawText(), but will replace
+    some unicode characters with ASCII alternatives.
+    In particular, no-break space (U+00A0) is replaced by a regular
+    space (U+0020), and both paragraph (U+2029) and line (U+2028)
+    separators are replaced by line feed (U+000A).
+    If you need the precise contents of the document, use toRawText()
+    instead.
 
     \note Embedded objects, such as images, are represented by a
     Unicode value U+FFFC (OBJECT REPLACEMENT CHARACTER).
@@ -1765,6 +1787,10 @@ QTextBlock QTextDocument::lastBlock() const
 /*!
     \property QTextDocument::pageSize
     \brief the page size that should be used for laying out the document
+
+    The units are determined by the underlying paint device. The size is
+    measured in logical pixels when painting to the screen, and in points
+    (1/72 inch) when painting to a printer.
 
     By default, for a newly-created, empty document, this property contains
     an undefined size.
@@ -3135,7 +3161,7 @@ void QTextHtmlExporter::emitTable(const QTextTable *table)
     html += QLatin1String("</table>");
 }
 
-void QTextHtmlExporter::emitFrame(QTextFrame::Iterator frameIt)
+void QTextHtmlExporter::emitFrame(const QTextFrame::Iterator &frameIt)
 {
     if (!frameIt.atEnd()) {
         QTextFrame::Iterator next = frameIt;

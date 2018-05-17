@@ -50,8 +50,11 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtGui/private/qabstractlayoutstyleinfo_p.h>
 #include <QtWidgets/qstyleoption.h>
+
+QT_REQUIRE_CONFIG(graphicsview);
 
 QT_BEGIN_NAMESPACE
 

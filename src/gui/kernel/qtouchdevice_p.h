@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QtGui/qtouchdevice.h>
 
 QT_BEGIN_NAMESPACE
@@ -63,16 +64,22 @@ public:
         : type(QTouchDevice::TouchScreen),
           caps(QTouchDevice::Position),
           maxTouchPoints(1)
-    { }
+    {
+        static quint8 nextId = 2;   // device 0 is not used, device 1 is for mouse device
+        id = nextId++;
+    }
 
     QTouchDevice::DeviceType type;
     QTouchDevice::Capabilities caps;
     QString name;
     int maxTouchPoints;
+    quint8 id;
 
     static void registerDevice(const QTouchDevice *dev);
     static void unregisterDevice(const QTouchDevice *dev);
     static bool isRegistered(const QTouchDevice *dev);
+    static const QTouchDevice *deviceById(quint8 id);
+    static QTouchDevicePrivate *get(QTouchDevice *q) { return q->d; }
 };
 
 QT_END_NAMESPACE

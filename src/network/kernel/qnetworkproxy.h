@@ -40,6 +40,7 @@
 #ifndef QNETWORKPROXY_H
 #define QNETWORKPROXY_H
 
+#include <QtNetwork/qtnetworkglobal.h>
 #include <QtNetwork/qhostaddress.h>
 #include <QtNetwork/qnetworkrequest.h>
 #include <QtCore/qshareddata.h>
@@ -55,13 +56,18 @@ class QNetworkConfiguration;
 class QNetworkProxyQueryPrivate;
 class Q_NETWORK_EXPORT QNetworkProxyQuery
 {
+    Q_GADGET
+
 public:
     enum QueryType {
         TcpSocket,
         UdpSocket,
+        SctpSocket,
         TcpServer = 100,
-        UrlRequest
+        UrlRequest,
+        SctpServer
     };
+    Q_ENUM(QueryType)
 
     QNetworkProxyQuery();
     explicit QNetworkProxyQuery(const QUrl &requestUrl, QueryType queryType = UrlRequest);
@@ -69,12 +75,15 @@ public:
                        QueryType queryType = TcpSocket);
     explicit QNetworkProxyQuery(quint16 bindPort, const QString &protocolTag = QString(),
                        QueryType queryType = TcpServer);
-#ifndef QT_NO_BEARERMANAGEMENT
+#if !defined(QT_NO_BEARERMANAGEMENT) && QT_DEPRECATED_SINCE(5, 10)
+    Q_DECL_DEPRECATED_X("QNetworkConfiguration support in QNetworkProxy is deprecated")
     QNetworkProxyQuery(const QNetworkConfiguration &networkConfiguration,
                        const QUrl &requestUrl, QueryType queryType = UrlRequest);
+    Q_DECL_DEPRECATED_X("QNetworkConfiguration support in QNetworkProxy is deprecated")
     QNetworkProxyQuery(const QNetworkConfiguration &networkConfiguration,
                        const QString &hostname, int port, const QString &protocolTag = QString(),
                        QueryType queryType = TcpSocket);
+    Q_DECL_DEPRECATED_X("QNetworkConfiguration support in QNetworkProxy is deprecated")
     QNetworkProxyQuery(const QNetworkConfiguration &networkConfiguration,
                        quint16 bindPort, const QString &protocolTag = QString(),
                        QueryType queryType = TcpServer);
@@ -110,8 +119,10 @@ public:
     QUrl url() const;
     void setUrl(const QUrl &url);
 
-#ifndef QT_NO_BEARERMANAGEMENT
+#if !defined(QT_NO_BEARERMANAGEMENT) && QT_DEPRECATED_SINCE(5, 10)
+    Q_DECL_DEPRECATED_X("QNetworkConfiguration support in QNetworkProxy is deprecated")
     QNetworkConfiguration networkConfiguration() const;
+    Q_DECL_DEPRECATED_X("QNetworkConfiguration support in QNetworkProxy is deprecated")
     void setNetworkConfiguration(const QNetworkConfiguration &networkConfiguration);
 #endif
 
@@ -140,7 +151,9 @@ public:
         ListeningCapability = 0x0002,
         UdpTunnelingCapability = 0x0004,
         CachingCapability = 0x0008,
-        HostNameLookupCapability = 0x0010
+        HostNameLookupCapability = 0x0010,
+        SctpTunnelingCapability = 0x00020,
+        SctpListeningCapability = 0x00040
     };
     Q_DECLARE_FLAGS(Capabilities, Capability)
 
@@ -208,6 +221,7 @@ public:
 
     virtual QList<QNetworkProxy> queryProxy(const QNetworkProxyQuery &query = QNetworkProxyQuery()) = 0;
 
+    static bool usesSystemConfiguration();
     static void setUseSystemConfiguration(bool enable);
     static void setApplicationProxyFactory(QNetworkProxyFactory *factory);
     static QList<QNetworkProxy> proxyForQuery(const QNetworkProxyQuery &query);
@@ -216,6 +230,7 @@ public:
 
 #ifndef QT_NO_DEBUG_STREAM
 Q_NETWORK_EXPORT QDebug operator<<(QDebug debug, const QNetworkProxy &proxy);
+Q_NETWORK_EXPORT QDebug operator<<(QDebug debug, const QNetworkProxyQuery &proxyQuery);
 #endif
 
 QT_END_NAMESPACE

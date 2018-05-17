@@ -40,7 +40,7 @@
 #ifndef QEVENT_P_H
 #define QEVENT_P_H
 
-#include <QtCore/qglobal.h>
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QtCore/qurl.h>
 #include <QtGui/qevent.h>
 
@@ -65,7 +65,9 @@ public:
         : ref(1),
           id(id),
           state(Qt::TouchPointReleased),
-          pressure(qreal(-1.))
+          pressure(-1),
+          rotation(0),
+          ellipseDiameters(0, 0)
     { }
 
     inline QTouchEventTouchPointPrivate *detach()
@@ -79,18 +81,20 @@ public:
 
     QAtomicInt ref;
     int id;
+    QPointingDeviceUniqueId uniqueId;
     Qt::TouchPointStates state;
-    QRectF rect, sceneRect, screenRect;
-    QPointF normalizedPos,
+    QPointF pos, scenePos, screenPos, normalizedPos,
             startPos, startScenePos, startScreenPos, startNormalizedPos,
             lastPos, lastScenePos, lastScreenPos, lastNormalizedPos;
     qreal pressure;
+    qreal rotation;
+    QSizeF ellipseDiameters;
     QVector2D velocity;
     QTouchEvent::TouchPoint::InfoFlags flags;
     QVector<QPointF> rawScreenPositions;
 };
 
-#ifndef QT_NO_TABLETEVENT
+#if QT_CONFIG(tabletevent)
 class QTabletEventPrivate
 {
 public:
@@ -102,7 +106,7 @@ public:
     Qt::MouseButton b;
     Qt::MouseButtons buttonState;
 };
-#endif // QT_NO_TABLETEVENT
+#endif // QT_CONFIG(tabletevent)
 
 QT_END_NAMESPACE
 

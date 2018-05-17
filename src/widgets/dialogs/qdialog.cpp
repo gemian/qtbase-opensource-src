@@ -37,21 +37,38 @@
 **
 ****************************************************************************/
 
+#include <QtWidgets/qtwidgetsglobal.h>
+#if QT_CONFIG(colordialog)
 #include "qcolordialog.h"
+#endif
+#if QT_CONFIG(fontdialog)
 #include "qfontdialog.h"
+#endif
+#if QT_CONFIG(filedialog)
 #include "qfiledialog.h"
+#endif
 
 #include "qevent.h"
 #include "qdesktopwidget.h"
-#include "qpushbutton.h"
+#include <private/qdesktopwidget_p.h>
 #include "qapplication.h"
 #include "qlayout.h"
+#if QT_CONFIG(sizegrip)
 #include "qsizegrip.h"
+#endif
+#if QT_CONFIG(whatsthis)
 #include "qwhatsthis.h"
+#endif
+#if QT_CONFIG(menu)
 #include "qmenu.h"
+#endif
 #include "qcursor.h"
+#if QT_CONFIG(messagebox)
 #include "qmessagebox.h"
+#endif
+#if QT_CONFIG(errormessage)
 #include "qerrormessage.h"
+#endif
 #include <qpa/qplatformtheme.h>
 #include "private/qdialog_p.h"
 #include "private/qguiapplication_p.h"
@@ -63,23 +80,23 @@ QT_BEGIN_NAMESPACE
 
 static inline int themeDialogType(const QDialog *dialog)
 {
-#ifndef QT_NO_FILEDIALOG
+#if QT_CONFIG(filedialog)
     if (qobject_cast<const QFileDialog *>(dialog))
         return QPlatformTheme::FileDialog;
 #endif
-#ifndef QT_NO_COLORDIALOG
+#if QT_CONFIG(colordialog)
     if (qobject_cast<const QColorDialog *>(dialog))
         return QPlatformTheme::ColorDialog;
 #endif
-#ifndef QT_NO_FONTDIALOG
+#if QT_CONFIG(fontdialog)
     if (qobject_cast<const QFontDialog *>(dialog))
         return QPlatformTheme::FontDialog;
 #endif
-#ifndef QT_NO_MESSAGEBOX
+#if QT_CONFIG(messagebox)
     if (qobject_cast<const QMessageBox *>(dialog))
         return QPlatformTheme::MessageDialog;
 #endif
-#ifndef QT_NO_ERRORMESSAGE
+#if QT_CONFIG(errormessage)
     if (qobject_cast<const QErrorMessage *>(dialog))
         return QPlatformTheme::MessageDialog;
 #endif
@@ -367,6 +384,7 @@ QDialog::~QDialog()
   default default button becomes the default button. This is what a
   push button calls when it loses focus.
 */
+#if QT_CONFIG(pushbutton)
 void QDialogPrivate::setDefault(QPushButton *pushButton)
 {
     Q_Q(QDialog);
@@ -411,6 +429,7 @@ void QDialogPrivate::hideDefault()
         list.at(i)->setDefault(false);
     }
 }
+#endif
 
 void QDialogPrivate::resetModalitySetByOpen()
 {
@@ -426,31 +445,6 @@ void QDialogPrivate::resetModalitySetByOpen()
     }
     resetModalityTo = -1;
 }
-
-#if defined(Q_OS_WINCE)
-#ifdef Q_OS_WINCE_WM
-void QDialogPrivate::_q_doneAction()
-{
-    //Done...
-    QApplication::postEvent(q_func(), new QEvent(QEvent::OkRequest));
-}
-#endif
-
-/*!
-    \reimp
-*/
-bool QDialog::event(QEvent *e)
-{
-    bool result = QWidget::event(e);
-#ifdef Q_OS_WINCE
-    if (e->type() == QEvent::OkRequest) {
-        accept();
-        result = true;
-     }
-#endif
-    return result;
-}
-#endif
 
 /*!
   In general returns the modal dialog's result code, \c Accepted or
@@ -582,8 +576,8 @@ int QDialog::exec()
 void QDialog::done(int r)
 {
     Q_D(QDialog);
-    hide();
     setResult(r);
+    hide();
 
     d->close_helper(QWidgetPrivate::CloseNoEvent);
     d->resetModalitySetByOpen();
@@ -631,7 +625,7 @@ bool QDialog::eventFilter(QObject *o, QEvent *e)
 /*! \reimp */
 void QDialog::contextMenuEvent(QContextMenuEvent *e)
 {
-#if defined(QT_NO_WHATSTHIS) || defined(QT_NO_MENU)
+#if !QT_CONFIG(whatsthis) || !QT_CONFIG(menu)
     Q_UNUSED(e);
 #else
     QWidget *w = childAt(e->pos());
@@ -659,14 +653,17 @@ void QDialog::contextMenuEvent(QContextMenuEvent *e)
 /*! \reimp */
 void QDialog::keyPressEvent(QKeyEvent *e)
 {
+#ifndef QT_NO_SHORTCUT
     //   Calls reject() if Escape is pressed. Simulates a button
     //   click for the default button if Enter is pressed. Move focus
     //   for the arrow keys. Ignore the rest.
     if (e->matches(QKeySequence::Cancel)) {
         reject();
     } else
+#endif
     if (!e->modifiers() || (e->modifiers() & Qt::KeypadModifier && e->key() == Qt::Key_Enter)) {
         switch (e->key()) {
+#if QT_CONFIG(pushbutton)
         case Qt::Key_Enter:
         case Qt::Key_Return: {
             QList<QPushButton*> list = findChildren<QPushButton*>();
@@ -680,6 +677,7 @@ void QDialog::keyPressEvent(QKeyEvent *e)
             }
         }
         break;
+#endif
         default:
             e->ignore();
             return;
@@ -692,7 +690,7 @@ void QDialog::keyPressEvent(QKeyEvent *e)
 /*! \reimp */
 void QDialog::closeEvent(QCloseEvent *e)
 {
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
     if (isModal() && QWhatsThis::inWhatsThisMode())
         QWhatsThis::leaveWhatsThisMode();
 #endif
@@ -739,6 +737,7 @@ void QDialog::setVisible(bool visible)
           and actually catches most cases... If not, then they simply
           have to use [widget*]->setFocus() themselves...
         */
+#if QT_CONFIG(pushbutton)
         if (d->mainDef && fw->focusPolicy() == Qt::NoFocus) {
             QWidget *first = fw;
             while ((first = first->nextInFocusChain()) != fw && first->focusPolicy() == Qt::NoFocus)
@@ -756,6 +755,7 @@ void QDialog::setVisible(bool visible)
                 }
             }
         }
+#endif
         if (fw && !fw->hasFocus()) {
             QFocusEvent e(QEvent::FocusIn, Qt::TabFocusReason);
             QApplication::sendEvent(fw, &e);
@@ -783,10 +783,12 @@ void QDialog::setVisible(bool visible)
             d->eventLoop->exit();
     }
 
+#if QT_CONFIG(pushbutton)
     const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme();
     if (d->mainDef && isActiveWindow()
         && theme->themeHint(QPlatformTheme::DialogSnapToDefaultButton).toBool())
         QCursor::setPos(d->mainDef->mapToGlobal(d->mainDef->rect().center()));
+#endif
 }
 
 /*!\reimp */
@@ -814,13 +816,13 @@ void QDialog::adjustPosition(QWidget* w)
         w = w->window();
     QRect desk;
     if (w) {
-        scrn = QApplication::desktop()->screenNumber(w);
-    } else if (QApplication::desktop()->isVirtualDesktop()) {
-        scrn = QApplication::desktop()->screenNumber(QCursor::pos());
+        scrn = QDesktopWidgetPrivate::screenNumber(w);
+    } else if (QDesktopWidgetPrivate::isVirtualDesktop()) {
+        scrn = QDesktopWidgetPrivate::screenNumber(QCursor::pos());
     } else {
-        scrn = QApplication::desktop()->screenNumber(this);
+        scrn = QDesktopWidgetPrivate::screenNumber(this);
     }
-    desk = QApplication::desktop()->availableGeometry(scrn);
+    desk = QDesktopWidgetPrivate::availableGeometry(scrn);
 
     QWidgetList list = QApplication::topLevelWidgets();
     for (int i = 0; (extraw == 0 || extrah == 0) && i < list.size(); ++i) {
@@ -1008,7 +1010,7 @@ void QDialog::showExtension(bool showIt)
             setFixedSize(w, height() + s.height());
         }
         d->extension->show();
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
         const bool sizeGripEnabled = isSizeGripEnabled();
         setSizeGripEnabled(false);
         d->sizeGripEnabled = sizeGripEnabled;
@@ -1021,7 +1023,7 @@ void QDialog::showExtension(bool showIt)
         resize(d->size);
         if (layout())
             layout()->setEnabled(true);
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
         setSizeGripEnabled(d->sizeGripEnabled);
 #endif
     }
@@ -1065,7 +1067,7 @@ QSize QDialog::minimumSizeHint() const
     \brief whether show() should pop up the dialog as modal or modeless
 
     By default, this property is \c false and show() pops up the dialog
-    as modeless. Setting his property to true is equivalent to setting
+    as modeless. Setting this property to true is equivalent to setting
     QWidget::windowModality to Qt::ApplicationModal.
 
     exec() ignores the value of this property and always pops up the
@@ -1082,7 +1084,7 @@ void QDialog::setModal(bool modal)
 
 bool QDialog::isSizeGripEnabled() const
 {
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     Q_D(const QDialog);
     return !!d->resizer;
 #else
@@ -1093,11 +1095,11 @@ bool QDialog::isSizeGripEnabled() const
 
 void QDialog::setSizeGripEnabled(bool enabled)
 {
-#ifdef QT_NO_SIZEGRIP
+#if !QT_CONFIG(sizegrip)
     Q_UNUSED(enabled);
 #else
     Q_D(QDialog);
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     d->sizeGripEnabled = enabled;
     if (enabled && d->doShowExtension)
         return;
@@ -1118,7 +1120,7 @@ void QDialog::setSizeGripEnabled(bool enabled)
             d->resizer = 0;
         }
     }
-#endif //QT_NO_SIZEGRIP
+#endif // QT_CONFIG(sizegrip)
 }
 
 
@@ -1126,7 +1128,7 @@ void QDialog::setSizeGripEnabled(bool enabled)
 /*! \reimp */
 void QDialog::resizeEvent(QResizeEvent *)
 {
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     Q_D(QDialog);
     if (d->resizer) {
         if (isRightToLeft())

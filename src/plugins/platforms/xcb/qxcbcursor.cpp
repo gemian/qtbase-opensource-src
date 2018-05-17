@@ -43,7 +43,9 @@
 #include "qxcbimage.h"
 #include "qxcbxsettings.h"
 
+#if QT_CONFIG(library)
 #include <QtCore/QLibrary>
+#endif
 #include <QtGui/QWindow>
 #include <QtGui/QBitmap>
 #include <QtGui/private/qguiapplication_p.h>
@@ -58,7 +60,7 @@ typedef char *(*PtrXcursorLibraryGetTheme)(void *);
 typedef int (*PtrXcursorLibrarySetTheme)(void *, const char *);
 typedef int (*PtrXcursorLibraryGetDefaultSize)(void *);
 
-#if defined(XCB_USE_XLIB) && !defined(QT_NO_LIBRARY)
+#if QT_CONFIG(xcb_xlib) && QT_CONFIG(library)
 #include <X11/Xlib.h>
 enum {
     XCursorShape = CursorShape
@@ -73,6 +75,8 @@ static PtrXcursorLibraryGetDefaultSize ptrXcursorLibraryGetDefaultSize = 0;
 
 static xcb_font_t cursorFont = 0;
 static int cursorCount = 0;
+
+#ifndef QT_NO_CURSOR
 
 static uint8_t cur_blank_bits[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -276,8 +280,6 @@ static const char * const cursorNames[] = {
     "link"
 };
 
-#ifndef QT_NO_CURSOR
-
 QXcbCursorCacheKey::QXcbCursorCacheKey(const QCursor &c)
     : shape(c.shape()), bitmapCacheKey(0), maskCacheKey(0)
 {
@@ -306,7 +308,7 @@ QXcbCursor::QXcbCursor(QXcbConnection *conn, QXcbScreen *screen)
     const char *cursorStr = "cursor";
     xcb_open_font(xcb_connection(), cursorFont, strlen(cursorStr), cursorStr);
 
-#if defined(XCB_USE_XLIB) && !defined(QT_NO_LIBRARY)
+#if QT_CONFIG(xcb_xlib) && QT_CONFIG(library)
     static bool function_ptrs_not_initialized = true;
     if (function_ptrs_not_initialized) {
         QLibrary xcursorLib(QLatin1String("Xcursor"), 1);
@@ -507,7 +509,7 @@ xcb_cursor_t QXcbCursor::createNonStandardCursor(int cshape)
     return cursor;
 }
 
-#if defined(XCB_USE_XLIB) && !defined(QT_NO_LIBRARY)
+#if QT_CONFIG(xcb_xlib) && QT_CONFIG(library)
 bool updateCursorTheme(void *dpy, const QByteArray &theme) {
     if (!ptrXcursorLibraryGetTheme
             || !ptrXcursorLibrarySetTheme)
@@ -551,7 +553,7 @@ static xcb_cursor_t loadCursor(void *dpy, int cshape)
     }
     return cursor;
 }
-#endif //XCB_USE_XLIB / QT_NO_LIBRARY
+#endif // QT_CONFIG(xcb_xlib) / QT_CONFIG(library)
 
 xcb_cursor_t QXcbCursor::createFontCursor(int cshape)
 {
@@ -560,7 +562,7 @@ xcb_cursor_t QXcbCursor::createFontCursor(int cshape)
     xcb_cursor_t cursor = XCB_NONE;
 
     // Try Xcursor first
-#if defined(XCB_USE_XLIB) && !defined(QT_NO_LIBRARY)
+#if QT_CONFIG(xcb_xlib) && QT_CONFIG(library)
     if (cshape >= 0 && cshape <= Qt::LastCursor) {
         void *dpy = connection()->xlib_display();
         // special case for non-standard dnd-* cursors
@@ -577,7 +579,7 @@ xcb_cursor_t QXcbCursor::createFontCursor(int cshape)
     if (cursor)
         return cursor;
     if (!cursor && cursorId) {
-        cursor = XCreateFontCursor(DISPLAY_FROM_XCB(this), cursorId);
+        cursor = XCreateFontCursor(static_cast<Display *>(connection()->xlib_display()), cursorId);
         if (cursor)
             return cursor;
     }
@@ -629,10 +631,9 @@ void QXcbCursor::queryPointer(QXcbConnection *c, QXcbVirtualDesktop **virtualDes
         *pos = QPoint();
 
     xcb_window_t root = c->primaryVirtualDesktop()->root();
-    xcb_query_pointer_cookie_t cookie = xcb_query_pointer(c->xcb_connection(), root);
-    xcb_generic_error_t *err = 0;
-    xcb_query_pointer_reply_t *reply = xcb_query_pointer_reply(c->xcb_connection(), cookie, &err);
-    if (!err && reply) {
+
+    auto reply = Q_XCB_REPLY(xcb_query_pointer, c->xcb_connection(), root);
+    if (reply) {
         if (virtualDesktop) {
             const auto virtualDesktops = c->virtualDesktops();
             for (QXcbVirtualDesktop *vd : virtualDesktops) {
@@ -646,11 +647,8 @@ void QXcbCursor::queryPointer(QXcbConnection *c, QXcbVirtualDesktop **virtualDes
             *pos = QPoint(reply->root_x, reply->root_y);
         if (keybMask)
             *keybMask = reply->mask;
-        free(reply);
         return;
     }
-    free(err);
-    free(reply);
 }
 
 QPoint QXcbCursor::pos() const

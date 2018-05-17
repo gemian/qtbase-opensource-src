@@ -40,12 +40,13 @@
 #ifndef QMESSAGEBOX_H
 #define QMESSAGEBOX_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
+
 #include <QtWidgets/qdialog.h>
 
+QT_REQUIRE_CONFIG(messagebox);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_MESSAGEBOX
 
 class QLabel;
 class QMessageBoxPrivate;
@@ -55,13 +56,12 @@ class QCheckBox;
 class Q_WIDGETS_EXPORT QMessageBox : public QDialog
 {
     Q_OBJECT
-    Q_FLAGS(StandardButtons)
     Q_PROPERTY(QString text READ text WRITE setText)
     Q_PROPERTY(Icon icon READ icon WRITE setIcon)
     Q_PROPERTY(QPixmap iconPixmap READ iconPixmap WRITE setIconPixmap)
     Q_PROPERTY(Qt::TextFormat textFormat READ textFormat WRITE setTextFormat)
     Q_PROPERTY(StandardButtons standardButtons READ standardButtons WRITE setStandardButtons)
-#ifndef QT_NO_TEXTEDIT
+#if QT_CONFIG(textedit)
     Q_PROPERTY(QString detailedText READ detailedText WRITE setDetailedText)
 #endif
     Q_PROPERTY(QString informativeText READ informativeText WRITE setInformativeText)
@@ -130,6 +130,7 @@ public:
     typedef StandardButton Button;  // obsolete
 
     Q_DECLARE_FLAGS(StandardButtons, StandardButton)
+    Q_FLAG(StandardButtons)
 
     explicit QMessageBox(QWidget *parent = Q_NULLPTR);
     QMessageBox(Icon icon, const QString &title, const QString &text,
@@ -141,10 +142,6 @@ public:
     QPushButton *addButton(const QString &text, ButtonRole role);
     QPushButton *addButton(StandardButton button);
     void removeButton(QAbstractButton *button);
-
-#ifdef Q_OS_WINCE
-    void setVisible(bool visible);
-#endif
 
     using QDialog::open;
     void open(QObject *receiver, const char *member);
@@ -273,7 +270,7 @@ public:
     QString informativeText() const;
     void setInformativeText(const QString &text);
 
-#ifndef QT_NO_TEXTEDIT
+#if QT_CONFIG(textedit)
     QString detailedText() const;
     void setDetailedText(const QString &text);
 #endif
@@ -324,8 +321,6 @@ QString s = QApplication::tr("Executable '%1' requires Qt "\
  "%2, found Qt %3.").arg(qAppName()).arg(QString::fromLatin1(\
 str)).arg(QString::fromLatin1(qVersion())); QMessageBox::critical(0, QApplication::tr(\
 "Incompatible Qt Library Error"), s, QMessageBox::Abort, 0); qFatal("%s", s.toLatin1().data()); }}
-
-#endif // QT_NO_MESSAGEBOX
 
 QT_END_NAMESPACE
 

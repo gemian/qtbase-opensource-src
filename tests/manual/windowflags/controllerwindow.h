@@ -29,7 +29,7 @@
 #ifndef CONTROLLERWINDOW_H
 #define CONTROLLERWINDOW_H
 
-#include <QWidget>
+#include <QPlainTextEdit>
 
 #include "previewwindow.h"
 
@@ -46,13 +46,12 @@ class HintControl;
 class WindowStatesControl;
 class TypeControl;
 
-//! [0]
-class ControllerWindow : public QWidget
+class ControllerWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    ControllerWindow();
+    explicit ControllerWidget(QWidget *parent = 0);
 
     virtual bool eventFilter(QObject *o, QEvent *e);
 
@@ -61,27 +60,58 @@ private slots:
     void updateStateControl();
 
 private:
+    void updatePreview(QWindow *);
+    void updatePreview(QWidget *);
     void createTypeGroupBox();
     QCheckBox *createCheckBox(const QString &text);
     QRadioButton *createRadioButton(const QString &text);
 
     QMainWindow *parentWindow;
-    PreviewWindow *previewWindow;
+
+    QWindow *previewWindow;
+    PreviewWidget *previewWidget;
     PreviewDialog *previewDialog;
-    QWidget *previewWidget;
+
+    QWindow *activePreview;
+
     QGroupBox *widgetTypeGroupBox;
     QGroupBox *additionalOptionsGroupBox;
     TypeControl *typeControl;
     HintControl *hintsControl;
     WindowStatesControl *statesControl;
 
-    QPushButton *quitButton;
-
+    QRadioButton *previewWindowButton;
     QRadioButton *previewWidgetButton;
     QRadioButton *previewDialogButton;
     QCheckBox *modalWindowCheckBox;
     QCheckBox *fixedSizeWindowCheckBox;
 };
-//! [0]
 
-#endif
+class LogWidget : public QPlainTextEdit
+{
+    Q_OBJECT
+public:
+    explicit LogWidget(QWidget *parent = 0);
+    ~LogWidget();
+
+    static LogWidget *instance() { return m_instance; }
+    static void install();
+
+public slots:
+    void appendText(const QString &);
+
+private:
+    static QString startupMessage();
+
+    static LogWidget *m_instance;
+};
+
+class ControllerWindow : public QWidget {
+    Q_OBJECT
+public:
+    ControllerWindow();
+
+    void registerEventFilter();
+};
+
+#endif // CONTROLLERWINDOW_H

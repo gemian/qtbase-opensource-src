@@ -51,14 +51,15 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtGui/private/qgridlayoutengine_p.h>
-
-#ifndef QT_NO_GRAPHICSVIEW
 
 #include <QtWidgets/qsizepolicy.h>
 #include <QtWidgets/qstyle.h>
 #include <QtWidgets/qstyleoption.h>
 #include "qgraphicslayoutitem.h"
+
+QT_REQUIRE_CONFIG(graphicsview);
 
 QT_BEGIN_NAMESPACE
 
@@ -136,7 +137,5 @@ public:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_GRAPHICSVIEW
 
 #endif // QGRAPHICSGRIDLAYOUTENGINE_P_H

@@ -22,8 +22,6 @@ HEADERS +=  \
         io/qlockfile.h \
         io/qlockfile_p.h \
         io/qnoncontiguousbytedevice_p.h \
-        io/qprocess.h \
-        io/qprocess_p.h \
         io/qtextstream.h \
         io/qtextstream_p.h \
         io/qtemporarydir.h \
@@ -72,7 +70,6 @@ SOURCES += \
         io/qiodevice.cpp \
         io/qlockfile.cpp \
         io/qnoncontiguousbytedevice.cpp \
-        io/qprocess.cpp \
         io/qstorageinfo.cpp \
         io/qtextstream.cpp \
         io/qtemporarydir.cpp \
@@ -96,6 +93,19 @@ SOURCES += \
         io/qloggingcategory.cpp \
         io/qloggingregistry.cpp
 
+qtConfig(processenvironment) {
+    SOURCES += \
+        io/qprocess.cpp
+    HEADERS += \
+        io/qprocess.h \
+        io/qprocess_p.h
+
+    win32:!winrt: \
+        SOURCES += io/qprocess_win.cpp
+    else: unix: \
+        SOURCES += io/qprocess_unix.cpp
+}
+
 win32 {
         SOURCES += io/qfsfileengine_win.cpp
         SOURCES += io/qlockfile_win.cpp
@@ -103,28 +113,24 @@ win32 {
         SOURCES += io/qfilesystemwatcher_win.cpp
         HEADERS += io/qfilesystemwatcher_win_p.h
         SOURCES += io/qfilesystemengine_win.cpp
-        SOURCES += io/qfilesystemiterator_win.cpp
+
+        qtConfig(filesystemiterator) {
+            SOURCES += io/qfilesystemiterator_win.cpp
+        }
 
     !winrt {
-        SOURCES += io/qsettings_win.cpp
-        SOURCES += io/qstandardpaths_win.cpp
+        HEADERS += \
+            io/qwindowspipereader_p.h \
+            io/qwindowspipewriter_p.h
 
-        wince* {
-            SOURCES += io/qprocess_wince.cpp \
-                io/qstorageinfo_stub.cpp
-        } else {
-            HEADERS += \
-                io/qwinoverlappedionotifier_p.h \
-                io/qwindowspipereader_p.h \
-                io/qwindowspipewriter_p.h
-            SOURCES += \
-                io/qprocess_win.cpp \
-                io/qwinoverlappedionotifier.cpp \
-                io/qwindowspipereader.cpp \
-                io/qwindowspipewriter.cpp \
-                io/qstorageinfo_win.cpp
-            LIBS += -lmpr
-        }
+        SOURCES += \
+            io/qsettings_win.cpp \
+            io/qstandardpaths_win.cpp \
+            io/qstorageinfo_win.cpp \
+            io/qwindowspipereader.cpp \
+            io/qwindowspipewriter.cpp
+
+        LIBS += -lmpr -lnetapi32 -luserenv
     } else {
         SOURCES += \
                 io/qstandardpaths_winrt.cpp \
@@ -136,10 +142,9 @@ win32 {
                 io/qfsfileengine_unix.cpp \
                 io/qfilesystemengine_unix.cpp \
                 io/qlockfile_unix.cpp \
-                io/qprocess_unix.cpp \
                 io/qfilesystemiterator_unix.cpp
 
-        !integrity {
+        !integrity:!uikit {
             SOURCES += io/forkfd_qt.cpp
             HEADERS += \
                      ../3rdparty/forkfd/forkfd.h
@@ -147,19 +152,20 @@ win32 {
         }
         !nacl:mac: {
             SOURCES += io/qsettings_mac.cpp
-            OBJECTIVE_SOURCES += io/qurl_mac.mm
         }
         mac {
             SOURCES += io/qstorageinfo_mac.cpp
+            qtConfig(processenvironment): \
+                OBJECTIVE_SOURCES += io/qprocess_darwin.mm
             OBJECTIVE_SOURCES += io/qstandardpaths_mac.mm
             osx {
                 OBJECTIVE_SOURCES += io/qfilesystemwatcher_fsevents.mm
                 HEADERS += io/qfilesystemwatcher_fsevents_p.h
                 LIBS += -framework DiskArbitration -framework IOKit
-            } else:ios {
+            } else {
                 LIBS += -framework MobileCoreServices
             }
-        } else:android {
+        } else:android:!android-embedded {
             SOURCES += \
                 io/qstandardpaths_android.cpp \
                 io/qstorageinfo_unix.cpp
@@ -174,7 +180,7 @@ win32 {
                 io/qstorageinfo_unix.cpp
         }
 
-        linux|if(qnx:contains(QT_CONFIG, inotify)) {
+        linux|if(qnx:qtConfig(inotify)) {
             SOURCES += io/qfilesystemwatcher_inotify.cpp
             HEADERS += io/qfilesystemwatcher_inotify_p.h
         }

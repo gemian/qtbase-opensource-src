@@ -52,7 +52,8 @@
 //
 
 #include <QtCore/QTimer>
-#include <QtGui/private/qopengltextureblitter_p.h>
+#include <QtGui/QOpenGLTextureBlitter>
+#include <QtGui/QMatrix4x4>
 
 QT_BEGIN_NAMESPACE
 
@@ -64,6 +65,7 @@ class QPlatformTextureList;
 class QOpenGLCompositorWindow
 {
 public:
+    virtual ~QOpenGLCompositorWindow() { }
     virtual QWindow *sourceWindow() const = 0;
     virtual const QPlatformTextureList *textures() const = 0;
     virtual void beginCompositing() { }
@@ -78,7 +80,8 @@ public:
     static QOpenGLCompositor *instance();
     static void destroy();
 
-    void setTarget(QOpenGLContext *context, QWindow *window);
+    void setTarget(QOpenGLContext *context, QWindow *window, const QRect &nativeTargetGeometry);
+    void setRotation(int degrees);
     QOpenGLContext *context() const { return m_context; }
     QWindow *targetWindow() const { return m_targetWindow; }
 
@@ -106,6 +109,9 @@ private:
 
     QOpenGLContext *m_context;
     QWindow *m_targetWindow;
+    QRect m_nativeTargetGeometry;
+    int m_rotation;
+    QMatrix4x4 m_rotationMatrix;
     QTimer m_updateTimer;
     QOpenGLTextureBlitter m_blitter;
     QList<QOpenGLCompositorWindow *> m_windows;

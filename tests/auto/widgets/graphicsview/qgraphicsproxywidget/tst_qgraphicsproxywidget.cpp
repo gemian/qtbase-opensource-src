@@ -33,8 +33,6 @@
 #include <private/qgraphicsproxywidget_p.h>
 #include <private/qlayoutengine_p.h>    // qSmartMin functions...
 
-#include "../../../qtest-config.h"
-
 static void sendMouseMove(QWidget *widget, const QPoint &point, Qt::MouseButton button = Qt::NoButton)
 {
     QMouseEvent event(QEvent::MouseMove, point, widget->mapToGlobal(point), button, button, 0);
@@ -97,7 +95,7 @@ private slots:
     void focusNextPrevChild();
     void focusOutEvent_data();
     void focusOutEvent();
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
     void hoverEnterLeaveEvent_data();
     void hoverEnterLeaveEvent();
 #endif
@@ -114,7 +112,7 @@ private slots:
     void resizeEvent_data();
     void resizeEvent();
     void paintEvent();
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     void wheelEvent();
 #endif
     void sizeHint_data();
@@ -140,7 +138,7 @@ private slots:
     void setFocus_complexTwoWidgets();
     void popup_basic();
     void popup_subwidget();
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
     void changingCursor_basic();
 #endif
     void tooltip_basic();
@@ -256,7 +254,7 @@ public:
     int focusOut;
 };
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 class WheelWidget : public QWidget
 {
 public:
@@ -266,15 +264,12 @@ public:
 
     bool wheelEventCalled;
 };
-#endif // !QT_NO_WHEELEVENT
+#endif // QT_CONFIG(wheelevent)
 
 // This will be called before the first test function is executed.
 // It is only called once.
 void tst_QGraphicsProxyWidget::initTestCase()
 {
-#ifdef Q_OS_WINCE //disable magic for WindowsCE
-    qApp->setAutoMaximizeThreshold(-1);
-#endif
     // Disable menu animations to prevent the alpha widget from getting in the way
     // in actionsContextMenu().
     QApplication::setEffectEnabled(Qt::UI_AnimateMenu, false);
@@ -416,7 +411,7 @@ void tst_QGraphicsProxyWidget::setWidget()
     }
 
     QWidget *widget = new QWidget;
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
     widget->setCursor(Qt::IBeamCursor);
 #endif
     widget->setPalette(QPalette(Qt::magenta));
@@ -453,7 +448,7 @@ void tst_QGraphicsProxyWidget::setWidget()
         QVERIFY(subWidget->testAttribute(Qt::WA_DontShowOnScreen));
         QVERIFY(!subWidget->testAttribute(Qt::WA_QuitOnClose));
         QCOMPARE(proxy->acceptHoverEvents(), true);
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
         QVERIFY(proxy->hasCursor());
 
         // These should match
@@ -487,7 +482,7 @@ void tst_QGraphicsProxyWidget::setWidget()
         QCOMPARE((qreal)bottom, rbottom);
     } else {
         // proxy shouldn't mess with the widget if it can't insert it.
-        QCOMPARE(proxy->widget(), (QWidget*)0);
+        QCOMPARE(proxy->widget(), nullptr);
         QCOMPARE(proxy->acceptHoverEvents(), false);
         if (subWidget) {
             QVERIFY(!subWidget->testAttribute(Qt::WA_DontShowOnScreen));
@@ -498,7 +493,7 @@ void tst_QGraphicsProxyWidget::setWidget()
     }
 
     if (widgetExists) {
-        QCOMPARE(existingSubWidget->parent(), static_cast<QObject*>(0));
+        QCOMPARE(existingSubWidget->parent(), nullptr);
         QVERIFY(!existingSubWidget->testAttribute(Qt::WA_DontShowOnScreen));
         QVERIFY(!existingSubWidget->testAttribute(Qt::WA_QuitOnClose));
     }
@@ -829,7 +824,7 @@ void tst_QGraphicsProxyWidget::focusOutEvent()
     QApplication::setActiveWindow(&view);
     view.activateWindow();
     view.setFocus();
-    QTest::qWaitForWindowActive(&view);
+    QVERIFY(QTest::qWaitForWindowActive(&view));
     QTRY_VERIFY(view.isVisible());
     QTRY_COMPARE(QApplication::activeWindow(), (QWidget*)&view);
 
@@ -936,7 +931,7 @@ protected:
     }
 };
 
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
 void tst_QGraphicsProxyWidget::hoverEnterLeaveEvent_data()
 {
     QTest::addColumn<bool>("hasWidget");
@@ -1302,7 +1297,7 @@ void tst_QGraphicsProxyWidget::paintEvent()
 }
 
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 void tst_QGraphicsProxyWidget::wheelEvent()
 {
     QGraphicsScene scene;
@@ -1326,7 +1321,7 @@ void tst_QGraphicsProxyWidget::wheelEvent()
     QVERIFY(event.isAccepted());
     QVERIFY(wheelWidget->wheelEventCalled);
 }
-#endif // !QT_NO_WHEELEVENT
+#endif // QT_CONFIG(wheelevent)
 
 Q_DECLARE_METATYPE(Qt::SizeHint)
 void tst_QGraphicsProxyWidget::sizeHint_data()
@@ -1524,7 +1519,7 @@ void tst_QGraphicsProxyWidget::setWidget_simple()
     // Properties
     // QCOMPARE(proxy.focusPolicy(), lineEdit->focusPolicy());
     // QCOMPARE(proxy.palette(), lineEdit->palette());
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
     QCOMPARE(proxy.cursor().shape(), lineEdit->cursor().shape());
 #endif
     QCOMPARE(proxy.layoutDirection(), lineEdit->layoutDirection());
@@ -1573,7 +1568,7 @@ void tst_QGraphicsProxyWidget::resize_simple_data()
     QTest::addColumn<QSizeF>("size");
 
     QTest::newRow("200, 200") << QSizeF(200, 200);
-#if !defined(Q_PROCESSOR_ARM) && !defined(Q_OS_WINCE)
+#if !defined(Q_PROCESSOR_ARM)
     QTest::newRow("1000, 1000") << QSizeF(1000, 1000);
     // Since 4.5, 10000x10000 runs out of memory.
     // QTest::newRow("10000, 10000") << QSizeF(10000, 10000);
@@ -2541,7 +2536,7 @@ void tst_QGraphicsProxyWidget::popup_subwidget()
     QCOMPARE(popup->size(), child->size().toSize());
 }
 
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
 void tst_QGraphicsProxyWidget::changingCursor_basic()
 {
     // Confirm that mouse events are working properly by checking that
@@ -2780,7 +2775,7 @@ void tst_QGraphicsProxyWidget::windowOpacity()
     // disabled on platforms without alpha channel support in QPixmap (e.g.,
     // X11 without XRender).
     int paints = 0;
-#ifdef Q_DEAD_CODE_FROM_QT4_X11
+#if 0 // Used to be included in Qt4 for Q_WS_X11
     paints = !X11->use_xrender;
 #endif
     QTRY_COMPARE(eventSpy.counts[QEvent::UpdateRequest], 0);
@@ -3647,7 +3642,7 @@ public slots:
 
 void tst_QGraphicsProxyWidget::QTBUG_6986_sendMouseEventToAlienWidget()
 {
-#if defined(Q_OS_MAC) || defined(Q_OS_WIN) || defined(QTEST_NO_CURSOR)
+#if defined(Q_OS_DARWIN) || defined(Q_OS_WIN) || defined(QT_NO_CURSOR)
     QSKIP("Test case unstable on this platform");
 #endif
     QGraphicsView view;
@@ -3804,9 +3799,7 @@ void tst_QGraphicsProxyWidget::forwardTouchEvent()
 
     EventSpy eventSpy(widget);
 
-    QTouchDevice *device = new QTouchDevice;
-    device->setType(QTouchDevice::TouchScreen);
-    QWindowSystemInterface::registerTouchDevice(device);
+    QTouchDevice *device = QTest::createTouchDevice();
 
     QCOMPARE(eventSpy.counts[QEvent::TouchBegin], 0);
     QCOMPARE(eventSpy.counts[QEvent::TouchUpdate], 0);

@@ -74,8 +74,6 @@
 
 #include <QtCore/qglobal.h>
 
-#ifndef QT_NO_GRAPHICSVIEW
-
 #include <private/qgraphicsscene_p.h>
 #include <private/qgraphicsscenebsptreeindex_p.h>
 #include <private/qgraphicssceneindex_p.h>
@@ -694,8 +692,7 @@ void QGraphicsSceneBspTreeIndex::itemChange(const QGraphicsItem *item, QGraphics
 bool QGraphicsSceneBspTreeIndex::event(QEvent *event)
 {
     Q_D(QGraphicsSceneBspTreeIndex);
-    switch (event->type()) {
-    case QEvent::Timer:
+    if (event->type() == QEvent::Timer) {
             if (d->indexTimerId && static_cast<QTimerEvent *>(event)->timerId() == d->indexTimerId) {
                 if (d->restartIndexTimer) {
                     d->restartIndexTimer = false;
@@ -704,16 +701,10 @@ bool QGraphicsSceneBspTreeIndex::event(QEvent *event)
                     d->_q_updateIndex();
                 }
             }
-     // Fallthrough intended - support timers in subclasses.
-    default:
-        return QObject::event(event);
     }
-    return true;
+    return QObject::event(event);
 }
 
 QT_END_NAMESPACE
 
 #include "moc_qgraphicsscenebsptreeindex_p.cpp"
-
-#endif  // QT_NO_GRAPHICSVIEW
-

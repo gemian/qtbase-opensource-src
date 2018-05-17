@@ -199,7 +199,7 @@
 */
 
 /*!
-    \externalpage http://www.mingw.org/
+    \externalpage https://mingw-w64.org/
     \title MinGW
 */
 
@@ -474,7 +474,7 @@
 */
 
 /*!
-    \externalpage http://git.iksaif.net/?p=qsslkey-p11.git
+    \externalpage https://github.com/iksaif/qsslkey-p11
     \title qsslkey example
 */
 

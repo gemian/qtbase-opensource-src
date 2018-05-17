@@ -92,27 +92,7 @@
     \note For the current keyboard input locale take a look at
     QInputMethod::locale().
 
-    QLocale's data is based on Common Locale Data Repository v29.
-
-    The double-to-string and string-to-double conversion functions are
-    covered by the following licenses:
-
-    \legalese
-    Copyright (c) 1991 by AT&T.
-
-    Permission to use, copy, modify, and distribute this software for any
-    purpose without fee is hereby granted, provided that this entire notice
-    is included in all copies of any software which is or includes a copy
-    or modification of this software and in all copies of the supporting
-    documentation for such software.
-
-    THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
-    WARRANTY.  IN PARTICULAR, NEITHER THE AUTHOR NOR AT&T MAKES ANY
-    REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
-    OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
-
-    This product includes software developed by the University of
-    California, Berkeley and its contributors.
+    QLocale's data is based on Common Locale Data Repository v31.0.1.
 
     \sa QString::arg(), QString::toInt(), QString::toDouble(),
     QInputMethod::locale()
@@ -969,7 +949,8 @@
     setNumberOptions().
 
     \value DefaultNumberOptions This option represents the default behavior, with
-            group separators and with one leading zero in single digit exponents.
+            group separators, with one leading zero in single digit exponents, and
+            without trailing zeroes after the decimal dot.
     \value OmitGroupSeparator If this option is set, the number-to-string functions
             will not insert group separators in their return values. The default
             is to insert group separators.
@@ -984,6 +965,14 @@
             functions will fail if they encounter an exponent padded with zeroes when
             parsing a floating point number in scientific notation. The default is to
             accept such padding.
+    \value IncludeTrailingZeroesAfterDot If this option is set, the number-to-string
+            functions will pad numbers with zeroes to the requested precision in "g"
+            or "most concise" mode, even if the number of significant digits is lower
+            than the requested precision. The default is to omit trailing zeroes.
+    \value RejectTrailingZeroesAfterDot If this option is set, the string-to-number
+            functions will fail if they encounter trailing zeroes after the decimal
+            dot when parsing a number in scientific or decimal representation. The
+            default is to accept trailing zeroes.
 
     \sa setNumberOptions(), numberOptions()
 */

@@ -241,8 +241,11 @@ public:
         TextForceRightToLeft = 0x40000,
         // Ensures that the longest variant is always used when computing the
         // size of a multi-variant string.
-        TextLongestVariant = 0x80000,
-        TextBypassShaping = 0x100000
+        TextLongestVariant = 0x80000
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+        , TextBypassShaping = 0x100000
+#endif
     };
 
     enum TextElideMode {
@@ -301,12 +304,7 @@ public:
         MacWindowToolBarButtonHint = 0x10000000,
         BypassGraphicsProxyWidget = 0x20000000,
         NoDropShadowWindowHint = 0x40000000,
-        WindowFullscreenButtonHint = 0x80000000,
-
-        // The following enums have overlapping values with other enums.
-        // This was not intentional, but it's too late to change now.
-        WindowOkButtonHint = 0x00080000, // WindowTransparentForInput
-        WindowCancelButtonHint = 0x00100000 // WindowOverridesSystemGestures
+        WindowFullscreenButtonHint = 0x80000000
     };
 
     Q_DECLARE_FLAGS(WindowFlags, WindowType)
@@ -477,6 +475,10 @@ public:
 
         WA_AlwaysStackOnTop = 128,
 
+        WA_TabletTracking = 129,
+
+        WA_ContentsMarginsRespectsSafeArea = 130,
+
         // Add new attributes before this line
         WA_AttributeCount
     };
@@ -509,6 +511,11 @@ public:
         AA_DontUseNativeDialogs = 23,
         AA_SynthesizeMouseForUnhandledTabletEvents = 24,
         AA_CompressHighFrequencyEvents = 25,
+        AA_DontCheckOpenGLContextThreadAffinity = 26,
+        AA_DisableShaderDiskCache = 27,
+        AA_DontShowShortcutsInContextMenus = 28,
+        AA_CompressTabletEvents = 29,
+        AA_DisableWindowContextHelpButton = 30, // ### Qt 6: remove me
 
         // Add new attributes before this line
         AA_AttributeCount
@@ -562,7 +569,7 @@ public:
         Key_Insert = 0x01000006,
         Key_Delete = 0x01000007,
         Key_Pause = 0x01000008,
-        Key_Print = 0x01000009,
+        Key_Print = 0x01000009,               // print screen
         Key_SysReq = 0x0100000a,
         Key_Clear = 0x0100000b,
         Key_Home = 0x01000010,                // cursor movement
@@ -841,6 +848,36 @@ public:
         Key_Dead_Belowdot       = 0x01001260,
         Key_Dead_Hook           = 0x01001261,
         Key_Dead_Horn           = 0x01001262,
+        Key_Dead_Stroke         = 0x01001263,
+        Key_Dead_Abovecomma     = 0x01001264,
+        Key_Dead_Abovereversedcomma = 0x01001265,
+        Key_Dead_Doublegrave    = 0x01001266,
+        Key_Dead_Belowring      = 0x01001267,
+        Key_Dead_Belowmacron    = 0x01001268,
+        Key_Dead_Belowcircumflex = 0x01001269,
+        Key_Dead_Belowtilde     = 0x0100126a,
+        Key_Dead_Belowbreve     = 0x0100126b,
+        Key_Dead_Belowdiaeresis = 0x0100126c,
+        Key_Dead_Invertedbreve  = 0x0100126d,
+        Key_Dead_Belowcomma     = 0x0100126e,
+        Key_Dead_Currency       = 0x0100126f,
+        Key_Dead_a              = 0x01001280,
+        Key_Dead_A              = 0x01001281,
+        Key_Dead_e              = 0x01001282,
+        Key_Dead_E              = 0x01001283,
+        Key_Dead_i              = 0x01001284,
+        Key_Dead_I              = 0x01001285,
+        Key_Dead_o              = 0x01001286,
+        Key_Dead_O              = 0x01001287,
+        Key_Dead_u              = 0x01001288,
+        Key_Dead_U              = 0x01001289,
+        Key_Dead_Small_Schwa    = 0x0100128a,
+        Key_Dead_Capital_Schwa  = 0x0100128b,
+        Key_Dead_Greek          = 0x0100128c,
+        Key_Dead_Lowline        = 0x01001290,
+        Key_Dead_Aboveverticalline = 0x01001291,
+        Key_Dead_Belowverticalline = 0x01001292,
+        Key_Dead_Longsolidusoverlay = 0x01001293,
 
         // multimedia/internet keys - ignored by default - see QKeyEvent c'tor
         Key_Back  = 0x01000061,
@@ -1201,7 +1238,8 @@ public:
         SystemLocaleLongDate,
         DefaultLocaleShortDate,
         DefaultLocaleLongDate,
-        RFC2822Date        // RFC 2822 (+ 850 and 1036 during parsing)
+        RFC2822Date,        // RFC 2822 (+ 850 and 1036 during parsing)
+        ISODateWithMs
     };
 
     enum TimeSpec {
@@ -1658,6 +1696,11 @@ public:
     };
     Q_DECLARE_FLAGS(MouseEventFlags, MouseEventFlag)
 
+    enum ChecksumType {
+        ChecksumIso3309,
+        ChecksumItuV41
+    };
+
 #ifndef Q_QDOC
     // NOTE: Generally, do not add QT_Q_ENUM if a corresponding Q_Q_FLAG exists.
     QT_Q_ENUM(ScrollBarPolicy)
@@ -1682,6 +1725,7 @@ public:
     QT_Q_ENUM(Orientation)
     QT_Q_ENUM(DropAction)
     QT_Q_FLAG(Alignment)
+    QT_Q_ENUM(TextFlag)
     QT_Q_FLAG(Orientations)
     QT_Q_FLAG(DropActions)
     QT_Q_FLAG(Edges)
@@ -1741,6 +1785,7 @@ public:
     QT_Q_ENUM(ScrollPhase)
     QT_Q_ENUM(MouseEventSource)
     QT_Q_FLAG(MouseEventFlag)
+    QT_Q_ENUM(ChecksumType)
     QT_Q_ENUM(TabFocusBehavior)
 #endif // Q_DOC
 

@@ -28,6 +28,7 @@ SUBPROGRAMS = \
      longstring \
      maxwarnings \
      multiexec \
+     pairdiagnostics \
      printdatatags \
      printdatatagswithglobaltags \
      qexecstringlist \
@@ -45,3 +46,6 @@ SUBPROGRAMS = \
      verifyexceptionthrown \
      warnings \
      xunit
+
+INCLUDEPATH += ../../../../shared/
+HEADERS += ../../../../shared/emulationdetector.h

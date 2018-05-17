@@ -38,16 +38,19 @@
 **
 ****************************************************************************/
 
+#include "qoscbundle_p.h"
+#include "qtuio_p.h"
+
 #include <QtEndian>
 #include <QDebug>
 #include <QLoggingCategory>
 
-#include "qoscbundle_p.h"
-#include "qtuio_p.h"
 
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcTuioBundle, "qt.qpa.tuio.bundle")
+
+QOscBundle::QOscBundle() {}
 
 // TUIO packets are transmitted using the OSC protocol, located at:
 //   http://opensoundcontrol.org/specification
@@ -122,7 +125,7 @@ QOscBundle::QOscBundle(const QByteArray &data)
         if (size == 0) {
             // empty bundle; these are valid, but should they be allowed? the
             // spec is unclear on this...
-            qWarning("Empty bundle?");
+            qCWarning(lcTuioBundle, "Empty bundle?");
             m_isValid = true;
             m_immediate = isImmediate;
             m_timeEpoch = oscTimeEpoch;
@@ -152,7 +155,7 @@ QOscBundle::QOscBundle(const QByteArray &data)
                 m_timePico = oscTimePico;
                 m_messages.append(subMessage);
             } else {
-                qWarning("Invalid sub-message");
+                qCWarning(lcTuioBundle, "Invalid sub-message");
                 return;
             }
         } else if (subdata.startsWith(bundleIdentifier)) {
@@ -166,26 +169,10 @@ QOscBundle::QOscBundle(const QByteArray &data)
                 m_bundles.append(subBundle);
             }
         } else {
-            qWarning("Malformed sub-data!");
+            qCWarning(lcTuioBundle, "Malformed sub-data!");
             return;
         }
     }
-}
-
-
-bool QOscBundle::isValid() const
-{
-    return m_isValid;
-}
-
-QList<QOscBundle> QOscBundle::bundles() const
-{
-    return m_bundles;
-}
-
-QList<QOscMessage> QOscBundle::messages() const
-{
-    return m_messages;
 }
 
 QT_END_NAMESPACE

@@ -39,7 +39,7 @@
 
 #include "qfontenginemultifontconfig_p.h"
 
-#include <QtGui/private/qfontengine_ft_p.h>
+#include <QtFontDatabaseSupport/private/qfontengine_ft_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -50,7 +50,7 @@ QFontEngineMultiFontConfig::QFontEngineMultiFontConfig(QFontEngine *fe, int scri
 
 QFontEngineMultiFontConfig::~QFontEngineMultiFontConfig()
 {
-    Q_FOREACH (FcPattern *pattern, cachedMatchPatterns) {
+    for (FcPattern *pattern : qAsConst(cachedMatchPatterns)) {
         if (pattern)
             FcPatternDestroy(pattern);
     }

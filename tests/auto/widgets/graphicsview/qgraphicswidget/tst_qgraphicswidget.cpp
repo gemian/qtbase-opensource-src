@@ -42,8 +42,6 @@
 #include <qstylefactory.h>
 #include <qscreen.h>
 
-#include "../../../qtest-config.h"
-
 typedef QList<QGraphicsItem *> QGraphicsItemList;
 
 class EventSpy : public QObject
@@ -289,14 +287,14 @@ void tst_QGraphicsWidget::qgraphicswidget()
 
     QVERIFY(!widget.isWindow());
     QCOMPARE(widget.boundingRect(), QRectF(0, 0, 0, 0));
-    QCOMPARE(widget.focusWidget(), (QGraphicsWidget*)0);
+    QCOMPARE(widget.focusWidget(), nullptr);
     QCOMPARE(widget.focusPolicy(), Qt::NoFocus);
     QCOMPARE(widget.font(), QFont());
     QCOMPARE(widget.geometry(), QRectF(widget.pos(), widget.size()));
-    QCOMPARE(widget.layout(), (QGraphicsLayout*)0);
+    QCOMPARE(widget.layout(), nullptr);
     QCOMPARE(widget.layoutDirection(), Qt::LeftToRight);
     QCOMPARE(widget.palette(), QPalette());
-    QCOMPARE(widget.parentWidget(), (QGraphicsWidget*)0);
+    QCOMPARE(widget.parentWidget(), nullptr);
     QCOMPARE(widget.rect(), QRectF(QPointF(), widget.size()));
     QCOMPARE(widget.size(), QSizeF(0, 0));
     QVERIFY(widget.style() != (QStyle*)0);
@@ -417,7 +415,7 @@ void tst_QGraphicsWidget::focusWidget_data()
 void tst_QGraphicsWidget::focusWidget()
 {
     SubQGraphicsWidget *parent = new SubQGraphicsWidget;
-    QCOMPARE(parent->focusWidget(), (QGraphicsWidget *)0);
+    QCOMPARE(parent->focusWidget(), nullptr);
     QGraphicsScene scene;
     QEvent windowActivate(QEvent::WindowActivate);
     qApp->sendEvent(&scene, &windowActivate);
@@ -1112,9 +1110,7 @@ void tst_QGraphicsWidget::initStyleOption()
     bool hasFocus = option.state & QStyle::State_HasFocus;
     QCOMPARE(hasFocus, focus);
     bool isUnderMouse = option.state & QStyle::State_MouseOver;
-#ifndef Q_OS_WINCE
     QCOMPARE(isUnderMouse, underMouse);
-#endif
     // if (layoutDirection != Qt::LeftToRight)
     //QEXPECT_FAIL("", "QApplicaiton::layoutDirection doesn't propagate to QGraphicsWidget", Continue);
     //QCOMPARE(option.direction, layoutDirection);
@@ -1135,7 +1131,7 @@ void tst_QGraphicsWidget::layout()
 {
     SubQGraphicsWidget widget;
     widget.setContentsMargins(10, 5, 50, 100);
-    QCOMPARE(widget.layout(), (QGraphicsLayout *)0);
+    QCOMPARE(widget.layout(), nullptr);
     QFETCH(int, childCount);
 
     QGraphicsLinearLayout *layout = new QGraphicsLinearLayout;
@@ -1296,9 +1292,9 @@ void tst_QGraphicsWidget::parentWidget()
     SubQGraphicsWidget widgetChild(&standAlongWidget);
     SubQGraphicsWidget itemChild(&standAlongItem);
 
-    QCOMPARE(standAlongWidget.parentWidget(), (QGraphicsWidget*)0);
+    QCOMPARE(standAlongWidget.parentWidget(), nullptr);
     QCOMPARE(widgetChild.parentWidget(), static_cast<QGraphicsWidget*>(&standAlongWidget));
-    QCOMPARE(itemChild.parentWidget(), (QGraphicsWidget*)0);
+    QCOMPARE(itemChild.parentWidget(), nullptr);
 
     for (int i = 0; i < childrenCount; ++i) {
         SubQGraphicsWidget *item = new SubQGraphicsWidget(&standAlongWidget);
@@ -1501,7 +1497,7 @@ void tst_QGraphicsWidget::setTabOrderAndReparent()
     w[2]->setFocus();
     QVERIFY2(compareFocusChain(&view, w + 2, w + 3, &errorMessage), errorMessage.constData());
     w[2]->setParentItem(p);
-    QCOMPARE(scene.focusItem(), static_cast<QGraphicsItem*>(0));
+    QCOMPARE(scene.focusItem(), nullptr);
 
     scene.addItem(p);
     p->setFocus();
@@ -2121,7 +2117,7 @@ void tst_QGraphicsWidget::explicitMouseGrabber()
     QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)widget);
     QCOMPARE(widgetGrabEventSpy.count(), 1);
     widget->ungrabMouse();
-    QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)0);
+    QCOMPARE(scene.mouseGrabberItem(), nullptr);
     QCOMPARE(widgetUngrabEventSpy.count(), 1);
 
     // Grab while grabbing
@@ -2169,7 +2165,7 @@ void tst_QGraphicsWidget::explicitMouseGrabber()
     QCOMPARE(widgetGrabEventSpy.count(), 4);
     QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)widget);
     widget->ungrabMouse();
-    QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)0);
+    QCOMPARE(scene.mouseGrabberItem(), nullptr);
 
     // Out of order ungrab
     widget->grabMouse();
@@ -2214,7 +2210,7 @@ void tst_QGraphicsWidget::implicitMouseGrabber()
         event.setScenePos(QPointF(50, 50));
         qApp->sendEvent(&scene, &event);
     }
-    QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)0);
+    QCOMPARE(scene.mouseGrabberItem(), nullptr);
     QCOMPARE(widgetGrabEventSpy.count(), 1);
     QCOMPARE(widgetUngrabEventSpy.count(), 1);
 
@@ -2242,7 +2238,7 @@ void tst_QGraphicsWidget::implicitMouseGrabber()
     QCOMPARE(widgetUngrabEventSpy.count(), 1);
     widget->ungrabMouse();
     QCOMPARE(widgetUngrabEventSpy.count(), 2);
-    QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)0);
+    QCOMPARE(scene.mouseGrabberItem(), nullptr);
 
     // Implicit mouse grabber tries to explicitly grab the mouse
     {
@@ -2267,7 +2263,7 @@ void tst_QGraphicsWidget::implicitMouseGrabber()
     QCOMPARE(widgetGrabEventSpy.count(), 3);
     QCOMPARE(widgetUngrabEventSpy.count(), 2);
     widget->ungrabMouse();
-    QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)0);
+    QCOMPARE(scene.mouseGrabberItem(), nullptr);
     QCOMPARE(widgetGrabEventSpy.count(), 3);
     QCOMPARE(widgetUngrabEventSpy.count(), 3);
 
@@ -2297,7 +2293,7 @@ void tst_QGraphicsWidget::implicitMouseGrabber()
 
     scene.removeItem(widget);
     QCOMPARE(widgetUngrabEventSpy.count(), 4);
-    QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)0);
+    QCOMPARE(scene.mouseGrabberItem(), nullptr);
 }
 
 class GrabOnPressItem : public QGraphicsRectItem
@@ -2371,7 +2367,7 @@ void tst_QGraphicsWidget::doubleClickAfterExplicitMouseGrab()
         event.setScenePos(QPointF(50, 50));
         qApp->sendEvent(&scene, &event);
     }
-    QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)0);
+    QCOMPARE(scene.mouseGrabberItem(), nullptr);
     QCOMPARE(item->nrelease, 1);
     QCOMPARE(item->nungrab, 1);
     {
@@ -2393,7 +2389,7 @@ void tst_QGraphicsWidget::doubleClickAfterExplicitMouseGrab()
         event.setScenePos(QPointF(50, 50));
         qApp->sendEvent(&scene, &event);
     }
-    QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)0);
+    QCOMPARE(scene.mouseGrabberItem(), nullptr);
     QCOMPARE(item->nrelease, 2);
     QCOMPARE(item->nungrab, 2);
 }
@@ -2415,7 +2411,7 @@ void tst_QGraphicsWidget::popupMouseGrabber()
     // Hiding it loses the grab again.
     widget->hide();
     QCOMPARE(widgetUngrabEventSpy.count(), 1);
-    QCOMPARE(scene.mouseGrabberItem(), (QGraphicsItem *)0);
+    QCOMPARE(scene.mouseGrabberItem(), nullptr);
 
     // Showing it grabs the mouse again
     widget->show();
@@ -2938,8 +2934,8 @@ protected:
 
 void tst_QGraphicsWidget::respectHFW()
 {
-#if defined(Q_OS_WINCE) || defined(Q_OS_MAC)
-    QSKIP("This test is platform dependent, it fails on wince and mac. Please fix.");
+#if defined(Q_OS_DARWIN)
+    QSKIP("This test is platform dependent, it fails on Apple platforms. Please fix.");
 #else
     QGraphicsScene scene;
     HFWWidget *window = new HFWWidget;
@@ -3184,7 +3180,7 @@ void tst_QGraphicsWidget::itemChangeEvents()
                 valueDuringEvents.insert(QEvent::ParentChange, QVariant::fromValue(parentItem()));
                 break;
             }
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
             case QEvent::CursorChange: {
                 valueDuringEvents.insert(QEvent::CursorChange, int(cursor().shape()));
                 break;
@@ -3235,7 +3231,7 @@ void tst_QGraphicsWidget::itemChangeEvents()
     QVERIFY(!item->isVisible());
     QTRY_VERIFY(!item->valueDuringEvents.value(QEvent::Hide).toBool());
 
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
     // CursorChange should be triggered after the cursor has changed
     item->setCursor(Qt::PointingHandCursor);
     QTRY_COMPARE(item->valueDuringEvents.value(QEvent::CursorChange).toInt(), int(item->cursor().shape()));

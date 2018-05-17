@@ -52,7 +52,7 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
+#include <QtCore/private/qglobal_p.h>
 #include <QtCore/qhash.h>
 #include <QtCore/QWaitCondition>
 
@@ -74,7 +74,7 @@ public:
     int writerCount;
     int waitingReaders;
     int waitingWriters;
-    bool recursive;
+    const bool recursive;
 
     //Called with the mutex locked
     bool lockForWrite(int timeout);

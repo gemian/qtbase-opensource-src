@@ -399,7 +399,9 @@ void QMapDataBase::freeData(QMapDataBase *d)
        With QMap, the items are always sorted by key.
     \li The key type of a QHash must provide operator==() and a global
        qHash(Key) function. The key type of a QMap must provide
-       operator<() specifying a total order.
+       operator<() specifying a total order. Since Qt 5.8.1 it is also safe
+       to use a pointer type as key, even if the underlying operator<()
+       does not provide a total order.
     \endlist
 
     Here's an example QMap with QString keys and \c int values:
@@ -904,6 +906,61 @@ void QMapDataBase::freeData(QMapDataBase *d)
     item after the last key in the map.
 
     \sa keyBegin(), lastKey()
+*/
+
+
+/*! \fn QMap::key_value_iterator QMap::keyValueBegin()
+    \since 5.10
+
+    Returns an \l{STL-style iterators}{STL-style iterator} pointing to the first entry
+    in the map.
+
+    \sa keyValueEnd()
+*/
+
+/*! \fn QMap::key_value_iterator QMap::keyValueEnd()
+    \since 5.10
+
+    Returns an \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    entry after the last entry in the map.
+
+    \sa keyValueBegin()
+*/
+
+/*! \fn QMap::const_key_value_iterator QMap::keyValueBegin() const
+    \since 5.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the first entry
+    in the map.
+
+    \sa keyValueEnd()
+*/
+
+/*! \fn QMap::const_key_value_iterator QMap::constKeyValueBegin() const
+    \since 5.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the first entry
+    in the map.
+
+    \sa keyValueBegin()
+*/
+
+/*! \fn QMap::const_key_value_iterator QMap::keyValueEnd() const
+    \since 5.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    entry after the last entry in the map.
+
+    \sa keyValueBegin()
+*/
+
+/*! \fn QMap::const_key_value_iterator QMap::constKeyValueEnd() const
+    \since 5.10
+
+    Returns a const \l{STL-style iterators}{STL-style iterator} pointing to the imaginary
+    entry after the last entry in the map.
+
+    \sa constKeyValueBegin()
 */
 
 /*! \fn const Key &QMap::firstKey() const
@@ -1780,6 +1837,18 @@ void QMapDataBase::freeData(QMapDataBase *d)
     Returns the underlying const_iterator this key_iterator is based on.
 */
 
+/*! \typedef QMap::key_value_iterator
+    \inmodule QtCore
+    \since 5.10
+    \brief The QMap::key_value_iterator typedef provides an STL-style iterator for QMap and QMultiMap.
+
+    QMap::key_value_iterator is essentially the same as QMap::iterator
+    with the difference that operator*() returns a key/value pair instead of a
+    value.
+
+    \sa QKeyValueIterator
+*/
+
 /*! \fn QDataStream &operator<<(QDataStream &out, const QMap<Key, T> &map)
     \relates QMap
 
@@ -1865,7 +1934,7 @@ void QMapDataBase::freeData(QMapDataBase *d)
 /*! \fn QMultiMap::QMultiMap(std::initializer_list<std::pair<Key,T> > list)
     \since 5.1
 
-    Constructs a multi map with a copy of each of the elements in the
+    Constructs a multi-map with a copy of each of the elements in the
     initializer list \a list.
 
     This function is only available if the program is being

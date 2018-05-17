@@ -50,12 +50,14 @@
 //
 // We mean it.
 //
+
+#include <QtPrintSupport/private/qtprintsupportglobal_p.h>
 #include "QtCore/qstring.h"
 #include "QtCore/qstringlist.h"
 #include "QtPrintSupport/qprinter.h"
 #include "QtCore/qdatetime.h"
 
-#ifndef QT_NO_CUPS
+QT_REQUIRE_CONFIG(cups);
 
 QT_BEGIN_NAMESPACE
 
@@ -147,7 +149,5 @@ Q_DECLARE_METATYPE(QCUPSSupport::BannerPage)
 Q_DECLARE_METATYPE(QCUPSSupport::PageSet)
 Q_DECLARE_METATYPE(QCUPSSupport::PagesPerSheetLayout)
 Q_DECLARE_METATYPE(QCUPSSupport::PagesPerSheet)
-
-#endif // QT_NO_CUPS
 
 #endif

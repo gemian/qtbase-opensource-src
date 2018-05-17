@@ -37,7 +37,7 @@
 **
 ****************************************************************************/
 
-#include <QtCore/QtConfig>
+#include <QtCore/qglobal.h>
 #ifndef QT_NO_ACCESSIBILITY
 
 
@@ -47,22 +47,16 @@
 #include <QtCore/qmap.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qpointer.h>
-#include <QtCore/qsettings.h>
 #include <QtGui/qaccessible.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <qpa/qplatformnativeinterface.h>
 #include <qpa/qplatformintegration.h>
 #include <QtGui/qwindow.h>
 #include <QtGui/qguiapplication.h>
+#include <QtFontDatabaseSupport/private/qwindowsfontdatabase_p.h> // registry helper
 
 #include "qwindowsaccessibility.h"
-#if !defined(Q_OS_WINCE)
-# ifdef Q_CC_MINGW
-#  include "qwindowsmsaaaccessible.h"
-# else
-#  include "iaccessible2.h"
-# endif
-#endif
+#include "iaccessible2.h"
 #include "comutils.h"
 
 #include <oleacc.h>
@@ -74,11 +68,7 @@
 
 #include <winuser.h>
 #if !defined(WINABLEAPI)
-#  if defined(Q_OS_WINCE)
-#    include <bldver.h>
-#  else
-#    include <winable.h>
-#  endif
+#  include <winable.h>
 #endif
 
 #include <servprov.h>
@@ -86,7 +76,7 @@
 #include <comdef.h>
 #endif
 
-#include "../qtwindows_additional.h"
+#include <QtCore/qt_windows.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -120,6 +110,14 @@ static inline QString messageBoxAlertSound(const QObject *messageBox)
     return QString();
 }
 
+static QString soundFileName(const QString &soundName)
+{
+    const QString key = QStringLiteral("AppEvents\\Schemes\\Apps\\.Default\\")
+        + soundName + QStringLiteral("\\.Current");
+    return QWindowsFontDatabase::readRegistryString(HKEY_CURRENT_USER,
+                                                    reinterpret_cast<const wchar_t *>(key.utf16()), L"");
+}
+
 void QWindowsAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
 {
     QString soundName;
@@ -140,23 +138,11 @@ void QWindowsAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
         break;
     }
 
-    if (!soundName.isEmpty()) {
-#ifndef QT_NO_SETTINGS
-        QSettings settings(QLatin1String("HKEY_CURRENT_USER\\AppEvents\\Schemes\\Apps\\.Default\\") + soundName,
-                           QSettings::NativeFormat);
-        QString file = settings.value(QLatin1String(".Current/.")).toString();
-#else
-        QString file;
-#endif
-        if (!file.isEmpty()) {
-            PlaySound(reinterpret_cast<const wchar_t *>(soundName.utf16()), 0, SND_ALIAS | SND_ASYNC | SND_NODEFAULT | SND_NOWAIT);
-        }
+    if (!soundName.isEmpty() && !soundFileName(soundName).isEmpty()) {
+        PlaySound(reinterpret_cast<const wchar_t *>(soundName.utf16()), 0,
+                  SND_ALIAS | SND_ASYNC | SND_NODEFAULT | SND_NOWAIT);
     }
 
-#if defined(Q_OS_WINCE) // ### TODO: check for NotifyWinEvent in CE 6.0
-    // There is no user32.lib nor NotifyWinEvent for CE
-    return;
-#else
     // An event has to be associated with a window,
     // so find the first parent that is a widget and that has a WId
     QAccessibleInterface *iface = event->accessibleInterface();
@@ -179,7 +165,6 @@ void QWindowsAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
         event->type() != QAccessible::ObjectDestroyed) {
         ::NotifyWinEvent(event->type(), hWnd, OBJID_CLIENT, QAccessible::uniqueId(iface));
     }
-#endif // Q_OS_WINCE
 }
 
 QWindow *QWindowsAccessibility::windowHelper(const QAccessibleInterface *iface)
@@ -202,11 +187,6 @@ QWindow *QWindowsAccessibility::windowHelper(const QAccessibleInterface *iface)
 */
 IAccessible *QWindowsAccessibility::wrap(QAccessibleInterface *acc)
 {
-#if defined(Q_OS_WINCE)
-    Q_UNUSED(acc);
-
-    return 0;
-#else
     if (!acc)
         return 0;
 
@@ -214,20 +194,14 @@ IAccessible *QWindowsAccessibility::wrap(QAccessibleInterface *acc)
     if (!QAccessible::uniqueId(acc))
         QAccessible::registerAccessibleInterface(acc);
 
-# ifdef Q_CC_MINGW
-    QWindowsMsaaAccessible *wacc = new QWindowsMsaaAccessible(acc);
-# else
     QWindowsIA2Accessible *wacc = new QWindowsIA2Accessible(acc);
-# endif
     IAccessible *iacc = 0;
     wacc->QueryInterface(IID_IAccessible, reinterpret_cast<void **>(&iacc));
     return iacc;
-#endif // defined(Q_OS_WINCE)
 }
 
 bool QWindowsAccessibility::handleAccessibleObjectFromWindowRequest(HWND hwnd, WPARAM wParam, LPARAM lParam, LRESULT *lResult)
 {
-#if !defined(Q_OS_WINCE)
     if (static_cast<long>(lParam) == static_cast<long>(UiaRootObjectId)) {
         /* For UI Automation */
     } else if (DWORD(lParam) == DWORD(OBJID_CLIENT)) {
@@ -263,12 +237,6 @@ bool QWindowsAccessibility::handleAccessibleObjectFromWindowRequest(HWND hwnd, W
             }
         }
     }
-#else
-    Q_UNUSED(hwnd);
-    Q_UNUSED(wParam);
-    Q_UNUSED(lParam);
-    Q_UNUSED(lResult);
-#endif // !defined(Q_OS_WINCE)
     return false;
 }
 

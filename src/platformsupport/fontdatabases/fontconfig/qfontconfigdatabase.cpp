@@ -40,6 +40,8 @@
 #include "qfontconfigdatabase_p.h"
 #include "qfontenginemultifontconfig_p.h"
 
+#include <QtFontDatabaseSupport/private/qfontengine_ft_p.h>
+
 #include <QtCore/QList>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QFile>
@@ -49,7 +51,6 @@
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformservices.h>
 
-#include <QtGui/private/qfontengine_ft_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qhighdpiscaling_p.h>
 
@@ -117,7 +118,7 @@ static inline int stretchFromFcWidth(int fcwidth)
     return qtstretch;
 }
 
-static const char *specialLanguages[] = {
+static const char specialLanguages[][6] = {
     "", // Unknown
     "", // Inherited
     "", // Common
@@ -251,12 +252,12 @@ static const char *specialLanguages[] = {
     "", // OldHungarian
     ""  // SignWriting
 };
-Q_STATIC_ASSERT(sizeof(specialLanguages) / sizeof(const char *) == QChar::ScriptCount);
+Q_STATIC_ASSERT(sizeof specialLanguages / sizeof *specialLanguages == QChar::ScriptCount);
 
 // this could become a list of all languages used for each writing
 // system, instead of using the single most common language.
-static const char *languageForWritingSystem[] = {
-    0,     // Any
+static const char languageForWritingSystem[][6] = {
+    "",     // Any
     "en",  // Latin
     "el",  // Greek
     "ru",  // Cyrillic
@@ -286,25 +287,25 @@ static const char *languageForWritingSystem[] = {
     "ja",  // Japanese
     "ko",  // Korean
     "vi",  // Vietnamese
-    0, // Symbol
+    "", // Symbol
     "sga", // Ogham
     "non", // Runic
     "man" // N'Ko
 };
-Q_STATIC_ASSERT(sizeof(languageForWritingSystem) / sizeof(const char *) == QFontDatabase::WritingSystemsCount);
+Q_STATIC_ASSERT(sizeof languageForWritingSystem / sizeof *languageForWritingSystem == QFontDatabase::WritingSystemsCount);
 
 #if FC_VERSION >= 20297
 // Newer FontConfig let's us sort out fonts that report certain scripts support,
 // but no open type tables for handling them correctly.
 // Check the reported script presence in the FC_CAPABILITY's "otlayout:" section.
-static const char *capabilityForWritingSystem[] = {
-    0,     // Any
-    0,  // Latin
-    0,  // Greek
-    0,  // Cyrillic
-    0,  // Armenian
-    0,  // Hebrew
-    0,  // Arabic
+static const char capabilityForWritingSystem[][5] = {
+    "",     // Any
+    "",  // Latin
+    "",  // Greek
+    "",  // Cyrillic
+    "",  // Armenian
+    "",  // Hebrew
+    "",  // Arabic
     "syrc",  // Syriac
     "thaa",  // Thaana
     "deva",  // Devanagari
@@ -317,20 +318,20 @@ static const char *capabilityForWritingSystem[] = {
     "knda",  // Kannada
     "mlym",  // Malayalam
     "sinh",  // Sinhala
-    0,  // Thai
-    0,  // Lao
+    "",  // Thai
+    "",  // Lao
     "tibt",  // Tibetan
     "mymr",  // Myanmar
-    0,  // Georgian
+    "",  // Georgian
     "khmr",  // Khmer
-    0, // SimplifiedChinese
-    0, // TraditionalChinese
-    0,  // Japanese
-    0,  // Korean
-    0,  // Vietnamese
-    0, // Symbol
-    0, // Ogham
-    0, // Runic
+    "", // SimplifiedChinese
+    "", // TraditionalChinese
+    "",  // Japanese
+    "",  // Korean
+    "",  // Vietnamese
+    "", // Symbol
+    "", // Ogham
+    "", // Runic
     "nko " // N'Ko
 };
 Q_STATIC_ASSERT(sizeof(capabilityForWritingSystem) / sizeof(*capabilityForWritingSystem) == QFontDatabase::WritingSystemsCount);
@@ -436,7 +437,7 @@ static void populateFromPattern(FcPattern *pattern)
                 FcLangResult langRes = FcLangSetHasLang(langset, lang);
                 if (langRes != FcLangDifferentLang) {
 #if FC_VERSION >= 20297
-                    if (capabilityForWritingSystem[j] != Q_NULLPTR && requiresOpenType(j)) {
+                    if (*capabilityForWritingSystem[j] && requiresOpenType(j)) {
                         if (cap == Q_NULLPTR)
                             capRes = FcPatternGetString(pattern, FC_CAPABILITY, 0, &cap);
                         if (capRes == FcResultMatch && strstr(reinterpret_cast<const char *>(cap), capabilityForWritingSystem[j]) == 0)
@@ -510,7 +511,7 @@ static void populateFromPattern(FcPattern *pattern)
 
 void QFontconfigDatabase::populateFontDatabase()
 {
-    FcInitReinitialize();
+    FcInit();
     FcFontSet  *fonts;
 
     {
@@ -572,6 +573,12 @@ void QFontconfigDatabase::populateFontDatabase()
 //    QFont font("Sans Serif");
 //    font.setPointSize(9);
 //    QApplication::setFont(font);
+}
+
+void QFontconfigDatabase::invalidate()
+{
+    // Clear app fonts.
+    FcConfigAppFontClear(0);
 }
 
 QFontEngineMulti *QFontconfigDatabase::fontEngineMulti(QFontEngine *fontEngine, QChar::Script script)
@@ -670,6 +677,7 @@ QFontEngine *QFontconfigDatabase::fontEngine(const QFontDef &f, void *usrPtr)
     fid.filename = QFile::encodeName(fontfile->fileName);
     fid.index = fontfile->indexValue;
 
+    // FIXME: Unify with logic in QFontEngineFT::create()
     QFontEngineFT *engine = new QFontEngineFT(f);
     engine->face_id = fid;
 
@@ -685,7 +693,7 @@ QFontEngine *QFontconfigDatabase::fontEngine(const QFontDef &f, void *usrPtr)
 
 QFontEngine *QFontconfigDatabase::fontEngine(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference)
 {
-    QFontEngineFT *engine = static_cast<QFontEngineFT*>(QBasicFontDatabase::fontEngine(fontData, pixelSize, hintingPreference));
+    QFontEngineFT *engine = static_cast<QFontEngineFT*>(QFreeTypeFontDatabase::fontEngine(fontData, pixelSize, hintingPreference));
     if (engine == 0)
         return 0;
 
@@ -837,7 +845,7 @@ QStringList QFontconfigDatabase::addApplicationFont(const QByteArray &fontData, 
 
 QString QFontconfigDatabase::resolveFontFamilyAlias(const QString &family) const
 {
-    QString resolved = QBasicFontDatabase::resolveFontFamilyAlias(family);
+    QString resolved = QFreeTypeFontDatabase::resolveFontFamilyAlias(family);
     if (!resolved.isEmpty() && resolved != family)
         return resolved;
     FcPattern *pattern = FcPatternCreate();
@@ -893,7 +901,13 @@ void QFontconfigDatabase::setupFontEngine(QFontEngineFT *engine, const QFontDef 
     bool forcedAntialiasSetting = !antialias;
 
     const QPlatformServices *services = QGuiApplicationPrivate::platformIntegration()->services();
-    bool useXftConf = (services && (services->desktopEnvironment() == "GNOME" || services->desktopEnvironment() == "UNITY"));
+    bool useXftConf = false;
+
+    if (services) {
+        const QList<QByteArray> desktopEnv = services->desktopEnvironment().split(':');
+        useXftConf = desktopEnv.contains("GNOME") || desktopEnv.contains("UNITY");
+    }
+
     if (useXftConf && !forcedAntialiasSetting) {
         void *antialiasResource =
                 QGuiApplication::platformNativeInterface()->nativeResourceForScreen("antialiasingEnabled",

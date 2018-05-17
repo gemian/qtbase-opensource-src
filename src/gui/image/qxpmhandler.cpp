@@ -42,6 +42,7 @@
 #ifndef QT_NO_IMAGEFORMAT_XPM
 
 #include <private/qcolor_p.h>
+#include <qbytearraymatcher.h>
 #include <qimage.h>
 #include <qmap.h>
 #include <qtextstream.h>
@@ -845,12 +846,15 @@ static bool read_xpm_header(
     if (!read_xpm_string(buf, device, source, index, state))
         return false;
 
-#if defined(_MSC_VER) && _MSC_VER >= 1400 && !defined(Q_OS_WINCE)
+#ifdef Q_CC_MSVC
         if (sscanf_s(buf, "%d %d %d %d", w, h, ncols, cpp) < 4)
 #else
     if (sscanf(buf, "%d %d %d %d", w, h, ncols, cpp) < 4)
 #endif
         return false;                                        // < 4 numbers parsed
+
+    if (*w <= 0 || *w > 32767 || *h <= 0 || *h > 32767 || *ncols <= 0 || *ncols > (64 * 64 * 64 * 64) || *cpp <= 0 || *cpp > 15)
+        return false;                                        // failed sanity check
 
     return true;
 }
@@ -1038,7 +1042,9 @@ bool qt_read_xpm_image_or_array(QIODevice *device, const char * const * source, 
         if ((readBytes = device->readLine(buf.data(), buf.size())) < 0)
             return false;
 
-        if (buf.indexOf("/* XPM") != 0) {
+        static Q_RELAXED_CONSTEXPR auto matcher = qMakeStaticByteArrayMatcher("/* XPM");
+
+        if (matcher.indexIn(buf) != 0) {
             while (readBytes > 0) {
                 device->ungetChar(buf.at(readBytes - 1));
                 --readBytes;

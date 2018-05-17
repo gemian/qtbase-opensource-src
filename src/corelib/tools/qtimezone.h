@@ -45,6 +45,13 @@
 #include <QtCore/qlocale.h>
 #include <QtCore/qdatetime.h>
 
+QT_REQUIRE_CONFIG(timezone);
+
+#if (defined(Q_OS_DARWIN) || defined(Q_QDOC)) && !defined(QT_NO_SYSTEMLOCALE)
+Q_FORWARD_DECLARE_CF_TYPE(CFTimeZone);
+Q_FORWARD_DECLARE_OBJC_CLASS(NSTimeZone);
+#endif
+
 QT_BEGIN_NAMESPACE
 
 class QTimeZonePrivate;
@@ -52,6 +59,14 @@ class QTimeZonePrivate;
 class Q_CORE_EXPORT QTimeZone
 {
 public:
+    // Sane UTC offsets range from -14 to +14 hours:
+    enum {
+        // No known zone > 12 hrs West of Greenwich (Baker Island, USA)
+        MinUtcOffsetSecs = -14 * 3600,
+        // No known zone > 14 hrs East of Greenwich (Kiritimati, Christmas Island, Kiribati)
+        MaxUtcOffsetSecs = +14 * 3600
+    };
+
     enum TimeType {
         StandardTime = 0,
         DaylightTime = 1,
@@ -139,6 +154,13 @@ public:
     static QList<QByteArray> windowsIdToIanaIds(const QByteArray &windowsId);
     static QList<QByteArray> windowsIdToIanaIds(const QByteArray &windowsId,
                                                  QLocale::Country country);
+
+#if (defined(Q_OS_DARWIN) || defined(Q_QDOC)) && !defined(QT_NO_SYSTEMLOCALE)
+    static QTimeZone fromCFTimeZone(CFTimeZoneRef timeZone);
+    CFTimeZoneRef toCFTimeZone() const Q_DECL_CF_RETURNS_RETAINED;
+    static QTimeZone fromNSTimeZone(const NSTimeZone *timeZone);
+    NSTimeZone *toNSTimeZone() const Q_DECL_NS_RETURNS_AUTORELEASED;
+#endif
 
 private:
     QTimeZone(QTimeZonePrivate &dd);

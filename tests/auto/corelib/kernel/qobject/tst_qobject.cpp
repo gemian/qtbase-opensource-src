@@ -41,8 +41,9 @@
 #include <QThread>
 #include <QMutex>
 #include <QWaitCondition>
-#include <QProcess>
-
+#if QT_CONFIG(process)
+# include <QProcess>
+#endif
 #include "qobject.h"
 #ifdef QT_BUILD_INTERNAL
 #include <private/qobject_p.h>
@@ -66,6 +67,7 @@ private slots:
     void connectDisconnectNotify();
     void connectDisconnectNotifyPMF();
     void disconnectNotify_receiverDestroyed();
+    void disconnectNotify_metaObjConnection();
     void connectNotify_connectSlotsByName();
     void connectDisconnectNotify_shadowing();
     void emitInDefinedOrder();
@@ -119,6 +121,7 @@ private slots:
     void connectCxx0x();
     void connectToStaticCxx0x();
     void connectCxx0xTypeMatching();
+    void connectCxx17Noexcept();
     void connectConvert();
     void connectWithReference();
     void connectManyArguments();
@@ -137,6 +140,7 @@ private slots:
     void connectFunctorWithContext();
     void connectFunctorWithContextUnique();
     void connectFunctorDeadlock();
+    void connectFunctorMoveOnly();
     void connectStaticSlotWithObject();
     void disconnectDoesNotLeakFunctor();
     void contextDoesNotLeakFunctor();
@@ -146,6 +150,8 @@ private slots:
     void noDeclarativeParentChangedOnDestruction();
     void deleteLaterInAboutToBlockHandler();
     void mutableFunctor();
+    void checkArgumentsForNarrowing();
+    void nullReceiver();
 };
 
 struct QObjectCreatedOnShutdown
@@ -278,7 +284,7 @@ static void playWithObjects()
 
 void tst_QObject::initTestCase()
 {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     const QString testDataDir = QFileInfo(QFINDTESTDATA("signalbug")).absolutePath();
     QVERIFY2(QDir::setCurrent(testDataDir), qPrintable("Could not chdir to " + testDataDir));
 #endif
@@ -923,8 +929,7 @@ void tst_QObject::connectDisconnectNotifyPMF()
 
     // Test disconnectNotify when disconnecting by QMetaObject::Connection
     QVERIFY(QObject::disconnect(conn));
-    // disconnectNotify() is not called, but it probably should be.
-    QVERIFY(s->disconnectedSignals.isEmpty());
+    QVERIFY(!s->disconnectedSignals.isEmpty());
 
     // Test connectNotify when connecting by function pointer
     s->clearNotifications();
@@ -965,6 +970,25 @@ void tst_QObject::disconnectNotify_receiverDestroyed()
     delete r;
     QCOMPARE(s->disconnectedSignals.count(), 1);
     QCOMPARE(s->disconnectedSignals.at(0), QMetaMethod::fromSignal(&QObject::destroyed));
+
+    delete s;
+}
+
+void tst_QObject::disconnectNotify_metaObjConnection()
+{
+    NotifyObject *s = new NotifyObject;
+    NotifyObject *r = new NotifyObject;
+
+    QMetaObject::Connection c = QObject::connect((SenderObject*)s, SIGNAL(signal1()),
+                                                 (ReceiverObject*)r, SLOT(slot1()));
+    QVERIFY(c);
+    QVERIFY(QObject::disconnect(c));
+
+    QCOMPARE(s->disconnectedSignals.count(), 1);
+    QCOMPARE(s->disconnectedSignals.at(0), QMetaMethod::fromSignal(&SenderObject::signal1));
+
+    delete r;
+    QCOMPARE(s->disconnectedSignals.count(), 1);
 
     delete s;
 }
@@ -1575,11 +1599,7 @@ Q_DECLARE_METATYPE(PropertyObject::Priority)
 
 void tst_QObject::threadSignalEmissionCrash()
 {
-#if defined(Q_OS_WINCE)
-    int loopCount = 100;
-#else
     int loopCount = 1000;
-#endif
     for (int i = 0; i < loopCount; ++i) {
         QTcpSocket socket;
         socket.connectToHost("localhost", 80);
@@ -2343,8 +2363,8 @@ void tst_QObject::testUserData()
 
     // Randomize the table a bit
     for (int i=0; i<100; ++i) {
-        int p1 = rand() % USER_DATA_COUNT;
-        int p2 = rand() % USER_DATA_COUNT;
+        int p1 = QRandomGenerator::global()->bounded(USER_DATA_COUNT);
+        int p2 = QRandomGenerator::global()->bounded(USER_DATA_COUNT);
 
         int tmp = user_data_ids[p1];
         user_data_ids[p1] = user_data_ids[p2];
@@ -2989,7 +3009,7 @@ void tst_QObject::dynamicProperties()
 
 void tst_QObject::recursiveSignalEmission()
 {
-#ifdef QT_NO_PROCESS
+#if !QT_CONFIG(process)
     QSKIP("No qprocess support", SkipAll);
 #else
     QProcess proc;
@@ -3385,14 +3405,12 @@ void tst_QObject::dumpObjectInfo()
     QObject a, b;
     QObject::connect(&a, SIGNAL(destroyed(QObject*)), &b, SLOT(deleteLater()));
     a.disconnect(&b);
-#ifdef QT_DEBUG
     QTest::ignoreMessage(QtDebugMsg, "OBJECT QObject::unnamed");
     QTest::ignoreMessage(QtDebugMsg, "  SIGNALS OUT");
     QTest::ignoreMessage(QtDebugMsg, "        signal: destroyed(QObject*)");
     QTest::ignoreMessage(QtDebugMsg, "          <Disconnected receiver>");
     QTest::ignoreMessage(QtDebugMsg, "  SIGNALS IN");
     QTest::ignoreMessage(QtDebugMsg, "        <None>");
-#endif
     a.dumpObjectInfo(); // should not crash
 }
 
@@ -4741,10 +4759,13 @@ class LotsOfSignalsAndSlots: public QObject
 
     public slots:
         void slot_v() {}
+        void slot_v_noexcept() Q_DECL_NOTHROW {}
         void slot_vi(int) {}
+        void slot_vi_noexcept() Q_DECL_NOTHROW {}
         void slot_vii(int, int) {}
         void slot_viii(int, int, int) {}
         int slot_i() { return 0; }
+        int slot_i_noexcept() Q_DECL_NOTHROW { return 0; }
         int slot_ii(int) { return 0; }
         int slot_iii(int, int) { return 0; }
         int slot_iiii(int, int, int) { return 0; }
@@ -4758,13 +4779,18 @@ class LotsOfSignalsAndSlots: public QObject
         void slot_vPFvvE(fptr) {}
 
         void const_slot_v() const {};
+        void const_slot_v_noexcept() const Q_DECL_NOTHROW {}
         void const_slot_vi(int) const {};
+        void const_slot_vi_noexcept(int) const Q_DECL_NOTHROW {}
 
         static void static_slot_v() {}
+        static void static_slot_v_noexcept() Q_DECL_NOTHROW {}
         static void static_slot_vi(int) {}
+        static void static_slot_vi_noexcept(int) Q_DECL_NOTHROW {}
         static void static_slot_vii(int, int) {}
         static void static_slot_viii(int, int, int) {}
         static int static_slot_i() { return 0; }
+        static int static_slot_i_noexcept() Q_DECL_NOTHROW { return 0; }
         static int static_slot_ii(int) { return 0; }
         static int static_slot_iii(int, int) { return 0; }
         static int static_slot_iiii(int, int, int) { return 0; }
@@ -4925,6 +4951,32 @@ void tst_QObject::connectCxx0xTypeMatching()
 
     QVERIFY(QObject::connect(&obj, &Foo::signal_vRi, &obj, &Foo::slot_vs));
 
+}
+
+void receiverFunction_noexcept() Q_DECL_NOTHROW {}
+struct Functor_noexcept { void operator()() Q_DECL_NOTHROW {} };
+void tst_QObject::connectCxx17Noexcept()
+{
+    // this is about connecting signals to slots with the Q_DECL_NOTHROW qualifier
+    // as semantics changed due to http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/p0012r1.html
+    typedef LotsOfSignalsAndSlots Foo;
+    Foo obj;
+
+    QObject::connect(&obj, &Foo::signal_v, &obj, &Foo::slot_v_noexcept);
+    QObject::connect(&obj, &Foo::signal_v, &obj, &Foo::slot_i_noexcept);
+    QObject::connect(&obj, &Foo::signal_v, &obj, &Foo::slot_vi_noexcept);
+
+    QObject::connect(&obj, &Foo::signal_vii, &Foo::static_slot_v_noexcept);
+    QObject::connect(&obj, &Foo::signal_vii, &Foo::static_slot_i_noexcept);
+    QObject::connect(&obj, &Foo::signal_vii, &Foo::static_slot_vi_noexcept);
+
+    QVERIFY(QObject::connect(&obj, &Foo::signal_vi, &obj, &Foo::const_slot_vi_noexcept));
+    QVERIFY(QObject::connect(&obj, &Foo::signal_vi, &obj, &Foo::const_slot_v_noexcept));
+
+    QObject::connect(&obj, &Foo::signal_v, receiverFunction_noexcept);
+
+    Functor_noexcept fn;
+    QObject::connect(&obj, &Foo::signal_v, fn);
 }
 
 class StringVariant : public QObject
@@ -5257,6 +5309,15 @@ void tst_QObject::connectNoDefaultConstructorArg()
     QVERIFY(connect(&ob, &NoDefaultContructorArguments::mySignal, &ob, &NoDefaultContructorArguments::mySlot, Qt::QueuedConnection));
 }
 
+struct MoveOnly
+{
+    int value;
+    explicit MoveOnly(int v = 1) : value(v) {}
+    MoveOnly(MoveOnly &&o) : value(o.value) { o.value = -1; }
+    MoveOnly &operator=(MoveOnly &&o) { value = o.value; o.value = -1; return *this;  }
+    Q_DISABLE_COPY(MoveOnly);
+};
+
 class ReturnValue : public QObject {
 friend class tst_QObject;
 Q_OBJECT
@@ -5266,6 +5327,7 @@ signals:
     int returnInt(int);
     void returnVoid(int);
     CustomType returnCustomType(int);
+    MoveOnly returnMoveOnly(int);
 
     QObject *returnPointer();
 public slots:
@@ -5278,6 +5340,7 @@ public slots:
     QString returnHello() { return QStringLiteral("hello"); }
     QObject *returnThisSlot1() { return this; }
     ReturnValue *returnThisSlot2() { return this; }
+    MoveOnly returnMoveOnlySlot(int i) { return MoveOnly(i); }
 public:
     struct VariantFunctor {
         QVariant operator()(int i) { return i; }
@@ -5293,6 +5356,9 @@ public:
     };
     struct VoidFunctor {
         void operator()(int) {}
+    };
+    struct MoveOnlyFunctor {
+        MoveOnly operator()(int i) { return MoveOnly(i); }
     };
 };
 
@@ -5331,6 +5397,7 @@ void tst_QObject::returnValue()
         emit r.returnVoid(45);
         QCOMPARE((emit r.returnCustomType(45)).value(), CustomType().value());
         QCOMPARE((emit r.returnPointer()), static_cast<QObject *>(0));
+        QCOMPARE((emit r.returnMoveOnly(666)).value, MoveOnly().value);
     }
     { // connected to a slot returning the same type
         CheckInstanceCount checker;
@@ -5345,6 +5412,8 @@ void tst_QObject::returnValue()
         QCOMPARE((emit r.returnCustomType(45)).value(), CustomType(45).value());
         QVERIFY(connect(&r, &ReturnValue::returnPointer, &receiver, &ReturnValue::returnThisSlot1, type));
         QCOMPARE((emit r.returnPointer()), static_cast<QObject *>(&receiver));
+        QVERIFY(connect(&r, &ReturnValue::returnMoveOnly, &receiver, &ReturnValue::returnMoveOnlySlot, type));
+        QCOMPARE((emit r.returnMoveOnly(666)).value, 666);
     }
     if (!isBlockingQueued) { // connected to simple functions or functor
         CheckInstanceCount checker;
@@ -5363,6 +5432,10 @@ void tst_QObject::returnValue()
         ReturnValue::IntFunctor intFunctor;
         QVERIFY(connect(&r, &ReturnValue::returnInt, intFunctor));
         QCOMPARE(emit r.returnInt(45), int(45));
+
+        ReturnValue::MoveOnlyFunctor moveOnlyFunctor;
+        QVERIFY(connect(&r, &ReturnValue::returnMoveOnly, moveOnlyFunctor));
+        QCOMPARE((emit r.returnMoveOnly(666)).value, 666);
     }
     { // connected to a slot with different type
         CheckInstanceCount checker;
@@ -5401,6 +5474,8 @@ void tst_QObject::returnValue()
         QCOMPARE((emit r.returnCustomType(45)).value(), CustomType().value());
         QVERIFY(connect(&r, &ReturnValue::returnPointer, &receiver, &ReturnValue::returnVoidSlot, type));
         QCOMPARE((emit r.returnPointer()), static_cast<QObject *>(0));
+        QVERIFY(connect(&r, &ReturnValue::returnMoveOnly, &receiver, &ReturnValue::returnVoidSlot, type));
+        QCOMPARE((emit r.returnMoveOnly(666)).value, MoveOnly().value);
     }
     if (!isBlockingQueued) {
         // queued connection should not forward the return value
@@ -5416,6 +5491,8 @@ void tst_QObject::returnValue()
         QCOMPARE((emit r.returnCustomType(45)).value(), CustomType().value());
         QVERIFY(connect(&r, &ReturnValue::returnPointer, &receiver, &ReturnValue::returnThisSlot1, Qt::QueuedConnection));
         QCOMPARE((emit r.returnPointer()), static_cast<QObject *>(0));
+        QVERIFY(connect(&r, &ReturnValue::returnMoveOnly, &receiver, &ReturnValue::returnMoveOnlySlot, Qt::QueuedConnection));
+        QCOMPARE((emit r.returnMoveOnly(666)).value, MoveOnly().value);
 
         QCoreApplication::processEvents();
 
@@ -5499,6 +5576,8 @@ void tst_QObject::returnValue2()
         QCOMPARE(emit r.returnInt(45), int(45));
         QVERIFY(connect(&r, SIGNAL(returnCustomType(int)), &receiver, SLOT(returnCustomTypeSlot(int)), type));
         QCOMPARE((emit r.returnCustomType(45)).value(), CustomType(45).value());
+        QVERIFY(connect(&r, SIGNAL(returnMoveOnly(int)), &receiver, SLOT(returnMoveOnlySlot(int)), type));
+        QCOMPARE((emit r.returnMoveOnly(45)).value, 45);
     }
     { // connected to a slot returning void
         CheckInstanceCount checker;
@@ -5511,6 +5590,8 @@ void tst_QObject::returnValue2()
         QCOMPARE(emit r.returnInt(45), int());
         QVERIFY(connect(&r, SIGNAL(returnCustomType(int)), &receiver, SLOT(returnVoidSlot()), type));
         QCOMPARE((emit r.returnCustomType(45)).value(), CustomType().value());
+        QVERIFY(connect(&r, SIGNAL(returnMoveOnly(int)), &receiver, SLOT(returnVoidSlot()), type));
+        QCOMPARE((emit r.returnMoveOnly(45)).value, MoveOnly().value);
     }
     if (!isBlockingQueued) {
         // queued connection should not forward the return value
@@ -5524,6 +5605,9 @@ void tst_QObject::returnValue2()
         QCOMPARE(emit r.returnInt(45), int());
         QVERIFY(connect(&r, SIGNAL(returnCustomType(int)), &receiver, SLOT(returnCustomTypeSlot(int)), Qt::QueuedConnection));
         QCOMPARE((emit r.returnCustomType(45)).value(), CustomType().value());
+        QVERIFY(connect(&r, SIGNAL(returnMoveOnly(int)), &receiver, SLOT(returnMoveOnlySlot(int)), Qt::QueuedConnection));
+        QCOMPARE((emit r.returnMoveOnly(45)).value, MoveOnly().value);
+
         QCoreApplication::processEvents();
 
         //Queued conneciton with different return type should be safe
@@ -5630,6 +5714,27 @@ public slots:
     virtual void slot2() { ++virtual_base_count; }
 };
 
+struct NormalBase
+{
+    QByteArray lastCalled;
+    virtual ~NormalBase() {}
+    virtual void virtualBaseSlot() { lastCalled = "virtualBaseSlot"; }
+    void normalBaseSlot() { lastCalled = "normalBaseSlot"; }
+};
+
+class ObjectWithMultiInheritance : public VirtualSlotsObject, public NormalBase
+{
+    Q_OBJECT
+};
+
+// Normally, the class that inherit QObject always must go first, because of the way qobject_cast
+// work, and moc checks for that. But if we don't use Q_OBJECT, this should work
+class ObjectWithMultiInheritance2 : public NormalBase, public VirtualSlotsObject
+{
+    // no QObject as QObject always must go first
+    // Q_OBJECT
+};
+
 // VMI = Virtual or Multiple Inheritance
 // (in this case, both)
 void tst_QObject::connectSlotsVMIClass()
@@ -5711,6 +5816,93 @@ void tst_QObject::connectSlotsVMIClass()
         QCOMPARE(obj.derived_counter2, 0);
         QCOMPARE(obj.virtual_base_count, 1);
         QCOMPARE(obj.regular_call_count, 0);
+    }
+
+    // test connecting a slot that is virtual within the second base
+    {
+        ObjectWithMultiInheritance obj;
+        void (ObjectWithMultiInheritance::*slot)() = &ObjectWithMultiInheritance::virtualBaseSlot;
+        QVERIFY( QObject::connect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot, Qt::UniqueConnection));
+        QVERIFY(!QObject::connect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot, Qt::UniqueConnection));
+
+        emit obj.signal1();
+        QCOMPARE(obj.base_counter1, 0);
+        QCOMPARE(obj.derived_counter1, 0);
+        QCOMPARE(obj.lastCalled, QByteArray("virtualBaseSlot"));
+        obj.lastCalled.clear();
+
+        QVERIFY( QObject::disconnect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot));
+        QVERIFY(!QObject::disconnect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot));
+
+        emit obj.signal1();
+        QCOMPARE(obj.base_counter1, 0);
+        QCOMPARE(obj.derived_counter1, 0);
+        QCOMPARE(obj.lastCalled, QByteArray());
+    }
+
+    // test connecting a slot that is not virtual within the second base
+    {
+        ObjectWithMultiInheritance obj;
+        void (ObjectWithMultiInheritance::*slot)() = &ObjectWithMultiInheritance::normalBaseSlot;
+        QVERIFY( QObject::connect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot, Qt::UniqueConnection));
+        QVERIFY(!QObject::connect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot, Qt::UniqueConnection));
+
+        emit obj.signal1();
+        QCOMPARE(obj.base_counter1, 0);
+        QCOMPARE(obj.derived_counter1, 0);
+        QCOMPARE(obj.lastCalled, QByteArray("normalBaseSlot"));
+        obj.lastCalled.clear();
+
+        QVERIFY( QObject::disconnect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot));
+        QVERIFY(!QObject::disconnect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot));
+
+        emit obj.signal1();
+        QCOMPARE(obj.base_counter1, 0);
+        QCOMPARE(obj.derived_counter1, 0);
+        QCOMPARE(obj.lastCalled, QByteArray());
+    }
+
+    // test connecting a slot within the first non-QObject base
+    {
+        ObjectWithMultiInheritance2 obj;
+        void (ObjectWithMultiInheritance2::*slot)() = &ObjectWithMultiInheritance2::normalBaseSlot;
+        QVERIFY( QObject::connect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot, Qt::UniqueConnection));
+        QVERIFY(!QObject::connect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot, Qt::UniqueConnection));
+
+        emit obj.signal1();
+        QCOMPARE(obj.base_counter1, 0);
+        QCOMPARE(obj.derived_counter1, 0);
+        QCOMPARE(obj.lastCalled, QByteArray("normalBaseSlot"));
+        obj.lastCalled.clear();
+
+        QVERIFY( QObject::disconnect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot));
+        QVERIFY(!QObject::disconnect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot));
+
+        emit obj.signal1();
+        QCOMPARE(obj.base_counter1, 0);
+        QCOMPARE(obj.derived_counter1, 0);
+        QCOMPARE(obj.lastCalled, QByteArray());
+    }
+
+    // test connecting a slot within the second QObject base
+    {
+        ObjectWithMultiInheritance2 obj;
+        void (ObjectWithMultiInheritance2::*slot)() = &ObjectWithMultiInheritance2::slot1;
+        QVERIFY( QObject::connect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot, Qt::UniqueConnection));
+        QVERIFY(!QObject::connect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot, Qt::UniqueConnection));
+
+        emit obj.signal1();
+        QCOMPARE(obj.base_counter1, 0);
+        QCOMPARE(obj.derived_counter1, 1);
+        QCOMPARE(obj.lastCalled, QByteArray());
+
+        QVERIFY( QObject::disconnect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot));
+        QVERIFY(!QObject::disconnect(&obj, &VirtualSlotsObjectBase::signal1, &obj, slot));
+
+        emit obj.signal1();
+        QCOMPARE(obj.base_counter1, 0);
+        QCOMPARE(obj.derived_counter1, 1);
+        QCOMPARE(obj.lastCalled, QByteArray());
     }
 }
 
@@ -6045,6 +6237,47 @@ void tst_QObject::connectFunctorDeadlock()
     MyFunctor functor(&sender);
     QObject::connect(&sender, &SenderObject::signal1, functor);
     sender.emitSignal1();
+}
+
+void tst_QObject::connectFunctorMoveOnly()
+{
+    struct MoveOnlyFunctor {
+        Q_DISABLE_COPY(MoveOnlyFunctor)
+        MoveOnlyFunctor(int *status) : status(status) {}
+        MoveOnlyFunctor(MoveOnlyFunctor &&o) : status(o.status) { o.status = nullptr; };
+        void operator()(int i) { *status = i; }
+        void operator()() { *status = -8; }
+        int *status;
+    };
+
+    int status = 1;
+    SenderObject obj;
+    QEventLoop e;
+
+    connect(&obj, &SenderObject::signal1, MoveOnlyFunctor(&status));
+    QCOMPARE(status, 1);
+    obj.signal1();
+    QCOMPARE(status, -8);
+
+    connect(&obj, &SenderObject::signal7, MoveOnlyFunctor(&status));
+    QCOMPARE(status, -8);
+    obj.signal7(7888, "Hello");
+    QCOMPARE(status, 7888);
+
+    // With a context
+    status = 1;
+    connect(&obj, &SenderObject::signal2, this, MoveOnlyFunctor(&status));
+    QCOMPARE(status, 1);
+    obj.signal2();
+    QCOMPARE(status, -8);
+
+    // QueuedConnection
+    status = 1;
+    connect(&obj, &SenderObject::signal3, this, MoveOnlyFunctor(&status), Qt::QueuedConnection);
+    obj.signal3();
+    QCOMPARE(status, 1);
+    QCoreApplication::processEvents();
+    QCOMPARE(status, -8);
 }
 
 static int s_static_slot_checker = 1;
@@ -6729,6 +6962,475 @@ void tst_QObject::mutableFunctor()
     QCOMPARE(emit o.returnInt(0), 2); // each emit should increase the internal count
 
     QCOMPARE(functor.count, 0); // but the original object should have been copied at connect time
+}
+
+void tst_QObject::checkArgumentsForNarrowing()
+{
+    enum UnscopedEnum {};
+    enum SignedUnscopedEnum { SignedUnscopedEnumV1 = -1, SignedUnscopedEnumV2 = 1 };
+
+    // a constexpr would suffice, but MSVC2013 RTM doesn't support them...
+#define IS_UNSCOPED_ENUM_SIGNED (std::is_signed<typename std::underlying_type<UnscopedEnum>::type>::value)
+
+#define NARROWS_IF(x, y, test) Q_STATIC_ASSERT((QtPrivate::AreArgumentsNarrowedBase<x, y>::value) == (test))
+#define FITS_IF(x, y, test)    Q_STATIC_ASSERT((QtPrivate::AreArgumentsNarrowedBase<x, y>::value) != (test))
+#define NARROWS(x, y)          NARROWS_IF(x, y, true)
+#define FITS(x, y)             FITS_IF(x, y, true)
+
+    Q_STATIC_ASSERT(sizeof(UnscopedEnum) <= sizeof(int));
+    Q_STATIC_ASSERT(sizeof(SignedUnscopedEnum) <= sizeof(int));
+
+    // floating point to integral
+    NARROWS(float, bool);
+    NARROWS(double, bool);
+    NARROWS(long double, bool);
+
+    NARROWS(float, char);
+    NARROWS(double, char);
+    NARROWS(long double, char);
+
+    NARROWS(float, short);
+    NARROWS(double, short);
+    NARROWS(long double, short);
+
+    NARROWS(float, int);
+    NARROWS(double, int);
+    NARROWS(long double, int);
+
+    NARROWS(float, long);
+    NARROWS(double, long);
+    NARROWS(long double, long);
+
+    NARROWS(float, long long);
+    NARROWS(double, long long);
+    NARROWS(long double, long long);
+
+
+    // floating point to a smaller floating point
+    NARROWS_IF(double, float, (sizeof(double) > sizeof(float)));
+    NARROWS_IF(long double, float, (sizeof(long double) > sizeof(float)));
+    FITS(float, double);
+    FITS(float, long double);
+
+    NARROWS_IF(long double, double, (sizeof(long double) > sizeof(double)));
+    FITS(double, long double);
+
+
+    // integral to floating point
+    NARROWS(bool, float);
+    NARROWS(bool, double);
+    NARROWS(bool, long double);
+
+    NARROWS(char, float);
+    NARROWS(char, double);
+    NARROWS(char, long double);
+
+    NARROWS(short, float);
+    NARROWS(short, double);
+    NARROWS(short, long double);
+
+    NARROWS(int, float);
+    NARROWS(int, double);
+    NARROWS(int, long double);
+
+    NARROWS(long, float);
+    NARROWS(long, double);
+    NARROWS(long, long double);
+
+    NARROWS(long long, float);
+    NARROWS(long long, double);
+    NARROWS(long long, long double);
+
+
+    // enum to floating point
+    NARROWS(UnscopedEnum, float);
+    NARROWS(UnscopedEnum, double);
+    NARROWS(UnscopedEnum, long double);
+
+    NARROWS(SignedUnscopedEnum, float);
+    NARROWS(SignedUnscopedEnum, double);
+    NARROWS(SignedUnscopedEnum, long double);
+
+
+    // integral to smaller integral
+    FITS(bool, bool);
+    FITS(char, char);
+    FITS(signed char, signed char);
+    FITS(signed char, short);
+    FITS(signed char, int);
+    FITS(signed char, long);
+    FITS(signed char, long long);
+    FITS(unsigned char, unsigned char);
+    FITS(unsigned char, unsigned short);
+    FITS(unsigned char, unsigned int);
+    FITS(unsigned char, unsigned long);
+    FITS(unsigned char, unsigned long long);
+
+    NARROWS_IF(bool, unsigned char, (sizeof(bool) > sizeof(char) || std::is_signed<bool>::value));
+    NARROWS_IF(bool, unsigned short, (sizeof(bool) > sizeof(short) || std::is_signed<bool>::value));
+    NARROWS_IF(bool, unsigned int, (sizeof(bool) > sizeof(int) || std::is_signed<bool>::value));
+    NARROWS_IF(bool, unsigned long, (sizeof(bool) > sizeof(long) || std::is_signed<bool>::value));
+    NARROWS_IF(bool, unsigned long long, (sizeof(bool) > sizeof(long long) || std::is_signed<bool>::value));
+
+    NARROWS_IF(short, char, (sizeof(short) > sizeof(char) || std::is_unsigned<char>::value));
+    NARROWS_IF(short, unsigned char, (sizeof(short) > sizeof(char)));
+    NARROWS_IF(short, signed char, (sizeof(short) > sizeof(char)));
+
+    NARROWS_IF(unsigned short, char, (sizeof(short) > sizeof(char) || std::is_signed<char>::value));
+    NARROWS_IF(unsigned short, unsigned char, (sizeof(short) > sizeof(char)));
+    NARROWS_IF(unsigned short, signed char, (sizeof(short) > sizeof(char)));
+
+    FITS(short, short);
+    FITS(short, int);
+    FITS(short, long);
+    FITS(short, long long);
+
+    FITS(unsigned short, unsigned short);
+    FITS(unsigned short, unsigned int);
+    FITS(unsigned short, unsigned long);
+    FITS(unsigned short, unsigned long long);
+
+    NARROWS_IF(int, char, (sizeof(int) > sizeof(char) || std::is_unsigned<char>::value));
+    NARROWS(int, unsigned char);
+    NARROWS_IF(int, signed char, (sizeof(int) > sizeof(char)));
+    NARROWS_IF(int, short, (sizeof(int) > sizeof(short)));
+    NARROWS(int, unsigned short);
+
+    NARROWS_IF(unsigned int, char, (sizeof(int) > sizeof(char) || std::is_signed<char>::value));
+    NARROWS_IF(unsigned int, unsigned char, (sizeof(int) > sizeof(char)));
+    NARROWS(unsigned int, signed char);
+    NARROWS(unsigned int, short);
+    NARROWS_IF(unsigned int, unsigned short, (sizeof(int) > sizeof(short)));
+
+    FITS(int, int);
+    FITS(int, long);
+    FITS(int, long long);
+
+    FITS(unsigned int, unsigned int);
+    FITS(unsigned int, unsigned long);
+    FITS(unsigned int, unsigned long long);
+
+    NARROWS_IF(long, char, (sizeof(long) > sizeof(char) || std::is_unsigned<char>::value));
+    NARROWS(long, unsigned char);
+    NARROWS_IF(long, signed char, (sizeof(long) > sizeof(char)));
+    NARROWS_IF(long, short, (sizeof(long) > sizeof(short)));
+    NARROWS(long, unsigned short);
+    NARROWS_IF(long, int, (sizeof(long) > sizeof(int)));
+    NARROWS(long, unsigned int);
+
+    NARROWS_IF(unsigned long, char, (sizeof(long) > sizeof(char) || std::is_signed<char>::value));
+    NARROWS_IF(unsigned long, unsigned char, (sizeof(long) > sizeof(char)));
+    NARROWS(unsigned long, signed char);
+    NARROWS(unsigned long, short);
+    NARROWS_IF(unsigned long, unsigned short, (sizeof(long) > sizeof(short)));
+    NARROWS(unsigned long, int);
+    NARROWS_IF(unsigned long, unsigned int, (sizeof(long) > sizeof(int)));
+
+    FITS(long, long);
+    FITS(long, long long);
+
+    FITS(unsigned long, unsigned long);
+    FITS(unsigned long, unsigned long long);
+
+    NARROWS_IF(long long, char, (sizeof(long long) > sizeof(char) || std::is_unsigned<char>::value));
+    NARROWS(long long, unsigned char);
+    NARROWS_IF(long long, signed char, (sizeof(long long) > sizeof(char)));
+    NARROWS_IF(long long, short, (sizeof(long long) > sizeof(short)));
+    NARROWS(long long, unsigned short);
+    NARROWS_IF(long long, int, (sizeof(long long) > sizeof(int)));
+    NARROWS(long long, unsigned int);
+    NARROWS_IF(long long, long, (sizeof(long long) > sizeof(long)));
+    NARROWS(long long, unsigned long);
+
+    NARROWS_IF(unsigned long long, char, (sizeof(long long) > sizeof(char) || std::is_signed<char>::value));
+    NARROWS_IF(unsigned long long, unsigned char, (sizeof(long long) > sizeof(char)));
+    NARROWS(unsigned long long, signed char);
+    NARROWS(unsigned long long, short);
+    NARROWS_IF(unsigned long long, unsigned short, (sizeof(long long) > sizeof(short)));
+    NARROWS(unsigned long long, int);
+    NARROWS_IF(unsigned long long, unsigned int, (sizeof(long long) > sizeof(int)));
+    NARROWS(unsigned long long, long);
+    NARROWS_IF(unsigned long long, unsigned long, (sizeof(long long) > sizeof(long)));
+
+    FITS(long long, long long);
+    FITS(unsigned long long, unsigned long long);
+
+
+    // integral to integral with different signedness. smaller ones tested above
+    NARROWS(signed char, unsigned char);
+    NARROWS(signed char, unsigned short);
+    NARROWS(signed char, unsigned int);
+    NARROWS(signed char, unsigned long);
+    NARROWS(signed char, unsigned long long);
+
+    NARROWS(unsigned char, signed char);
+    FITS(unsigned char, short);
+    FITS(unsigned char, int);
+    FITS(unsigned char, long);
+    FITS(unsigned char, long long);
+
+    NARROWS(short, unsigned short);
+    NARROWS(short, unsigned int);
+    NARROWS(short, unsigned long);
+    NARROWS(short, unsigned long long);
+
+    NARROWS(unsigned short, short);
+    FITS(unsigned short, int);
+    FITS(unsigned short, long);
+    FITS(unsigned short, long long);
+
+    NARROWS(int, unsigned int);
+    NARROWS(int, unsigned long);
+    NARROWS(int, unsigned long long);
+
+    NARROWS(unsigned int, int);
+    NARROWS_IF(unsigned int, long, (sizeof(int) >= sizeof(long)));
+    FITS(unsigned int, long long);
+
+    NARROWS(long, unsigned long);
+    NARROWS(long, unsigned long long);
+
+    NARROWS(unsigned long, long);
+    NARROWS_IF(unsigned long, long long, (sizeof(long) >= sizeof(long long)));
+
+    NARROWS(long long, unsigned long long);
+    NARROWS(unsigned long long, long long);
+
+    // enum to smaller integral
+    // (note that we know that sizeof(UnscopedEnum) <= sizeof(int)
+    FITS(UnscopedEnum, UnscopedEnum);
+    FITS(SignedUnscopedEnum, SignedUnscopedEnum);
+
+    NARROWS_IF(UnscopedEnum, char, ((sizeof(UnscopedEnum) > sizeof(char)) || (sizeof(UnscopedEnum) == sizeof(char) && IS_UNSCOPED_ENUM_SIGNED == std::is_signed<char>::value)));
+    NARROWS_IF(UnscopedEnum, signed char, ((sizeof(UnscopedEnum) > sizeof(char)) || (sizeof(UnscopedEnum) == sizeof(char) && !IS_UNSCOPED_ENUM_SIGNED)));
+    NARROWS_IF(UnscopedEnum, unsigned char, ((sizeof(UnscopedEnum) > sizeof(char)) || IS_UNSCOPED_ENUM_SIGNED));
+
+    NARROWS_IF(UnscopedEnum, short, ((sizeof(UnscopedEnum) > sizeof(short)) || (sizeof(UnscopedEnum) == sizeof(short) && !IS_UNSCOPED_ENUM_SIGNED)));
+    NARROWS_IF(UnscopedEnum, unsigned short, ((sizeof(UnscopedEnum) > sizeof(short)) || IS_UNSCOPED_ENUM_SIGNED));
+
+    NARROWS_IF(UnscopedEnum, int, (sizeof(UnscopedEnum) == sizeof(int) && !IS_UNSCOPED_ENUM_SIGNED));
+    NARROWS_IF(UnscopedEnum, unsigned int, IS_UNSCOPED_ENUM_SIGNED);
+
+    NARROWS_IF(UnscopedEnum, long, (sizeof(UnscopedEnum) == sizeof(long) && !IS_UNSCOPED_ENUM_SIGNED));
+    NARROWS_IF(UnscopedEnum, unsigned long, IS_UNSCOPED_ENUM_SIGNED);
+
+    NARROWS_IF(UnscopedEnum, long long, (sizeof(UnscopedEnum) == sizeof(long long) && !IS_UNSCOPED_ENUM_SIGNED));
+    NARROWS_IF(UnscopedEnum, unsigned long long, IS_UNSCOPED_ENUM_SIGNED);
+
+    Q_STATIC_ASSERT(std::is_signed<typename std::underlying_type<SignedUnscopedEnum>::type>::value);
+
+    NARROWS_IF(SignedUnscopedEnum, signed char, (sizeof(SignedUnscopedEnum) > sizeof(char)));
+    NARROWS_IF(SignedUnscopedEnum, short, (sizeof(SignedUnscopedEnum) > sizeof(short)));
+    FITS(SignedUnscopedEnum, int);
+    FITS(SignedUnscopedEnum, long);
+    FITS(SignedUnscopedEnum, long long);
+
+
+    enum class ScopedEnumBackedBySChar : signed char { A };
+    enum class ScopedEnumBackedByUChar : unsigned char { A };
+    enum class ScopedEnumBackedByShort : short { A };
+    enum class ScopedEnumBackedByUShort : unsigned short { A };
+    enum class ScopedEnumBackedByInt : int { A };
+    enum class ScopedEnumBackedByUInt : unsigned int { A };
+    enum class ScopedEnumBackedByLong : long { A };
+    enum class ScopedEnumBackedByULong : unsigned long { A };
+    enum class ScopedEnumBackedByLongLong : long long { A };
+    enum class ScopedEnumBackedByULongLong : unsigned long long { A };
+
+    FITS(ScopedEnumBackedBySChar, ScopedEnumBackedBySChar);
+    FITS(ScopedEnumBackedByUChar, ScopedEnumBackedByUChar);
+    FITS(ScopedEnumBackedByShort, ScopedEnumBackedByShort);
+    FITS(ScopedEnumBackedByUShort, ScopedEnumBackedByUShort);
+    FITS(ScopedEnumBackedByInt, ScopedEnumBackedByInt);
+    FITS(ScopedEnumBackedByUInt, ScopedEnumBackedByUInt);
+    FITS(ScopedEnumBackedByLong, ScopedEnumBackedByLong);
+    FITS(ScopedEnumBackedByULong, ScopedEnumBackedByULong);
+    FITS(ScopedEnumBackedByLongLong, ScopedEnumBackedByLongLong);
+    FITS(ScopedEnumBackedByULongLong, ScopedEnumBackedByULongLong);
+
+    FITS(ScopedEnumBackedBySChar, signed char);
+    FITS(ScopedEnumBackedByUChar, unsigned char);
+    FITS(ScopedEnumBackedByShort, short);
+    FITS(ScopedEnumBackedByUShort, unsigned short);
+    FITS(ScopedEnumBackedByInt, int);
+    FITS(ScopedEnumBackedByUInt, unsigned int);
+    FITS(ScopedEnumBackedByLong, long);
+    FITS(ScopedEnumBackedByULong, unsigned long);
+    FITS(ScopedEnumBackedByLongLong, long long);
+    FITS(ScopedEnumBackedByULongLong, unsigned long long);
+
+    FITS(ScopedEnumBackedBySChar, signed char);
+    FITS(ScopedEnumBackedBySChar, short);
+    FITS(ScopedEnumBackedBySChar, int);
+    FITS(ScopedEnumBackedBySChar, long);
+    FITS(ScopedEnumBackedBySChar, long long);
+
+    FITS(ScopedEnumBackedByUChar, unsigned char);
+    FITS(ScopedEnumBackedByUChar, unsigned short);
+    FITS(ScopedEnumBackedByUChar, unsigned int);
+    FITS(ScopedEnumBackedByUChar, unsigned long);
+    FITS(ScopedEnumBackedByUChar, unsigned long long);
+
+    NARROWS_IF(ScopedEnumBackedByShort, char, (sizeof(short) > sizeof(char) || std::is_unsigned<char>::value));
+    NARROWS_IF(ScopedEnumBackedByUShort, char, (sizeof(short) > sizeof(char) || std::is_signed<char>::value));
+    NARROWS_IF(ScopedEnumBackedByInt, char, (sizeof(int) > sizeof(char) || std::is_unsigned<char>::value));
+    NARROWS_IF(ScopedEnumBackedByUInt, char, (sizeof(int) > sizeof(char) || std::is_signed<char>::value));
+    NARROWS_IF(ScopedEnumBackedByLong, char, (sizeof(long) > sizeof(char) || std::is_unsigned<char>::value));
+    NARROWS_IF(ScopedEnumBackedByULong, char, (sizeof(long) > sizeof(char) || std::is_signed<char>::value));
+    NARROWS_IF(ScopedEnumBackedByLongLong, char, (sizeof(long long) > sizeof(char) || std::is_unsigned<char>::value));
+    NARROWS_IF(ScopedEnumBackedByULongLong, char, (sizeof(long long) > sizeof(char) || std::is_signed<char>::value));
+
+    NARROWS_IF(ScopedEnumBackedByShort, signed char, (sizeof(short) > sizeof(char)));
+    NARROWS(ScopedEnumBackedByUShort, signed char);
+    NARROWS_IF(ScopedEnumBackedByInt, signed char, (sizeof(int) > sizeof(char)));
+    NARROWS(ScopedEnumBackedByUInt, signed char);
+    NARROWS_IF(ScopedEnumBackedByLong, signed char, (sizeof(long) > sizeof(char)));
+    NARROWS(ScopedEnumBackedByULong, signed char);
+    NARROWS_IF(ScopedEnumBackedByLongLong, signed char, (sizeof(long long) > sizeof(char)));
+    NARROWS(ScopedEnumBackedByULongLong, signed char);
+
+    NARROWS(ScopedEnumBackedByShort, unsigned char);
+    NARROWS_IF(ScopedEnumBackedByUShort, unsigned char, (sizeof(short) > sizeof(char)));
+    NARROWS(ScopedEnumBackedByInt, unsigned char);
+    NARROWS_IF(ScopedEnumBackedByUInt, unsigned char, (sizeof(int) > sizeof(char)));
+    NARROWS(ScopedEnumBackedByLong, unsigned char);
+    NARROWS_IF(ScopedEnumBackedByULong, unsigned char, (sizeof(long) > sizeof(char)));
+    NARROWS(ScopedEnumBackedByLongLong, unsigned char);
+    NARROWS_IF(ScopedEnumBackedByULongLong, unsigned char, (sizeof(long long) > sizeof(char)));
+
+    NARROWS_IF(ScopedEnumBackedByInt, short, (sizeof(int) > sizeof(short)));
+    NARROWS(ScopedEnumBackedByUInt, short);
+    NARROWS_IF(ScopedEnumBackedByLong, short, (sizeof(long) > sizeof(short)));
+    NARROWS(ScopedEnumBackedByULong, short);
+    NARROWS_IF(ScopedEnumBackedByLongLong, short, (sizeof(long long) > sizeof(short)));
+    NARROWS(ScopedEnumBackedByULongLong, short);
+
+    NARROWS(ScopedEnumBackedByInt, unsigned short);
+    NARROWS_IF(ScopedEnumBackedByUInt, unsigned short, (sizeof(int) > sizeof(short)));
+    NARROWS(ScopedEnumBackedByLong, unsigned short);
+    NARROWS_IF(ScopedEnumBackedByULong, unsigned short, (sizeof(long) > sizeof(short)));
+    NARROWS(ScopedEnumBackedByLongLong, unsigned short);
+    NARROWS_IF(ScopedEnumBackedByULongLong, unsigned short, (sizeof(long long) > sizeof(short)));
+
+    NARROWS_IF(ScopedEnumBackedByLong, int, (sizeof(long) > sizeof(int)));
+    NARROWS(ScopedEnumBackedByULong, int);
+    NARROWS_IF(ScopedEnumBackedByLongLong, int, (sizeof(long long) > sizeof(int)));
+    NARROWS(ScopedEnumBackedByULongLong, int);
+
+    NARROWS(ScopedEnumBackedByLong, unsigned int);
+    NARROWS_IF(ScopedEnumBackedByULong, unsigned int, (sizeof(long) > sizeof(int)));
+    NARROWS(ScopedEnumBackedByLongLong, unsigned int);
+    NARROWS_IF(ScopedEnumBackedByULongLong, unsigned int, (sizeof(long long) > sizeof(int)));
+
+    NARROWS_IF(ScopedEnumBackedByLongLong, long, (sizeof(long long) > sizeof(long)));
+    NARROWS(ScopedEnumBackedByULongLong, long);
+
+    NARROWS(ScopedEnumBackedByLongLong, unsigned long);
+    NARROWS_IF(ScopedEnumBackedByULongLong, unsigned long, (sizeof(long long) > sizeof(long)));
+
+    // different signedness of the underlying type
+    NARROWS(SignedUnscopedEnum, unsigned char);
+    NARROWS(SignedUnscopedEnum, unsigned short);
+    NARROWS(SignedUnscopedEnum, unsigned int);
+    NARROWS(SignedUnscopedEnum, unsigned long);
+    NARROWS(SignedUnscopedEnum, unsigned long long);
+
+    NARROWS(ScopedEnumBackedBySChar, unsigned char);
+    NARROWS(ScopedEnumBackedBySChar, unsigned short);
+    NARROWS(ScopedEnumBackedBySChar, unsigned int);
+    NARROWS(ScopedEnumBackedBySChar, unsigned long);
+    NARROWS(ScopedEnumBackedBySChar, unsigned long long);
+
+    NARROWS(ScopedEnumBackedByShort, unsigned char);
+    NARROWS(ScopedEnumBackedByShort, unsigned short);
+    NARROWS(ScopedEnumBackedByShort, unsigned int);
+    NARROWS(ScopedEnumBackedByShort, unsigned long);
+    NARROWS(ScopedEnumBackedByShort, unsigned long long);
+
+    NARROWS(ScopedEnumBackedByInt, unsigned char);
+    NARROWS(ScopedEnumBackedByInt, unsigned short);
+    NARROWS(ScopedEnumBackedByInt, unsigned int);
+    NARROWS(ScopedEnumBackedByInt, unsigned long);
+    NARROWS(ScopedEnumBackedByInt, unsigned long long);
+
+    NARROWS(ScopedEnumBackedByLong, unsigned char);
+    NARROWS(ScopedEnumBackedByLong, unsigned short);
+    NARROWS(ScopedEnumBackedByLong, unsigned int);
+    NARROWS(ScopedEnumBackedByLong, unsigned long);
+    NARROWS(ScopedEnumBackedByLong, unsigned long long);
+
+    NARROWS(ScopedEnumBackedByLongLong, unsigned char);
+    NARROWS(ScopedEnumBackedByLongLong, unsigned short);
+    NARROWS(ScopedEnumBackedByLongLong, unsigned int);
+    NARROWS(ScopedEnumBackedByLongLong, unsigned long);
+    NARROWS(ScopedEnumBackedByLongLong, unsigned long long);
+
+    NARROWS(ScopedEnumBackedByUChar, signed char);
+    FITS_IF(ScopedEnumBackedByUChar, short, (sizeof(char) < sizeof(short)));
+    FITS_IF(ScopedEnumBackedByUChar, int, (sizeof(char) < sizeof(int)));
+    FITS_IF(ScopedEnumBackedByUChar, long, (sizeof(char) < sizeof(long)));
+    FITS_IF(ScopedEnumBackedByUChar, long long, (sizeof(char) < sizeof(long long)));
+
+    NARROWS(ScopedEnumBackedByUShort, signed char);
+    NARROWS(ScopedEnumBackedByUShort, short);
+    FITS_IF(ScopedEnumBackedByUShort, int, (sizeof(short) < sizeof(int)));
+    FITS_IF(ScopedEnumBackedByUShort, long, (sizeof(short) < sizeof(long)));
+    FITS_IF(ScopedEnumBackedByUShort, long long, (sizeof(short) < sizeof(long long)));
+
+    NARROWS(ScopedEnumBackedByUInt, signed char);
+    NARROWS(ScopedEnumBackedByUInt, short);
+    NARROWS(ScopedEnumBackedByUInt, int);
+    FITS_IF(ScopedEnumBackedByUInt, long, (sizeof(ScopedEnumBackedByUInt) < sizeof(long)));
+    FITS(ScopedEnumBackedByUInt, long long);
+
+    NARROWS(ScopedEnumBackedByULong, signed char);
+    NARROWS(ScopedEnumBackedByULong, short);
+    NARROWS(ScopedEnumBackedByULong, int);
+    NARROWS(ScopedEnumBackedByULong, long);
+    FITS_IF(ScopedEnumBackedByULong, long long, (sizeof(ScopedEnumBackedByULong) < sizeof(long long)));
+
+    NARROWS(ScopedEnumBackedByULongLong, signed char);
+    NARROWS(ScopedEnumBackedByULongLong, short);
+    NARROWS(ScopedEnumBackedByULongLong, int);
+    NARROWS(ScopedEnumBackedByULongLong, long);
+    NARROWS(ScopedEnumBackedByULongLong, long long);
+
+    // other types which should be always unaffected
+    FITS(void *, void *);
+
+    FITS(QString, QString);
+    FITS(QString &, QString &);
+    FITS(const QString &, const QString &);
+
+    FITS(QObject, QObject);
+    FITS(QObject *, QObject *);
+    FITS(const QObject *, const QObject *);
+
+    FITS(std::nullptr_t, std::nullptr_t);
+
+    FITS(QString, QObject);
+    FITS(QString, QVariant);
+    FITS(QString, void *);
+    FITS(QString, long long);
+    FITS(bool, const QObject *&);
+    FITS(int (*)(bool), void (QObject::*)());
+
+#undef IS_UNSCOPED_ENUM_SIGNED
+
+#undef NARROWS_IF
+#undef FITS_IF
+#undef NARROWS
+#undef FITS
+}
+
+void tst_QObject::nullReceiver()
+{
+    QObject o;
+    QObject *nullObj = nullptr; // Passing nullptr directly doesn't compile with gcc 4.8
+    QVERIFY(!connect(&o, &QObject::destroyed, nullObj, &QObject::deleteLater));
+    QVERIFY(!connect(&o, &QObject::destroyed, nullObj, [] {}));
+    QVERIFY(!connect(&o, &QObject::destroyed, nullObj, Functor_noexcept()));
+    QVERIFY(!connect(&o, SIGNAL(destroyed()), nullObj, SLOT(deleteLater())));
 }
 
 // Test for QtPrivate::HasQ_OBJECT_Macro

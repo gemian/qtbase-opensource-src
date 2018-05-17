@@ -63,7 +63,7 @@ QT_BEGIN_NAMESPACE
 static QString pixelToPoint(qreal pixels)
 {
     // we hardcode 96 DPI, we do the same in the ODF importer to have a perfect roundtrip.
-    return QString::number(pixels * 72 / 96) + QString::fromLatin1("pt");
+    return QString::number(pixels * 72 / 96) + QLatin1String("pt");
 }
 
 // strategies
@@ -295,7 +295,7 @@ void QTextOdfWriter::writeBlock(QXmlStreamWriter &writer, const QTextBlock &bloc
         writer.writeStartElement(textNS, QString::fromLatin1("span"));
 
         QString fragmentText = frag.fragment().text();
-        if (fragmentText.length() == 1 && fragmentText[0] == 0xFFFC) { // its an inline character.
+        if (fragmentText.length() == 1 && fragmentText[0] == QChar(0xFFFC)) { // its an inline character.
             writeInlineCharacter(writer, frag.fragment());
             writer.writeEndElement(); // span
             continue;
@@ -381,7 +381,6 @@ void QTextOdfWriter::writeInlineCharacter(QXmlStreamWriter &writer, const QTextF
         }
 
         if (image.isNull()) {
-            QString context;
             if (image.isNull()) { // try direct loading
                 name = imageFormat.name(); // remove qrc:/ prefix again
                 image.load(name);
@@ -510,7 +509,7 @@ void QTextOdfWriter::writeBlockFormat(QXmlStreamWriter &writer, QTextBlockFormat
             case QTextOption::CenterTab: type = QString::fromLatin1("center"); break;
             }
             writer.writeAttribute(styleNS, QString::fromLatin1("type"), type);
-            if (iterator->delimiter != 0)
+            if (!iterator->delimiter.isNull())
                 writer.writeAttribute(styleNS, QString::fromLatin1("char"), iterator->delimiter);
             ++iterator;
         }

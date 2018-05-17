@@ -42,7 +42,6 @@
 
 #include "qpagesetupdialog.h"
 
-#ifndef QT_NO_PRINTDIALOG
 #include "qpagesetupdialog_p.h"
 
 #include <qpa/qplatformnativeinterface.h>
@@ -78,7 +77,7 @@ QT_USE_NAMESPACE
     QPageSetupDialog *dialog = static_cast<QPageSetupDialog *>(contextInfo);
     QPrinter *printer = dialog->printer();
 
-    if (returnCode == NSOKButton) {
+    if (returnCode == NSModalResponseOK) {
         PMPageFormat format = static_cast<PMPageFormat>([printInfo PMPageFormat]);
         PMRect paperRect;
         PMGetUnadjustedPaperRect(format, &paperRect);
@@ -89,7 +88,7 @@ QT_USE_NAMESPACE
         printer->printEngine()->setProperty(QPrintEngine::PPK_Orientation, orientation == kPMLandscape ? QPrinter::Landscape : QPrinter::Portrait);
     }
 
-    dialog->done((returnCode == NSOKButton) ? QDialog::Accepted : QDialog::Rejected);
+    dialog->done((returnCode == NSModalResponseOK) ? QDialog::Accepted : QDialog::Rejected);
 }
 @end
 
@@ -222,5 +221,3 @@ int QPageSetupDialog::exec()
 }
 
 QT_END_NAMESPACE
-
-#endif /* QT_NO_PRINTDIALOG */

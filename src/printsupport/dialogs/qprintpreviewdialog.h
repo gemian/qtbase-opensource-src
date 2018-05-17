@@ -40,13 +40,13 @@
 #ifndef QPRINTPREVIEWDIALOG_H
 #define QPRINTPREVIEWDIALOG_H
 
-#include <QtWidgets/qdialog.h>
 #include <QtPrintSupport/qtprintsupportglobal.h>
 
-#ifndef QT_NO_PRINTPREVIEWDIALOG
+#include <QtWidgets/qdialog.h>
+
+QT_REQUIRE_CONFIG(printpreviewdialog);
 
 QT_BEGIN_NAMESPACE
-
 
 class QGraphicsView;
 class QPrintPreviewDialogPrivate;
@@ -58,8 +58,8 @@ class Q_PRINTSUPPORT_EXPORT QPrintPreviewDialog : public QDialog
     Q_DECLARE_PRIVATE(QPrintPreviewDialog)
 
 public:
-    explicit QPrintPreviewDialog(QWidget *parent = Q_NULLPTR, Qt::WindowFlags flags = Qt::WindowFlags());
-    explicit QPrintPreviewDialog(QPrinter *printer, QWidget *parent = Q_NULLPTR,
+    explicit QPrintPreviewDialog(QWidget *parent = nullptr, Qt::WindowFlags flags = Qt::WindowFlags());
+    explicit QPrintPreviewDialog(QPrinter *printer, QWidget *parent = nullptr,
                                  Qt::WindowFlags flags = Qt::WindowFlags());
     ~QPrintPreviewDialog();
 
@@ -89,7 +89,5 @@ private:
 
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_PRINTPREVIEWDIALOG
 
 #endif // QPRINTPREVIEWDIALOG_H

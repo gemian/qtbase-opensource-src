@@ -31,6 +31,7 @@
 #include <QtAlgorithms>
 #include <QFile>
 #include <QFileInfo>
+#include <QRandomGenerator>
 #include <qplatformdefs.h>
 
 #include <QDebug>
@@ -39,19 +40,15 @@
 #include <cstdio>
 
 #ifdef Q_OS_WIN
-
-#include <windows.h>
-
-#ifndef Q_OS_WINCE
-#include <io.h>
-#endif
-
-#ifndef FSCTL_SET_SPARSE
+#  include <qt_windows.h>
+#  include <io.h>
+#  ifndef FSCTL_SET_SPARSE
 // MinGW doesn't define this.
-#define FSCTL_SET_SPARSE (0x900C4)
-#endif
-
+#    define FSCTL_SET_SPARSE (0x900C4)
+#  endif
 #endif // Q_OS_WIN
+
+#include "emulationdetector.h"
 
 class tst_LargeFile
     : public QObject
@@ -74,6 +71,10 @@ public:
     #else
         maxSizeBits = 24; // 16 MiB
     #endif
+
+        // QEMU only supports < 4GB files
+        if (EmulationDetector::isRunningArmOnX86())
+            maxSizeBits = qMin(maxSizeBits, 28);
     }
 
 private:
@@ -174,8 +175,7 @@ static inline QByteArray generateDataBlock(int blockSize, QString text, qint64 u
 
     static qint64 counter = 0;
 
-    qint64 randomBits = ((qint64)qrand() << 32)
-            | ((qint64)qrand() & 0x00000000ffffffff);
+    qint64 randomBits = QRandomGenerator::global()->generate64();
 
     appendRaw(block, randomBits);
     appendRaw(block, userBits);
@@ -228,7 +228,7 @@ QByteArray const &tst_LargeFile::getDataBlock(int index, qint64 position)
 void tst_LargeFile::initTestCase()
 {
     m_previousCurrent = QDir::currentPath();
-    m_tempDir = QSharedPointer<QTemporaryDir>(new QTemporaryDir);
+    m_tempDir = QSharedPointer<QTemporaryDir>::create();
     QVERIFY2(!m_tempDir.isNull(), qPrintable("Could not create temporary directory."));
     QVERIFY2(QDir::setCurrent(m_tempDir->path()), qPrintable("Could not switch current directory"));
 
@@ -508,23 +508,42 @@ void tst_LargeFile::mapFile()
 }
 
 //Mac: memory-mapping beyond EOF may succeed but it could generate bus error on access
+//FreeBSD: same
+//Linux: memory-mapping beyond EOF usually succeeds, but depends on the filesystem
+//  32-bit: limited to 44-bit offsets
+//Windows: memory-mapping beyond EOF is not allowed
 void tst_LargeFile::mapOffsetOverflow()
 {
-#ifndef Q_OS_MAC
-    // Out-of-range mappings should fail, and not silently clip the offset
-    for (int i = 50; i < 63; ++i) {
+    enum {
+#ifdef Q_OS_WIN
+        Succeeds = false,
+        MaxOffset = 63
+#else
+        Succeeds = true,
+#  if (defined(Q_OS_LINUX) || defined(Q_OS_ANDROID)) && Q_PROCESSOR_WORDSIZE == 4
+        MaxOffset = 43
+#  else
+        MaxOffset = 63
+#  endif
+#endif
+    };
+
+    QByteArray zeroPage(blockSize, '\0');
+    for (int i = maxSizeBits + 1; i < 63; ++i) {
+        bool succeeds = Succeeds && (i <= MaxOffset);
         uchar *address = 0;
+        qint64 offset = Q_INT64_C(1) << i;
 
-        address = largeFile.map(((qint64)1 << i), blockSize);
-#if defined(__x86_64__)
-        QEXPECT_FAIL("", "fails on 64-bit Linux (QTBUG-21175)", Abort);
-#endif
-        QVERIFY( !address );
+        if (succeeds)
+            QTest::ignoreMessage(QtWarningMsg, "QFSFileEngine::map: Mapping a file beyond its size is not portable");
+        address = largeFile.map(offset, blockSize);
+        QCOMPARE(!!address, succeeds);
 
-        address = largeFile.map(((qint64)1 << i) + blockSize, blockSize);
-        QVERIFY( !address );
+        if (succeeds)
+            QTest::ignoreMessage(QtWarningMsg, "QFSFileEngine::map: Mapping a file beyond its size is not portable");
+        address = largeFile.map(offset + blockSize, blockSize);
+        QCOMPARE(!!address, succeeds);
     }
-#endif
 }
 
 QTEST_APPLESS_MAIN(tst_LargeFile)

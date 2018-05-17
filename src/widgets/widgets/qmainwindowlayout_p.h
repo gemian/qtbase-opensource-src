@@ -51,27 +51,279 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qmainwindow.h"
 
-#ifndef QT_NO_MAINWINDOW
-
 #include "QtWidgets/qlayout.h"
+#if QT_CONFIG(tabbar)
 #include "QtWidgets/qtabbar.h"
+#include "QtGui/qpainter.h"
+#include "QtGui/qevent.h"
+#endif
 #include "QtCore/qvector.h"
 #include "QtCore/qset.h"
 #include "QtCore/qbasictimer.h"
 #include "private/qlayoutengine_p.h"
 #include "private/qwidgetanimator_p.h"
 
+#if QT_CONFIG(dockwidget)
 #include "qdockarealayout_p.h"
+#endif
 #include "qtoolbararealayout_p.h"
+
+QT_REQUIRE_CONFIG(mainwindow);
 
 QT_BEGIN_NAMESPACE
 
 class QToolBar;
 class QRubberBand;
 
-#ifndef QT_NO_DOCKWIDGET
+template <typename Layout> // Make use of the "Curiously recurring template pattern"
+class QMainWindowLayoutSeparatorHelper
+{
+    Layout *layout() { return static_cast<Layout *>(this); }
+    const Layout *layout() const { return static_cast<const Layout *>(this); }
+    QWidget *window() { return layout()->parentWidget(); }
+
+public:
+    QList<int> hoverSeparator;
+    QPoint hoverPos;
+
+#if !defined(QT_NO_DOCKWIDGET) && !defined(QT_NO_CURSOR)
+    QCursor separatorCursor(const QList<int> &path);
+    void adjustCursor(const QPoint &pos);
+    QCursor oldCursor;
+    QCursor adjustedCursor;
+    bool hasOldCursor = false;
+    bool cursorAdjusted = false;
+
+    QList<int> movingSeparator;
+    QPoint movingSeparatorOrigin, movingSeparatorPos;
+    QBasicTimer separatorMoveTimer;
+
+    bool startSeparatorMove(const QPoint &pos);
+    bool separatorMove(const QPoint &pos);
+    bool endSeparatorMove(const QPoint &pos);
+
+#endif
+
+    bool windowEvent(QEvent *e);
+};
+
+#if !defined(QT_NO_DOCKWIDGET) && !defined(QT_NO_CURSOR)
+template <typename Layout>
+QCursor QMainWindowLayoutSeparatorHelper<Layout>::separatorCursor(const QList<int> &path)
+{
+    const QDockAreaLayoutInfo *info = layout()->dockAreaLayoutInfo()->info(path);
+    Q_ASSERT(info != 0);
+    if (path.size() == 1) { // is this the "top-level" separator which separates a dock area
+                            // from the central widget?
+        switch (path.first()) {
+        case QInternal::LeftDock:
+        case QInternal::RightDock:
+            return Qt::SplitHCursor;
+        case QInternal::TopDock:
+        case QInternal::BottomDock:
+            return Qt::SplitVCursor;
+        default:
+            break;
+        }
+    }
+
+    // no, it's a splitter inside a dock area, separating two dock widgets
+
+    return info->o == Qt::Horizontal ? Qt::SplitHCursor : Qt::SplitVCursor;
+}
+
+template <typename Layout>
+void QMainWindowLayoutSeparatorHelper<Layout>::adjustCursor(const QPoint &pos)
+{
+    QWidget *w = layout()->window();
+    hoverPos = pos;
+
+    if (pos == QPoint(0, 0)) {
+        if (!hoverSeparator.isEmpty())
+            w->update(layout()->dockAreaLayoutInfo()->separatorRect(hoverSeparator));
+        hoverSeparator.clear();
+
+        if (cursorAdjusted) {
+            cursorAdjusted = false;
+            if (hasOldCursor)
+                w->setCursor(oldCursor);
+            else
+                w->unsetCursor();
+        }
+    } else if (movingSeparator.isEmpty()) { // Don't change cursor when moving separator
+        QList<int> pathToSeparator = layout()->dockAreaLayoutInfo()->findSeparator(pos);
+
+        if (pathToSeparator != hoverSeparator) {
+            if (!hoverSeparator.isEmpty())
+                w->update(layout()->dockAreaLayoutInfo()->separatorRect(hoverSeparator));
+
+            hoverSeparator = pathToSeparator;
+
+            if (hoverSeparator.isEmpty()) {
+                if (cursorAdjusted) {
+                    cursorAdjusted = false;
+                    if (hasOldCursor)
+                        w->setCursor(oldCursor);
+                    else
+                        w->unsetCursor();
+                }
+            } else {
+                w->update(layout()->dockAreaLayoutInfo()->separatorRect(hoverSeparator));
+                if (!cursorAdjusted) {
+                    oldCursor = w->cursor();
+                    hasOldCursor = w->testAttribute(Qt::WA_SetCursor);
+                }
+                adjustedCursor = separatorCursor(hoverSeparator);
+                w->setCursor(adjustedCursor);
+                cursorAdjusted = true;
+            }
+        }
+    }
+}
+
+template <typename Layout>
+bool QMainWindowLayoutSeparatorHelper<Layout>::windowEvent(QEvent *event)
+{
+    QWidget *w = window();
+    switch (event->type()) {
+    case QEvent::Paint: {
+        QPainter p(w);
+        QRegion r = static_cast<QPaintEvent *>(event)->region();
+        layout()->dockAreaLayoutInfo()->paintSeparators(&p, w, r, hoverPos);
+        break;
+    }
+
+#ifndef QT_NO_CURSOR
+    case QEvent::HoverMove: {
+        adjustCursor(static_cast<QHoverEvent *>(event)->pos());
+        break;
+    }
+
+    // We don't want QWidget to call update() on the entire QMainWindow
+    // on HoverEnter and HoverLeave, hence accept the event (return true).
+    case QEvent::HoverEnter:
+        return true;
+    case QEvent::HoverLeave:
+        adjustCursor(QPoint(0, 0));
+        return true;
+    case QEvent::ShortcutOverride: // when a menu pops up
+        adjustCursor(QPoint(0, 0));
+        break;
+#endif // QT_NO_CURSOR
+
+    case QEvent::MouseButtonPress: {
+        QMouseEvent *e = static_cast<QMouseEvent *>(event);
+        if (e->button() == Qt::LeftButton && startSeparatorMove(e->pos())) {
+            // The click was on a separator, eat this event
+            e->accept();
+            return true;
+        }
+        break;
+    }
+
+    case QEvent::MouseMove: {
+        QMouseEvent *e = static_cast<QMouseEvent *>(event);
+
+#ifndef QT_NO_CURSOR
+        adjustCursor(e->pos());
+#endif
+        if (e->buttons() & Qt::LeftButton) {
+            if (separatorMove(e->pos())) {
+                // We're moving a separator, eat this event
+                e->accept();
+                return true;
+            }
+        }
+
+        break;
+    }
+
+    case QEvent::MouseButtonRelease: {
+        QMouseEvent *e = static_cast<QMouseEvent *>(event);
+        if (endSeparatorMove(e->pos())) {
+            // We've released a separator, eat this event
+            e->accept();
+            return true;
+        }
+        break;
+    }
+
+#if !defined(QT_NO_CURSOR)
+    case QEvent::CursorChange:
+        // CursorChange events are triggered as mouse moves to new widgets even
+        // if the cursor doesn't actually change, so do not change oldCursor if
+        // the "changed" cursor has same shape as adjusted cursor.
+        if (cursorAdjusted && adjustedCursor.shape() != w->cursor().shape()) {
+            oldCursor = w->cursor();
+            hasOldCursor = w->testAttribute(Qt::WA_SetCursor);
+
+            // Ensure our adjusted cursor stays visible
+            w->setCursor(adjustedCursor);
+        }
+        break;
+#endif
+    case QEvent::Timer:
+        if (static_cast<QTimerEvent *>(event)->timerId() == separatorMoveTimer.timerId()) {
+            // let's move the separators
+            separatorMoveTimer.stop();
+            if (movingSeparator.isEmpty())
+                return true;
+            if (movingSeparatorOrigin == movingSeparatorPos)
+                return true;
+
+            // when moving the separator, we need to update the previous position
+            window()->update(layout()->dockAreaLayoutInfo()->separatorRegion());
+
+            layout()->layoutState = layout()->savedState;
+            layout()->dockAreaLayoutInfo()->separatorMove(movingSeparator, movingSeparatorOrigin,
+                                                          movingSeparatorPos);
+            movingSeparatorPos = movingSeparatorOrigin;
+            return true;
+        }
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+template <typename Layout>
+bool QMainWindowLayoutSeparatorHelper<Layout>::startSeparatorMove(const QPoint &pos)
+{
+    movingSeparator = layout()->dockAreaLayoutInfo()->findSeparator(pos);
+
+    if (movingSeparator.isEmpty())
+        return false;
+
+    layout()->savedState = layout()->layoutState;
+    movingSeparatorPos = movingSeparatorOrigin = pos;
+
+    return true;
+}
+template <typename Layout>
+bool QMainWindowLayoutSeparatorHelper<Layout>::separatorMove(const QPoint &pos)
+{
+    if (movingSeparator.isEmpty())
+        return false;
+    movingSeparatorPos = pos;
+    separatorMoveTimer.start(0, window());
+    return true;
+}
+template <typename Layout>
+bool QMainWindowLayoutSeparatorHelper<Layout>::endSeparatorMove(const QPoint &)
+{
+    if (movingSeparator.isEmpty())
+        return false;
+    movingSeparator.clear();
+    layout()->savedState.clear();
+    return true;
+}
+#endif
+
+#if QT_CONFIG(dockwidget)
 class QDockWidgetGroupWindow : public QWidget
 {
     Q_OBJECT
@@ -79,12 +331,25 @@ public:
     explicit QDockWidgetGroupWindow(QWidget* parent = 0, Qt::WindowFlags f = 0)
         : QWidget(parent, f) {}
     QDockAreaLayoutInfo *layoutInfo() const;
-    QDockWidget *topDockWidget() const;
+    const QDockAreaLayoutInfo *tabLayoutInfo() const;
+    QDockWidget *activeTabbedDockWidget() const;
     void destroyOrHideIfEmpty();
     void adjustFlags();
+    bool hasNativeDecos() const;
+
+    bool hover(QLayoutItem *widgetItem, const QPoint &mousePos);
+    void restore();
+    void apply();
+
+    QRect currentGapRect;
+    QList<int> currentGapPos;
+
 protected:
     bool event(QEvent *) Q_DECL_OVERRIDE;
     void paintEvent(QPaintEvent*) Q_DECL_OVERRIDE;
+
+private:
+    QSize m_removedFrameSize;
 };
 
 // This item will be used in the layout for the gap item. We cannot use QWidgetItem directly
@@ -120,7 +385,7 @@ public:
     QToolBarAreaLayout toolBarAreaLayout;
 #endif
 
-#ifndef QT_NO_DOCKWIDGET
+#if QT_CONFIG(dockwidget)
     QDockAreaLayout dockAreaLayout;
 #else
     QLayoutItem *centralWidgetItem;
@@ -162,7 +427,9 @@ public:
     bool restoreState(QDataStream &stream, const QMainWindowLayoutState &oldState);
 };
 
-class Q_AUTOTEST_EXPORT QMainWindowLayout : public QLayout
+class Q_AUTOTEST_EXPORT QMainWindowLayout
+    : public QLayout,
+      public QMainWindowLayoutSeparatorHelper<QMainWindowLayout>
 {
     Q_OBJECT
 
@@ -174,15 +441,12 @@ public:
 
     QMainWindow::DockOptions dockOptions;
     void setDockOptions(QMainWindow::DockOptions opts);
-    bool usesHIToolBar(QToolBar *toolbar) const;
-
-    void timerEvent(QTimerEvent *e) Q_DECL_OVERRIDE;
 
     // status bar
 
     QLayoutItem *statusbar;
 
-#ifndef QT_NO_STATUSBAR
+#if QT_CONFIG(statusbar)
     QStatusBar *statusBar() const;
     void setStatusBar(QStatusBar *sb);
 #endif
@@ -211,7 +475,7 @@ public:
 
     // dock widgets
 
-#ifndef QT_NO_DOCKWIDGET
+#if QT_CONFIG(dockwidget)
     void setCorner(Qt::Corner corner, Qt::DockWidgetArea area);
     Qt::DockWidgetArea corner(Qt::Corner corner) const;
     void addDockWidget(Qt::DockWidgetArea area,
@@ -225,9 +489,9 @@ public:
     void raise(QDockWidget *widget);
     void setVerticalTabsEnabled(bool enabled);
     bool restoreDockWidget(QDockWidget *dockwidget);
-    QDockAreaLayoutInfo *dockInfo(QWidget *w);
 
-#ifndef QT_NO_TABBAR
+#if QT_CONFIG(tabbar)
+    QDockAreaLayoutInfo *dockInfo(QWidget *w);
     bool _documentMode;
     bool documentMode() const;
     void setDocumentMode(bool enabled);
@@ -242,7 +506,7 @@ public:
     QList<QWidget*> unusedSeparatorWidgets;
     int sep; // separator extent
 
-#ifndef QT_NO_TABWIDGET
+#if QT_CONFIG(tabwidget)
     QTabWidget::TabPosition tabPositions[4];
     QTabWidget::TabShape _tabShape;
 
@@ -252,20 +516,12 @@ public:
     void setTabPosition(Qt::DockWidgetAreas areas, QTabWidget::TabPosition tabPosition);
 
     QDockWidgetGroupWindow *createTabbedDockWindow();
-#endif // QT_NO_TABWIDGET
-#endif // QT_NO_TABBAR
+#endif // QT_CONFIG(tabwidget)
+#endif // QT_CONFIG(tabbar)
 
-    // separators
-
-    QList<int> movingSeparator;
-    QPoint movingSeparatorOrigin, movingSeparatorPos;
-    QBasicTimer separatorMoveTimer;
-
-    bool startSeparatorMove(const QPoint &pos);
-    bool separatorMove(const QPoint &pos);
-    bool endSeparatorMove(const QPoint &pos);
+    QDockAreaLayout *dockAreaLayoutInfo() { return &layoutState.dockAreaLayout; }
     void keepSize(QDockWidget *w);
-#endif // QT_NO_DOCKWIDGET
+#endif // QT_CONFIG(dockwidget)
 
     // save/restore
 
@@ -295,79 +551,43 @@ public:
     QList<int> currentGapPos;
     QRect currentGapRect;
     QWidget *pluggingWidget;
-#ifndef QT_NO_RUBBERBAND
+#if QT_CONFIG(rubberband)
     QPointer<QRubberBand> gapIndicator;
 #endif
-#ifndef QT_NO_DOCKWIDGET
-    QPointer<QWidget> currentHoveredFloat; // set when dragging over a floating dock widget
+#if QT_CONFIG(dockwidget)
+    QPointer<QDockWidgetGroupWindow> currentHoveredFloat; // set when dragging over a floating dock widget
+    void setCurrentHoveredFloat(QDockWidgetGroupWindow *w);
 #endif
 
     void hover(QLayoutItem *widgetItem, const QPoint &mousePos);
     bool plug(QLayoutItem *widgetItem);
     QLayoutItem *unplug(QWidget *widget, bool group = false);
     void revert(QLayoutItem *widgetItem);
-    void updateGapIndicator();
     void paintDropIndicator(QPainter *p, QWidget *widget, const QRegion &clip);
     void applyState(QMainWindowLayoutState &newState, bool animate = true);
     void restore(bool keepSavedState = false);
-    void updateHIToolBarStatus();
     void animationFinished(QWidget *widget);
 
 private Q_SLOTS:
-#ifndef QT_NO_DOCKWIDGET
-#ifndef QT_NO_TABBAR
+    void updateGapIndicator();
+#if QT_CONFIG(dockwidget)
+#if QT_CONFIG(tabbar)
     void tabChanged();
     void tabMoved(int from, int to);
 #endif
 #endif
 private:
-#ifndef QT_NO_TABBAR
+#if QT_CONFIG(tabbar)
     void updateTabBarShapes();
 #endif
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
-    static OSStatus qtmacToolbarDelegate(EventHandlerCallRef, EventRef , void *);
-    static OSStatus qtoolbarInHIToolbarHandler(EventHandlerCallRef inCallRef, EventRef event,
-                                               void *data);
-    static void qtMacHIToolbarRegisterQToolBarInHIToolborItemClass();
-    static HIToolbarItemRef CreateToolbarItemForIdentifier(CFStringRef identifier, CFTypeRef data);
-    static HIToolbarItemRef createQToolBarInHIToolbarItem(QToolBar *toolbar,
-                                                          QMainWindowLayout *layout);
-public:
-    struct ToolBarSaveState {
-        ToolBarSaveState() : movable(false) { }
-        ToolBarSaveState(bool newMovable, const QSize &newMax)
-        : movable(newMovable), maximumSize(newMax) { }
-        bool movable;
-        QSize maximumSize;
-    };
-    QList<QToolBar *> qtoolbarsInUnifiedToolbarList;
-    QList<void *> toolbarItemsCopy;
-    QHash<void *, QToolBar *> unifiedToolbarHash;
-    QHash<QToolBar *, ToolBarSaveState> toolbarSaveState;
-    QHash<QString, QToolBar *> cocoaItemIDToToolbarHash;
-    void insertIntoMacToolbar(QToolBar *before, QToolBar *after);
-    void removeFromMacToolbar(QToolBar *toolbar);
-    void cleanUpMacToolbarItems();
-    void fixSizeInUnifiedToolbar(QToolBar *tb) const;
-    bool useHIToolBar;
-    bool activateUnifiedToolbarAfterFullScreen;
-    void syncUnifiedToolbarVisibility();
-    bool blockVisiblityCheck;
-
-    QUnifiedToolbarSurface *unifiedSurface;
-    void updateUnifiedToolbarOffset();
-
-#endif // Q_DEAD_CODE_FROM_QT4_MAC
 };
 
-#if !defined(QT_NO_DOCKWIDGET) && !defined(QT_NO_DEBUG_STREAM)
+#if QT_CONFIG(dockwidget) && !defined(QT_NO_DEBUG_STREAM)
 class QDebug;
 QDebug operator<<(QDebug debug, const QDockAreaLayout &layout);
 QDebug operator<<(QDebug debug, const QMainWindowLayout *layout);
 #endif
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_MAINWINDOW
 
 #endif // QDYNAMICMAINWINDOWLAYOUT_P_H

@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QDebug>
 #include <QtWidgets/qwidget.h>
 #include <private/qwidget_p.h>
@@ -110,13 +111,11 @@ public:
     void sync();
     void flush(QWidget *widget = 0);
 
-    inline QPoint topLevelOffset() const { return tlwOffset; }
-
     QBackingStore *backingStore() const { return store; }
 
     inline bool isDirty() const
     {
-        return !(dirtyWidgets.isEmpty() && dirty.isEmpty() && !fullUpdatePending && dirtyRenderToTextureWidgets.isEmpty());
+        return !(dirtyWidgets.isEmpty() && dirty.isEmpty() && dirtyRenderToTextureWidgets.isEmpty());
     }
 
     // ### Qt 4.6: Merge into a template function (after MSVC isn't supported anymore).
@@ -135,10 +134,7 @@ private:
     QVector<QWidget *> *dirtyOnScreenWidgets;
     QList<QWidget *> staticWidgets;
     QBackingStore *store;
-    uint fullUpdatePending : 1;
     uint updateRequestSent : 1;
-
-    QPoint tlwOffset;
 
     QPlatformTextureListWatcher *textureListWatcher;
     QElapsedTimer perfTime;
@@ -149,7 +145,7 @@ private:
     static bool flushPaint(QWidget *widget, const QRegion &rgn);
     static void unflushPaint(QWidget *widget, const QRegion &rgn);
     static void qt_flush(QWidget *widget, const QRegion &region, QBackingStore *backingStore,
-                         QWidget *tlw, const QPoint &tlwOffset,
+                         QWidget *tlw,
                          QPlatformTextureList *widgetTextures,
                          QWidgetBackingStore *widgetBackingStore);
 
@@ -176,11 +172,11 @@ private:
     {
         if (widget && !widget->d_func()->inDirtyList && !widget->data->in_destructor) {
             QWidgetPrivate *widgetPrivate = widget->d_func();
-#ifndef QT_NO_GRAPHICSEFFECT
+#if QT_CONFIG(graphicseffect)
             if (widgetPrivate->graphicsEffect)
                 widgetPrivate->dirty = widgetPrivate->effectiveRectFor(rgn.boundingRect());
             else
-#endif //QT_NO_GRAPHICSEFFECT
+#endif // QT_CONFIG(graphicseffect)
                 widgetPrivate->dirty = rgn;
             dirtyWidgets.append(widget);
             widgetPrivate->inDirtyList = true;

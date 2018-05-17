@@ -39,7 +39,6 @@
 
 #include "qitemdelegate.h"
 
-#ifndef QT_NO_ITEMVIEWS
 #include <qabstractitemmodel.h>
 #include <qapplication.h>
 #include <qbrush.h>
@@ -62,7 +61,6 @@
 #include <private/qtextengine_p.h>
 #include <qdebug.h>
 #include <qlocale.h>
-#include <qdialog.h>
 #include <qmath.h>
 
 #include <limits.h>
@@ -990,7 +988,7 @@ QPixmap *QItemDelegate::selected(const QPixmap &pixmap, const QPalette &palette,
         painter.end();
 
         QPixmap selected = QPixmap(QPixmap::fromImage(img));
-        int n = (img.byteCount() >> 10) + 1;
+        int n = (img.sizeInBytes() >> 10) + 1;
         if (QPixmapCache::cacheLimit() < n)
             QPixmapCache::setCacheLimit(n);
 
@@ -1200,5 +1198,3 @@ QStyleOptionViewItem QItemDelegate::setOptions(const QModelIndex &index,
 QT_END_NAMESPACE
 
 #include "moc_qitemdelegate.cpp"
-
-#endif // QT_NO_ITEMVIEWS

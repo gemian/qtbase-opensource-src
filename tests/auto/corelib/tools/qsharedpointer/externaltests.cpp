@@ -31,7 +31,9 @@
 
 #include <QtCore/QTemporaryFile>
 #include <QtCore/QTemporaryDir>
-#include <QtCore/QProcess>
+#if QT_CONFIG(process)
+# include <QtCore/QProcess>
+#endif
 #include <QtCore/QByteArray>
 #include <QtCore/QString>
 #include <QtCore/QFileInfo>
@@ -66,7 +68,7 @@ static QString makespec()
 
 QT_BEGIN_NAMESPACE
 namespace QTest {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     class QExternalProcess: public QProcess
     {
     protected:
@@ -87,7 +89,7 @@ namespace QTest {
         }
 #endif
     };
-#endif // !QT_NO_PROCESS
+#endif // QT_CONFIG(process)
 
     class QExternalTestPrivate
     {
@@ -342,7 +344,7 @@ namespace QTest {
             "\n"
             "#ifdef Q_OS_WIN\n"
             "#include <windows.h>\n"
-            "#if defined(Q_CC_MSVC) && !defined(Q_OS_WINCE)\n"
+            "#if defined(Q_CC_MSVC)\n"
             "#include <crtdbg.h>\n"
             "#endif\n"
             "static void q_test_setup()\n"
@@ -358,7 +360,7 @@ namespace QTest {
             "#endif\n"
             "int main(int argc, char **argv)\n"
             "{\n"
-            "#if defined(Q_CC_MSVC) && defined(QT_DEBUG) && defined(_DEBUG) && defined(_CRT_ERROR) && !defined(Q_OS_WINCE)\n"
+            "#if defined(Q_CC_MSVC) && defined(QT_DEBUG) && defined(_DEBUG) && defined(_CRT_ERROR)\n"
             "    _CrtSetReportHook2(_CRT_RPTHOOK_INSTALL, CrtDbgHook);\n"
             "#endif\n";
 
@@ -554,7 +556,7 @@ namespace QTest {
 
     bool QExternalTestPrivate::runQmake()
     {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
         if (temporaryDirPath.isEmpty())
             qWarning() << "Temporary directory is expected to be non-empty";
 
@@ -591,20 +593,22 @@ namespace QTest {
         } else {
             ok = qmake.waitForFinished();
             exitCode = qmake.exitCode();
+            if (!ok)
+                qmake.terminate();
 
             std_out += qmake.readAllStandardOutput();
             std_err += qmake.readAllStandardError();
         }
 
         return ok && exitCode == 0;
-#else // QT_NO_PROCESS
+#else // QT_CONFIG(process)
         return false;
-#endif // QT_NO_PROCESS
+#endif // QT_CONFIG(process)
     }
 
     bool QExternalTestPrivate::runMake(Target target)
     {
-#ifdef QT_NO_PROCESS
+#if !QT_CONFIG(process)
         return false;
 #else
         if (temporaryDirPath.isEmpty())
@@ -663,7 +667,7 @@ namespace QTest {
         std_err += make.readAllStandardError();
 
         return ok;
-#endif // !QT_NO_PROCESS
+#endif // QT_CONFIG(process)
     }
 
     bool QExternalTestPrivate::commonSetup(const QByteArray &body)

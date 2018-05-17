@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <qpa/qplatformpixmap.h>
 
 
@@ -84,9 +85,10 @@ public:
 
 protected:
     int metric(QPaintDevice::PaintDeviceMetric metric) const Q_DECL_OVERRIDE;
-    void createPixmapForImage(QImage &sourceImage, Qt::ImageConversionFlags flags, bool inPlace);
+    void createPixmapForImage(QImage sourceImage, Qt::ImageConversionFlags flags);
     void setImage(const QImage &image);
     QImage image;
+    static QImage::Format systemOpaqueFormat();
 
 private:
     friend class QPixmap;

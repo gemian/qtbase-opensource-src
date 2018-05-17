@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qgraphicsscene_p.h"
 #include "qgraphicsscene.h"
 #include <private/qobject_p.h>
@@ -59,10 +60,9 @@
 #include <QtCore/qobject.h>
 #include <QtGui/qtransform.h>
 
+QT_REQUIRE_CONFIG(graphicsview);
+
 QT_BEGIN_NAMESPACE
-
-
-#if !defined(QT_NO_GRAPHICSVIEW)
 
 class QGraphicsSceneIndexPrivate;
 class QPointF;
@@ -154,8 +154,6 @@ inline void QGraphicsSceneIndexPrivate::items_helper(const QRectF &rect, QGraphi
             items->swap(i, n - i - 1);
     }
 }
-
-#endif // QT_NO_GRAPHICSVIEW
 
 QT_END_NAMESPACE
 

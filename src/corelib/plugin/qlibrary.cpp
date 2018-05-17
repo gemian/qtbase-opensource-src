@@ -40,8 +40,7 @@
 #include "qplatformdefs.h"
 #include "qlibrary.h"
 
-#ifndef QT_NO_LIBRARY
-
+#include "qfactoryloader_p.h"
 #include "qlibrary_p.h"
 #include <qstringlist.h>
 #include <qfile.h>
@@ -49,6 +48,7 @@
 #include <qmutex.h>
 #include <qmap.h>
 #include <private/qcoreapplication_p.h>
+#include <private/qsystemerror_p.h>
 #ifdef Q_OS_MAC
 #  include <private/qcore_mac_p.h>
 #endif
@@ -237,21 +237,34 @@ static bool findPatternUnloaded(const QString &library, QLibraryPrivate *lib)
         if (lib)
             lib->errorString = file.errorString();
         if (qt_debug_component()) {
-            qWarning("%s: %s", (const char*) QFile::encodeName(library),
-                qPrintable(qt_error_string(errno)));
+            qWarning("%s: %s", QFile::encodeName(library).constData(),
+                qPrintable(QSystemError::stdString()));
         }
         return false;
     }
 
     QByteArray data;
-    const char *filedata = 0;
     ulong fdlen = file.size();
-    filedata = (char *) file.map(0, fdlen);
+    const char *filedata = reinterpret_cast<char *>(file.map(0, fdlen));
+
     if (filedata == 0) {
-        // try reading the data into memory instead
-        data = file.readAll();
-        filedata = data.constData();
-        fdlen = data.size();
+        if (uchar *mapdata = file.map(0, 1)) {
+            file.unmap(mapdata);
+            // Mapping is supported, but failed for the entire file, likely due to OOM.
+            // Return false, as readAll() would cause a bad_alloc and terminate the process.
+            if (lib)
+                lib->errorString = QLibrary::tr("Out of memory while loading plugin '%1'.").arg(library);
+            if (qt_debug_component()) {
+                qWarning("%s: %s", QFile::encodeName(library).constData(),
+                    qPrintable(QSystemError::stdString(ENOMEM)));
+            }
+            return false;
+        } else {
+            // Try reading the data into memory instead.
+            data = file.readAll();
+            filedata = data.constData();
+            fdlen = data.size();
+        }
     }
 
     /*
@@ -617,40 +630,34 @@ bool QLibrary::isLibrary(const QString &fileName)
 {
 #if defined(Q_OS_WIN)
     return fileName.endsWith(QLatin1String(".dll"), Qt::CaseInsensitive);
-#else
+#else // Generic Unix
     QString completeSuffix = QFileInfo(fileName).completeSuffix();
     if (completeSuffix.isEmpty())
         return false;
-    QStringList suffixes = completeSuffix.split(QLatin1Char('.'));
-# if defined(Q_OS_DARWIN)
-
-    // On Mac, libs look like libmylib.1.0.0.dylib
-    const QString lastSuffix = suffixes.at(suffixes.count() - 1);
-    const QString firstSuffix = suffixes.at(0);
-
-    bool valid = (lastSuffix == QLatin1String("dylib")
-            || firstSuffix == QLatin1String("so")
-            || firstSuffix == QLatin1String("bundle"));
-
-    return valid;
-# else  // Generic Unix
+    const QVector<QStringRef> suffixes = completeSuffix.splitRef(QLatin1Char('.'));
     QStringList validSuffixList;
 
-#  if defined(Q_OS_HPUX)
+# if defined(Q_OS_HPUX)
 /*
     See "HP-UX Linker and Libraries User's Guide", section "Link-time Differences between PA-RISC and IPF":
     "In PA-RISC (PA-32 and PA-64) shared libraries are suffixed with .sl. In IPF (32-bit and 64-bit),
     the shared libraries are suffixed with .so. For compatibility, the IPF linker also supports the .sl suffix."
  */
     validSuffixList << QLatin1String("sl");
-#   if defined __ia64
-    validSuffixList << QLatin1String("so");
-#   endif
-#  elif defined(Q_OS_AIX)
-    validSuffixList << QLatin1String("a") << QLatin1String("so");
-#  elif defined(Q_OS_UNIX)
+#  if defined __ia64
     validSuffixList << QLatin1String("so");
 #  endif
+# elif defined(Q_OS_AIX)
+    validSuffixList << QLatin1String("a") << QLatin1String("so");
+# elif defined(Q_OS_DARWIN)
+    // On Apple platforms, dylib look like libmylib.1.0.0.dylib
+    if (suffixes.last() == QLatin1String("dylib"))
+        return true;
+
+    validSuffixList << QLatin1String("so") << QLatin1String("bundle");
+# elif defined(Q_OS_UNIX)
+    validSuffixList << QLatin1String("so");
+# endif
 
     // Examples of valid library names:
     //  libfoo.so
@@ -662,16 +669,14 @@ bool QLibrary::isLibrary(const QString &fileName)
     int suffix;
     int suffixPos = -1;
     for (suffix = 0; suffix < validSuffixList.count() && suffixPos == -1; ++suffix)
-        suffixPos = suffixes.indexOf(validSuffixList.at(suffix));
+        suffixPos = suffixes.indexOf(QStringRef(&validSuffixList.at(suffix)));
 
     bool valid = suffixPos != -1;
     for (int i = suffixPos + 1; i < suffixes.count() && valid; ++i)
         if (i != suffixPos)
             suffixes.at(i).toInt(&valid);
     return valid;
-# endif
 #endif
-
 }
 
 typedef const char * (*QtPluginQueryVerificationDataFunction)();
@@ -753,7 +758,7 @@ void QLibraryPrivate::updatePluginState()
         if (qt_debug_component()) {
             qWarning("In %s:\n"
                  "  Plugin uses incompatible Qt library (%d.%d.%d) [%s]",
-                 (const char*) QFile::encodeName(fileName),
+                 QFile::encodeName(fileName).constData(),
                  (qt_version&0xff0000) >> 16, (qt_version&0xff00) >> 8, qt_version&0xff,
                  debug ? "debug" : "release");
         }
@@ -1139,4 +1144,4 @@ bool qt_debug_component()
 
 QT_END_NAMESPACE
 
-#endif // QT_NO_LIBRARY
+#include "moc_qlibrary.cpp"

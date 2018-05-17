@@ -37,6 +37,7 @@
 #include <qmainwindow.h>
 #include <qscreen.h>
 #include <qscopedpointer.h>
+#include <qevent.h>
 
 
 class Window : public QWindow
@@ -73,10 +74,12 @@ private slots:
     void testOwnership();
     void testBehindTheScenesDeletion();
     void testUnparenting();
+    void testUnparentReparent();
     void testActivation();
     void testAncestorChange();
     void testDockWidget();
     void testNativeContainerParent();
+    void testPlatformSurfaceEvent();
     void cleanup();
 
 private:
@@ -161,7 +164,7 @@ void tst_QWindowContainer::testOwnership()
 
     delete container;
 
-    QCOMPARE(window.data(), (QWindow *) 0);
+    QCOMPARE(window.data(), nullptr);
 }
 
 
@@ -237,6 +240,31 @@ void tst_QWindowContainer::testUnparenting()
 
     // Window should not be made visible by container..
     QVERIFY(!window->isVisible());
+}
+
+void tst_QWindowContainer::testUnparentReparent()
+{
+    QWidget root;
+
+    QWindow *window = new QWindow();
+    QScopedPointer<QWidget> container(QWidget::createWindowContainer(window, &root));
+    container->setWindowTitle(QTest::currentTestFunction());
+    container->setGeometry(m_availableGeometry.x() + 100, m_availableGeometry.y() + 100, 200, 100);
+
+    root.show();
+
+    QVERIFY(QTest::qWaitForWindowExposed(&root));
+
+    QTRY_VERIFY(window->isVisible());
+
+    container->setParent(nullptr);
+    QTRY_VERIFY(!window->isVisible());
+
+    container->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTRY_VERIFY(window->isVisible());
+
+    container->setParent(&root); // This should not crash (QTBUG-63168)
 }
 
 void tst_QWindowContainer::testAncestorChange()
@@ -341,6 +369,41 @@ void tst_QWindowContainer::testNativeContainerParent()
 
     QVERIFY(QTest::qWaitForWindowExposed(window));
     QTRY_COMPARE(window->parent(), container->windowHandle());
+}
+
+class EventWindow : public QWindow
+{
+public:
+    EventWindow(bool *surfaceDestroyFlag)  : m_surfaceDestroyFlag(surfaceDestroyFlag) { }
+    bool event(QEvent *e) override;
+
+private:
+    bool *m_surfaceDestroyFlag;
+};
+
+bool EventWindow::event(QEvent *e)
+{
+    if (e->type() == QEvent::PlatformSurface) {
+        if (static_cast<QPlatformSurfaceEvent *>(e)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed)
+            *m_surfaceDestroyFlag = true;
+    }
+    return QWindow::event(e);
+}
+
+void tst_QWindowContainer::testPlatformSurfaceEvent()
+{
+    // Verify that SurfaceAboutToBeDestroyed is delivered and the
+    // window subclass still gets a chance to process it.
+
+    bool ok = false;
+    QPointer<EventWindow> window(new EventWindow(&ok));
+    window->create();
+    QWidget *container = QWidget::createWindowContainer(window);
+
+    delete container;
+
+    QCOMPARE(window.data(), nullptr);
+    QVERIFY(ok);
 }
 
 QTEST_MAIN(tst_QWindowContainer)

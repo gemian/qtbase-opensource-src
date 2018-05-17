@@ -82,7 +82,7 @@ QMacTimeZonePrivate::~QMacTimeZonePrivate()
     [m_nstz release];
 }
 
-QTimeZonePrivate *QMacTimeZonePrivate::clone()
+QMacTimeZonePrivate *QMacTimeZonePrivate::clone() const
 {
     return new QMacTimeZonePrivate(*this);
 }
@@ -90,7 +90,7 @@ QTimeZonePrivate *QMacTimeZonePrivate::clone()
 void QMacTimeZonePrivate::init(const QByteArray &ianaId)
 {
     if (availableTimeZoneIds().contains(ianaId)) {
-        m_nstz = [[NSTimeZone timeZoneWithName:QCFString::toNSString(QString::fromUtf8(ianaId))] retain];
+        m_nstz = [[NSTimeZone timeZoneWithName:QString::fromUtf8(ianaId).toNSString()] retain];
         if (m_nstz)
             m_id = ianaId;
     }
@@ -98,7 +98,7 @@ void QMacTimeZonePrivate::init(const QByteArray &ianaId)
 
 QString QMacTimeZonePrivate::comment() const
 {
-    return QCFString::toQString([m_nstz description]);
+    return QString::fromNSString([m_nstz description]);
 }
 
 QString QMacTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
@@ -140,9 +140,9 @@ QString QMacTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
         break;
     }
 
-    NSString *macLocaleCode = QCFString::toNSString(locale.name());
+    NSString *macLocaleCode = locale.name().toNSString();
     NSLocale *macLocale = [[NSLocale alloc] initWithLocaleIdentifier:macLocaleCode];
-    const QString result = QCFString::toQString([m_nstz localizedName:style locale:macLocale]);
+    const QString result = QString::fromNSString([m_nstz localizedName:style locale:macLocale]);
     [macLocale release];
     return result;
 }
@@ -150,7 +150,7 @@ QString QMacTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
 QString QMacTimeZonePrivate::abbreviation(qint64 atMSecsSinceEpoch) const
 {
     const NSTimeInterval seconds = atMSecsSinceEpoch / 1000.0;
-    return QCFString::toQString([m_nstz abbreviationForDate:[NSDate dateWithTimeIntervalSince1970:seconds]]);
+    return QString::fromNSString([m_nstz abbreviationForDate:[NSDate dateWithTimeIntervalSince1970:seconds]]);
 }
 
 int QMacTimeZonePrivate::offsetFromUtc(qint64 atMSecsSinceEpoch) const
@@ -191,7 +191,7 @@ QTimeZonePrivate::Data QMacTimeZonePrivate::data(qint64 forMSecsSinceEpoch) cons
     data.offsetFromUtc = [m_nstz secondsFromGMTForDate:date];
     data.daylightTimeOffset = [m_nstz daylightSavingTimeOffsetForDate:date];
     data.standardTimeOffset = data.offsetFromUtc - data.daylightTimeOffset;
-    data.abbreviation = QCFString::toQString([m_nstz abbreviationForDate:date]);
+    data.abbreviation = QString::fromNSString([m_nstz abbreviationForDate:date]);
     return data;
 }
 
@@ -220,57 +220,114 @@ QTimeZonePrivate::Data QMacTimeZonePrivate::nextTransition(qint64 afterMSecsSinc
     tran.offsetFromUtc = [m_nstz secondsFromGMTForDate:nextDate];
     tran.daylightTimeOffset = [m_nstz daylightSavingTimeOffsetForDate:nextDate];
     tran.standardTimeOffset = tran.offsetFromUtc - tran.daylightTimeOffset;
-    tran.abbreviation = QCFString::toQString([m_nstz abbreviationForDate:nextDate]);
+    tran.abbreviation = QString::fromNSString([m_nstz abbreviationForDate:nextDate]);
     return tran;
 }
 
 QTimeZonePrivate::Data QMacTimeZonePrivate::previousTransition(qint64 beforeMSecsSinceEpoch) const
 {
-    // No direct Mac API, so get all transitions since epoch and return the last one
-    QList<int> secsList;
-    if (beforeMSecsSinceEpoch > 0) {
-        const int endSecs = beforeMSecsSinceEpoch / 1000.0;
-        NSTimeInterval prevSecs = 0;
-        NSTimeInterval nextSecs = 0;
-        NSDate *nextDate = [NSDate dateWithTimeIntervalSince1970:nextSecs];
-        // If invalid may return a nil date or an Epoch date
+    // The native API only lets us search forward, so we need to find an early-enough start:
+    const NSTimeInterval lowerBound = std::numeric_limits<NSTimeInterval>::min();
+    const qint64 endSecs = beforeMSecsSinceEpoch / 1000;
+    const int year = 366 * 24 * 3600; // a (long) year, in seconds
+    NSTimeInterval prevSecs = endSecs; // sentinel for later check
+    NSTimeInterval nextSecs = prevSecs - year;
+    NSTimeInterval tranSecs = lowerBound; // time at a transition; may be > endSecs
+
+    NSDate *nextDate = [NSDate dateWithTimeIntervalSince1970:nextSecs];
+    nextDate = [m_nstz nextDaylightSavingTimeTransitionAfterDate:nextDate];
+    if (nextDate != nil
+        && (tranSecs = [nextDate timeIntervalSince1970]) < endSecs) {
+        // There's a transition within the last year before endSecs:
+        nextSecs = tranSecs;
+    } else {
+        // Need to start our search earlier:
+        nextDate = [NSDate dateWithTimeIntervalSince1970:lowerBound];
+        nextDate = [m_nstz nextDaylightSavingTimeTransitionAfterDate:nextDate];
+        if (nextDate != nil) {
+            NSTimeInterval lateSecs = nextSecs;
+            nextSecs = [nextDate timeIntervalSince1970];
+            Q_ASSERT(nextSecs <= endSecs - year || nextSecs == tranSecs);
+            /*
+              We're looking at the first ever transition for our zone, at
+              nextSecs (and our zone *does* have at least one transition).  If
+              it's later than endSecs - year, then we must have found it on the
+              initial check and therefore set tranSecs to the same transition
+              time (which, we can infer here, is >= endSecs).  In this case, we
+              won't enter the binary-chop loop, below.
+
+              In the loop, nextSecs < lateSecs < endSecs: we have a transition
+              at nextSecs and there is no transition between lateSecs and
+              endSecs.  The loop narrows the interval between nextSecs and
+              lateSecs by looking for a transition after their mid-point; if it
+              finds one < endSecs, nextSecs moves to this transition; otherwise,
+              lateSecs moves to the mid-point.  This soon enough narrows the gap
+              to within a year, after which walking forward one transition at a
+              time (the "Wind through" loop, below) is good enough.
+            */
+
+            // Binary chop to within a year of last transition before endSecs:
+            while (nextSecs + year < lateSecs) {
+                // Careful about overflow, not fussy about rounding errors:
+                NSTimeInterval middle = nextSecs / 2 + lateSecs / 2;
+                NSDate *split = [NSDate dateWithTimeIntervalSince1970:middle];
+                split = [m_nstz nextDaylightSavingTimeTransitionAfterDate:split];
+                if (split != nil
+                    && (tranSecs = [split timeIntervalSince1970]) < endSecs) {
+                    nextDate = split;
+                    nextSecs = tranSecs;
+                } else {
+                    lateSecs = middle;
+                }
+            }
+            Q_ASSERT(nextDate != nil);
+            // ... and nextSecs < endSecs unless first transition ever was >= endSecs.
+        } // else: we have no data - prevSecs is still endSecs, nextDate is still nil
+    }
+    // Either nextDate is nil or nextSecs is at its transition.
+
+    // Wind through remaining transitions (spanning at most a year), one at a time:
+    while (nextDate != nil && nextSecs < endSecs) {
+        prevSecs = nextSecs;
         nextDate = [m_nstz nextDaylightSavingTimeTransitionAfterDate:nextDate];
         nextSecs = [nextDate timeIntervalSince1970];
-        while (nextDate != nil && nextSecs > prevSecs && nextSecs < endSecs) {
-            secsList.append(nextSecs);
-            prevSecs = nextSecs;
-            nextDate = [m_nstz nextDaylightSavingTimeTransitionAfterDate:nextDate];
-            nextSecs = [nextDate timeIntervalSince1970];
-        }
+        if (nextSecs <= prevSecs) // presumably no later data available
+            break;
     }
-    if (secsList.size() >= 1)
-        return data(qint64(secsList.constLast()) * 1000);
-    else
-        return invalidData();
+    if (prevSecs < endSecs) // i.e. we did make it into that while loop
+        return data(qint64(prevSecs * 1e3));
+
+    // No transition data; or first transition later than requested time.
+    return invalidData();
 }
 
 QByteArray QMacTimeZonePrivate::systemTimeZoneId() const
 {
     // Reset the cached system tz then return the name
     [NSTimeZone resetSystemTimeZone];
-    return QCFString::toQString([[NSTimeZone systemTimeZone] name]).toUtf8();
+    return QString::fromNSString([[NSTimeZone systemTimeZone] name]).toUtf8();
 }
 
 QList<QByteArray> QMacTimeZonePrivate::availableTimeZoneIds() const
 {
     NSEnumerator *enumerator = [[NSTimeZone knownTimeZoneNames] objectEnumerator];
-    QByteArray tzid = QCFString::toQString([enumerator nextObject]).toUtf8();
+    QByteArray tzid = QString::fromNSString([enumerator nextObject]).toUtf8();
 
     QList<QByteArray> list;
     while (!tzid.isEmpty()) {
         list << tzid;
-        tzid = QCFString::toQString([enumerator nextObject]).toUtf8();
+        tzid = QString::fromNSString([enumerator nextObject]).toUtf8();
     }
 
     std::sort(list.begin(), list.end());
     list.erase(std::unique(list.begin(), list.end()), list.end());
 
     return list;
+}
+
+NSTimeZone *QMacTimeZonePrivate::nsTimeZone() const
+{
+    return m_nstz;
 }
 
 QT_END_NAMESPACE

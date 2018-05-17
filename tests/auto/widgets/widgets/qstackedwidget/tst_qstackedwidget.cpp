@@ -163,7 +163,8 @@ private:
 
 void tst_QStackedWidget::dynamicPages()
 {
-    QStackedWidget *sw = new QStackedWidget;
+    QStackedWidget stackedWidget;
+    QStackedWidget *sw = &stackedWidget;
 
     TestPage *w1 = new TestPage(true);
     w1->setN(3);
@@ -179,7 +180,7 @@ void tst_QStackedWidget::dynamicPages()
     sw->resize(200, 200);
     sw->show();
     qApp->setActiveWindow(sw);
-    QTest::qWaitForWindowActive(sw);
+    QVERIFY(QTest::qWaitForWindowActive(sw));
     QTRY_COMPARE(QApplication::focusWidget(), le11);
 
     sw->setCurrentIndex(1);

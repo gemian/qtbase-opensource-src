@@ -41,10 +41,23 @@
 #ifndef QTWINDOWSGLOBAL_H
 #define QTWINDOWSGLOBAL_H
 
-#include "qtwindows_additional.h"
+#include <QtCore/qt_windows.h>
 #include <QtCore/qnamespace.h>
-#ifdef Q_OS_WINCE
-#  include "qplatformfunctions_wince.h"
+
+#ifndef WM_DWMCOMPOSITIONCHANGED // MinGW.
+#    define WM_DWMCOMPOSITIONCHANGED 0x31E
+#endif
+
+#ifndef WM_TOUCH
+#  define WM_TOUCH 0x0240
+#endif
+
+#ifndef WM_GESTURE
+#  define WM_GESTURE 0x0119
+#endif
+
+#ifndef WM_DPICHANGED
+#  define WM_DPICHANGED 0x02E0
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -87,12 +100,16 @@ enum WindowsEventType // Simplify event types
     FocusInEvent = WindowEventFlag + 17,
     FocusOutEvent = WindowEventFlag + 18,
     WhatsThisEvent = WindowEventFlag + 19,
+    DpiChangedEvent = WindowEventFlag + 21,
+    EnterSizeMoveEvent = WindowEventFlag + 22,
+    ExitSizeMoveEvent = WindowEventFlag + 23,
     MouseEvent = MouseEventFlag + 1,
     MouseWheelEvent = MouseEventFlag + 2,
     CursorEvent = MouseEventFlag + 3,
     TouchEvent = TouchEventFlag + 1,
     NonClientMouseEvent = NonClientEventFlag + MouseEventFlag + 1,
     NonClientHitTest = NonClientEventFlag + 2,
+    NonClientCreate = NonClientEventFlag + 3,
     KeyEvent = KeyEventFlag + 1,
     KeyDownEvent = KeyEventFlag + KeyDownEventFlag + 1,
     KeyboardLayoutChangeEvent = KeyEventFlag + 2,
@@ -105,6 +122,10 @@ enum WindowsEventType // Simplify event types
     QueryEndSessionApplicationEvent = ApplicationEventFlag + 4,
     EndSessionApplicationEvent = ApplicationEventFlag + 5,
     AppCommandEvent = ApplicationEventFlag + 6,
+    DeviceChangeEvent = ApplicationEventFlag + 7,
+    MenuAboutToShowEvent = ApplicationEventFlag + 8,
+    AcceleratorCommandEvent = ApplicationEventFlag + 9,
+    MenuCommandEvent = ApplicationEventFlag + 10,
     InputMethodStartCompositionEvent = InputMethodEventFlag + 1,
     InputMethodCompositionEvent = InputMethodEventFlag + 2,
     InputMethodEndCompositionEvent = InputMethodEventFlag + 3,
@@ -158,10 +179,8 @@ inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamI
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL:
         return QtWindows::MouseWheelEvent;
-#ifndef Q_OS_WINCE
     case WM_WINDOWPOSCHANGING:
         return QtWindows::GeometryChangingEvent;
-#endif
     case WM_MOVE:
         return QtWindows::MoveEvent;
     case WM_SHOWWINDOW:
@@ -170,12 +189,12 @@ inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamI
         return QtWindows::HideEvent;
     case WM_SIZE:
         return QtWindows::ResizeEvent;
+    case WM_NCCREATE:
+        return QtWindows::NonClientCreate;
     case WM_NCCALCSIZE:
         return QtWindows::CalculateSize;
-#ifndef Q_OS_WINCE
     case WM_NCHITTEST:
         return QtWindows::NonClientHitTest;
-#endif // !Q_OS_WINCE
     case WM_GETMINMAXINFO:
         return QtWindows::QuerySizeHints;
     case WM_KEYDOWN:                        // keyboard event
@@ -243,23 +262,32 @@ inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamI
         return QtWindows::ContextMenu;
 #endif
     case WM_SYSCOMMAND:
-#ifndef Q_OS_WINCE
         if ((wParamIn & 0xfff0) == SC_CONTEXTHELP)
             return QtWindows::WhatsThisEvent;
-#endif
         break;
-#if !defined(Q_OS_WINCE) && !defined(QT_NO_SESSIONMANAGER)
     case WM_QUERYENDSESSION:
         return QtWindows::QueryEndSessionApplicationEvent;
     case WM_ENDSESSION:
         return QtWindows::EndSessionApplicationEvent;
-#endif
 #if defined(WM_APPCOMMAND)
     case WM_APPCOMMAND:
         return QtWindows::AppCommandEvent;
 #endif
     case WM_GESTURE:
         return QtWindows::GestureEvent;
+    case WM_DEVICECHANGE:
+        return QtWindows::DeviceChangeEvent;
+    case WM_INITMENU:
+    case WM_INITMENUPOPUP:
+        return QtWindows::MenuAboutToShowEvent;
+    case WM_COMMAND:
+        return HIWORD(wParamIn) ? QtWindows::AcceleratorCommandEvent : QtWindows::MenuCommandEvent;
+    case WM_DPICHANGED:
+        return QtWindows::DpiChangedEvent;
+    case WM_ENTERSIZEMOVE:
+        return QtWindows::EnterSizeMoveEvent;
+    case WM_EXITSIZEMOVE:
+        return QtWindows::ExitSizeMoveEvent;
     default:
         break;
     }

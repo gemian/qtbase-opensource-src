@@ -40,6 +40,7 @@
 #ifndef QOFFSCREENSURFACE_H
 #define QOFFSCREENSURFACE_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/QObject>
 #include <QtGui/qsurface.h>
 
@@ -56,7 +57,8 @@ class Q_GUI_EXPORT QOffscreenSurface : public QObject, public QSurface
     Q_DECLARE_PRIVATE(QOffscreenSurface)
 
 public:
-
+    // ### Qt 6: merge overloads
+    explicit QOffscreenSurface(QScreen *screen, QObject *parent);
     explicit QOffscreenSurface(QScreen *screen = Q_NULLPTR);
     virtual ~QOffscreenSurface();
 
@@ -77,6 +79,9 @@ public:
     void setScreen(QScreen *screen);
 
     QPlatformOffscreenSurface *handle() const;
+
+    void *nativeHandle() const;
+    void setNativeHandle(void *handle);
 
 Q_SIGNALS:
     void screenChanged(QScreen *screen);

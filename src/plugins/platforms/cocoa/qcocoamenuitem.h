@@ -78,11 +78,6 @@ public:
     QCocoaMenuItem();
     ~QCocoaMenuItem();
 
-    void setTag(quintptr tag) Q_DECL_OVERRIDE
-        { m_tag = tag; }
-    quintptr tag() const Q_DECL_OVERRIDE
-        { return m_tag; }
-
     void setText(const QString &text) Q_DECL_OVERRIDE;
     void setIcon(const QIcon &icon) Q_DECL_OVERRIDE;
     void setMenu(QPlatformMenu *menu) Q_DECL_OVERRIDE;
@@ -90,7 +85,9 @@ public:
     void setIsSeparator(bool isSeparator) Q_DECL_OVERRIDE;
     void setFont(const QFont &font) Q_DECL_OVERRIDE;
     void setRole(MenuRole role) Q_DECL_OVERRIDE;
+#ifndef QT_NO_SHORTCUT
     void setShortcut(const QKeySequence& shortcut) Q_DECL_OVERRIDE;
+#endif
     void setCheckable(bool checkable) Q_DECL_OVERRIDE { Q_UNUSED(checkable) }
     void setChecked(bool isChecked) Q_DECL_OVERRIDE;
     void setEnabled(bool isEnabled) Q_DECL_OVERRIDE;
@@ -124,8 +121,9 @@ private:
     QFont m_font;
     MenuRole m_role;
     MenuRole m_detectedRole;
+#ifndef QT_NO_SHORTCUT
     QKeySequence m_shortcut;
-    quintptr m_tag;
+#endif
     int m_iconSize;
     bool m_textSynced:1;
     bool m_isVisible:1;

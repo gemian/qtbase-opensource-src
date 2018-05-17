@@ -163,7 +163,7 @@
 
 @implementation QIOSTextInputResponder
 
-- (id)initWithInputContext:(QIOSInputContext *)inputContext
+- (id)initWithInputContext:(QT_PREPEND_NAMESPACE(QIOSInputContext) *)inputContext
 {
     if (!(self = [self init]))
         return self;
@@ -236,17 +236,21 @@
         self.inputView = [[[WrapperView alloc] initWithView:inputView] autorelease];
     if (UIView *accessoryView = static_cast<UIView *>(platformData.value(kImePlatformDataInputAccessoryView).value<void *>()))
         self.inputAccessoryView = [[[WrapperView alloc] initWithView:accessoryView] autorelease];
-    if (QSysInfo::MacintoshVersion >= QSysInfo::MV_IOS_9_0) {
+
+#ifndef Q_OS_TVOS
+    if (__builtin_available(iOS 9, *)) {
         if (platformData.value(kImePlatformDataHideShortcutsBar).toBool()) {
             // According to the docs, leadingBarButtonGroups/trailingBarButtonGroups should be set to nil to hide the shortcuts bar.
             // However, starting with iOS 10, the API has been surrounded with NS_ASSUME_NONNULL, which contradicts this and causes
-            // compiler warnings. And assigning just an empty array causes layout asserts. Hence, we assign empty button groups instead.
-            UIBarButtonItemGroup *leading = [[[UIBarButtonItemGroup alloc] initWithBarButtonItems:@[] representativeItem:nil] autorelease];
-            UIBarButtonItemGroup *trailing = [[[UIBarButtonItemGroup alloc] initWithBarButtonItems:@[] representativeItem:nil] autorelease];
-            self.inputAssistantItem.leadingBarButtonGroups = @[leading];
-            self.inputAssistantItem.trailingBarButtonGroups = @[trailing];
+            // compiler warnings. Still it is the way to go to really hide the space reserved for that.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnonnull"
+            self.inputAssistantItem.leadingBarButtonGroups = nil;
+            self.inputAssistantItem.trailingBarButtonGroups = nil;
+#pragma clang diagnostic pop
         }
     }
+#endif
 
     self.undoManager.groupsByEvent = NO;
     [self rebuildUndoStack];
@@ -373,7 +377,6 @@
     QScopedValueRollback<BOOL> rollback(m_inSendEventToFocusObject, true);
     QWindowSystemInterface::handleKeyEvent(qApp->focusWindow(), QEvent::KeyPress, key, modifiers);
     QWindowSystemInterface::handleKeyEvent(qApp->focusWindow(), QEvent::KeyRelease, key, modifiers);
-    QWindowSystemInterface::flushWindowSystemEvents();
 }
 
 #ifndef QT_NO_SHORTCUT
@@ -625,7 +628,7 @@
 
 - (id<UITextInputTokenizer>)tokenizer
 {
-    return [[[UITextInputStringTokenizer alloc] initWithTextInput:id<UITextInput>(self)] autorelease];
+    return [[[UITextInputStringTokenizer alloc] initWithTextInput:self] autorelease];
 }
 
 - (UITextPosition *)beginningOfDocument
@@ -691,11 +694,7 @@
     if (markedTextFormat.isEmpty()) {
         // There seems to be no way to query how the preedit text
         // should be drawn. So we need to hard-code the color.
-        QSysInfo::MacVersion iosVersion = QSysInfo::MacintoshVersion;
-        if (iosVersion < QSysInfo::MV_IOS_7_0)
-            markedTextFormat.setBackground(QColor(235, 239, 247));
-        else
-            markedTextFormat.setBackground(QColor(206, 221, 238));
+        markedTextFormat.setBackground(QColor(206, 221, 238));
     }
 
     QList<QInputMethodEvent::Attribute> attrs;
@@ -823,7 +822,7 @@
         [self sendEventToFocusObject:e];
     }
 
-    return toCGRect(startRect.united(endRect));
+    return startRect.united(endRect).toCGRect();
 }
 
 - (NSArray *)selectionRectsForRange:(UITextRange *)range
@@ -841,7 +840,7 @@
     // Assume for now that position is always the same as
     // cursor index until a better API is in place:
     QRectF cursorRect = qApp->inputMethod()->cursorRectangle();
-    return toCGRect(cursorRect);
+    return cursorRect.toCGRect();
 }
 
 - (void)replaceRange:(UITextRange *)range withText:(NSString *)text
@@ -880,9 +879,10 @@
 
 - (UITextPosition *)closestPositionToPoint:(CGPoint)point
 {
-    // No API in Qt for determining this. Use sensible default instead:
-    Q_UNUSED(point);
-    return [QUITextPosition positionWithIndex:[self currentImeState:Qt::ImCursorPosition].toInt()];
+    QPointF p = QPointF::fromCGPoint(point);
+    const QTransform mapToLocal = QGuiApplication::inputMethod()->inputItemTransform().inverted();
+    int textPos = QInputMethod::queryFocusObject(Qt::ImCursorPosition, p * mapToLocal).toInt();
+    return [QUITextPosition positionWithIndex:textPos];
 }
 
 - (UITextPosition *)closestPositionToPoint:(CGPoint)point withinRange:(UITextRange *)range
@@ -908,6 +908,7 @@
     // text instead of just guessing...
 }
 
+#ifndef Q_OS_TVOS
 - (NSDictionary *)textStylingAtPosition:(UITextPosition *)position inDirection:(UITextStorageDirection)direction
 {
     Q_UNUSED(position);
@@ -927,6 +928,7 @@
         return [NSDictionary dictionary];
     return [NSDictionary dictionaryWithObject:uifont forKey:NSFontAttributeName];
 }
+#endif
 
 - (NSDictionary *)markedTextStyle
 {

@@ -54,8 +54,6 @@
 
 QT_BEGIN_NAMESPACE
 
-#if !defined(QT_NO_PRINTER) && !defined(QT_NO_CUPS)
-
 /*!
     \internal
     \class QCupsJobWidget
@@ -106,7 +104,7 @@ void QCupsJobWidget::initJobHold()
     m_ui.jobHoldComboBox->addItem(tr("Weekend (Saturday to Sunday)"),  QVariant::fromValue(QCUPSSupport::Weekend));
     m_ui.jobHoldComboBox->addItem(tr("Specific Time"),                 QVariant::fromValue(QCUPSSupport::SpecificTime));
 
-    connect(m_ui.jobHoldComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(toggleJobHoldTime()));
+    connect(m_ui.jobHoldComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &QCupsJobWidget::toggleJobHoldTime);
 
     setJobHold(QCUPSSupport::NoHold, QTime());
     toggleJobHoldTime();
@@ -211,7 +209,5 @@ QCUPSSupport::BannerPage QCupsJobWidget::endBannerPage() const
 {
     return m_ui.endBannerPageCombo->itemData(m_ui.endBannerPageCombo->currentIndex()).value<QCUPSSupport::BannerPage>();
 }
-
-#endif // QT_NO_PRINTER / QT_NO_CUPS
 
 QT_END_NAMESPACE

@@ -41,96 +41,32 @@
 #include "qioswindow.h"
 
 #include <QtGui/QOpenGLContext>
-#include <QtGui/QOpenGLPaintDevice>
-#include <QtGui/QOpenGLFramebufferObject>
-#include <QtGui/QOffscreenSurface>
-#include <QtGui/qpainter.h>
 #include <QtGui/private/qwindow_p.h>
 
 #include <QtDebug>
 
-class QIOSPaintDevice : public QOpenGLPaintDevice
-{
-public:
-    QIOSPaintDevice(QIOSBackingStore *backingStore) : m_backingStore(backingStore) { }
-    void ensureActiveTarget() Q_DECL_OVERRIDE;
+QT_BEGIN_NAMESPACE
 
-private:
-    QIOSBackingStore *m_backingStore;
-};
+/*!
+    \class QIOSBackingStore
 
-void QIOSPaintDevice::ensureActiveTarget()
-{
-    m_backingStore->makeCurrent();
-}
-
+    QBackingStore enables the use of QPainter to paint on a QWindow, as opposed
+    to rendering to a QWindow through the use of OpenGL with QOpenGLContext.
+*/
 QIOSBackingStore::QIOSBackingStore(QWindow *window)
     : QRasterBackingStore(window)
-    , m_context(new QOpenGLContext)
-    , m_glDevice(nullptr)
 {
-    QSurfaceFormat fmt = window->requestedFormat();
-
-    // Due to sharing QIOSContext redirects our makeCurrent on window() attempts to
-    // the global share context. Hence it is essential to have a compatible format.
-    fmt.setDepthBufferSize(QSurfaceFormat::defaultFormat().depthBufferSize());
-    fmt.setStencilBufferSize(QSurfaceFormat::defaultFormat().stencilBufferSize());
-
-    if (fmt.depthBufferSize() == 0)
-        qWarning("No depth in default format, expect rendering errors");
-
     // We use the surface both for raster operations and for GL drawing (when
     // we blit the raster image), so the type needs to cover both use cases.
     if (window->surfaceType() == QSurface::RasterSurface)
         window->setSurfaceType(QSurface::RasterGLSurface);
 
-    m_context->setFormat(fmt);
-    m_context->setScreen(window->screen());
-    Q_ASSERT(QOpenGLContext::globalShareContext());
-    m_context->setShareContext(QOpenGLContext::globalShareContext());
-    m_context->create();
+    Q_ASSERT_X(window->surfaceType() != QSurface::OpenGLSurface, "QIOSBackingStore",
+        "QBackingStore on iOS can only be used with raster-enabled surfaces.");
 }
 
 QIOSBackingStore::~QIOSBackingStore()
 {
-    delete m_context;
-    delete m_glDevice;
-}
-
-void QIOSBackingStore::makeCurrent()
-{
-    if (!m_context->makeCurrent(window()))
-        qWarning("QIOSBackingStore: makeCurrent() failed");
-}
-
-void QIOSBackingStore::beginPaint(const QRegion &region)
-{
-    makeCurrent();
-
-    if (!m_glDevice)
-        m_glDevice = new QIOSPaintDevice(this);
-
-    if (window()->surfaceType() == QSurface::RasterGLSurface)
-        QRasterBackingStore::beginPaint(region);
-}
-
-void QIOSBackingStore::endPaint()
-{
-}
-
-QPaintDevice *QIOSBackingStore::paintDevice()
-{
-    Q_ASSERT(m_glDevice);
-
-    // Keep paint device size and device pixel ratio in sync with window
-    qreal devicePixelRatio = window()->devicePixelRatio();
-    m_glDevice->setSize(window()->size() * devicePixelRatio);
-    m_glDevice->setDevicePixelRatio(devicePixelRatio);
-
-    if (window()->surfaceType() == QSurface::RasterGLSurface)
-        return QRasterBackingStore::paintDevice();
-    else
-        return m_glDevice;
 }
 
 void QIOSBackingStore::flush(QWindow *window, const QRegion &region, const QPoint &offset)
@@ -148,33 +84,8 @@ void QIOSBackingStore::flush(QWindow *window, const QRegion &region, const QPoin
         return;
     }
 
-    if (window->surfaceType() == QSurface::RasterGLSurface) {
-        static QPlatformTextureList emptyTextureList;
-        composeAndFlush(window, region, offset, &emptyTextureList, m_context, false);
-    } else {
-        m_context->makeCurrent(window);
-        m_context->swapBuffers(window);
-    }
-}
-
-void QIOSBackingStore::resize(const QSize &size, const QRegion &staticContents)
-{
-    Q_UNUSED(staticContents);
-
-    if (window()->surfaceType() == QSurface::OpenGLSurface) {
-        // Resizing the backing store would in this case mean resizing the QWindow,
-        // as we use an QOpenGLPaintDevice that we target at the window. That's
-        // probably not what the user intended, so we ignore resizes of the backing
-        // store and always keep the paint device's size in sync with the window
-        // size in beginPaint().
-
-        if (size != window()->size() && !window()->inherits("QWidgetWindow"))
-            qWarning("QIOSBackingStore needs to have the same size as its window");
-
-        return;
-    }
-
-    QRasterBackingStore::resize(size, staticContents);
+    static QPlatformTextureList emptyTextureList;
+    composeAndFlush(window, region, offset, &emptyTextureList, false);
 }
 
 QT_END_NAMESPACE

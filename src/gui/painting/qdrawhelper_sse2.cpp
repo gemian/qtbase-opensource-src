@@ -101,7 +101,6 @@ void qt_blend_rgb32_on_rgb32_sse2(uchar *destPixels, int dbpl,
     quint32 *dst = (quint32 *) destPixels;
     if (const_alpha != 256) {
         if (const_alpha != 0) {
-            const __m128i nullVector = _mm_set1_epi32(0);
             const __m128i half = _mm_set1_epi16(0x80);
             const __m128i colorMask = _mm_set1_epi32(0x00ff00ff);
 
@@ -119,16 +118,13 @@ void qt_blend_rgb32_on_rgb32_sse2(uchar *destPixels, int dbpl,
 
                 for (; x < w-3; x += 4) {
                     __m128i srcVector = _mm_loadu_si128((const __m128i *)&src[x]);
-                    if (_mm_movemask_epi8(_mm_cmpeq_epi32(srcVector, nullVector)) != 0xffff) {
-                        const __m128i dstVector = _mm_load_si128((__m128i *)&dst[x]);
-                        __m128i result;
-                        INTERPOLATE_PIXEL_255_SSE2(result, srcVector, dstVector, constAlphaVector, oneMinusConstAlpha, colorMask, half);
-                        _mm_store_si128((__m128i *)&dst[x], result);
-                    }
+                    const __m128i dstVector = _mm_load_si128((__m128i *)&dst[x]);
+                    __m128i result;
+                    INTERPOLATE_PIXEL_255_SSE2(result, srcVector, dstVector, constAlphaVector, oneMinusConstAlpha, colorMask, half);
+                    _mm_store_si128((__m128i *)&dst[x], result);
                 }
-                for (; x<w; ++x) {
+                SIMD_EPILOGUE(x, w, 3)
                     dst[x] = INTERPOLATE_PIXEL_255(src[x], const_alpha, dst[x], one_minus_const_alpha);
-                }
                 dst = (quint32 *)(((uchar *) dst) + dbpl);
                 src = (const quint32 *)(((const uchar *) src) + sbpl);
             }
@@ -177,7 +173,7 @@ void QT_FASTCALL comp_func_Plus_sse2(uint *dst, const uint *src, int length, uin
         }
 
         // 3) Epilogue:
-        for (; x < length; ++x)
+        SIMD_EPILOGUE(x, length, 3)
             dst[x] = comp_func_Plus_one_pixel(dst[x], src[x]);
     } else {
         const int one_minus_const_alpha = 255 - const_alpha;
@@ -201,7 +197,7 @@ void QT_FASTCALL comp_func_Plus_sse2(uint *dst, const uint *src, int length, uin
         }
 
         // 3) Epilogue:
-        for (; x < length; ++x)
+        SIMD_EPILOGUE(x, length, 3)
             dst[x] = comp_func_Plus_one_pixel_const_alpha(dst[x], src[x], const_alpha, one_minus_const_alpha);
     }
 }
@@ -232,7 +228,7 @@ void QT_FASTCALL comp_func_Source_sse2(uint *dst, const uint *src, int length, u
         }
 
         // 3) Epilogue
-        for (; x < length; ++x)
+        SIMD_EPILOGUE(x, length, 3)
             dst[x] = INTERPOLATE_PIXEL_255(src[x], const_alpha, dst[x], ialpha);
     }
 }
@@ -241,11 +237,11 @@ void qt_memfill32(quint32 *dest, quint32 value, int count)
 {
     if (count < 7) {
         switch (count) {
-        case 6: *dest++ = value;
-        case 5: *dest++ = value;
-        case 4: *dest++ = value;
-        case 3: *dest++ = value;
-        case 2: *dest++ = value;
+        case 6: *dest++ = value; Q_FALLTHROUGH();
+        case 5: *dest++ = value; Q_FALLTHROUGH();
+        case 4: *dest++ = value; Q_FALLTHROUGH();
+        case 3: *dest++ = value; Q_FALLTHROUGH();
+        case 2: *dest++ = value; Q_FALLTHROUGH();
         case 1: *dest   = value;
         }
         return;
@@ -253,16 +249,16 @@ void qt_memfill32(quint32 *dest, quint32 value, int count)
 
     const int align = (quintptr)(dest) & 0xf;
     switch (align) {
-    case 4:  *dest++ = value; --count;
-    case 8:  *dest++ = value; --count;
+    case 4:  *dest++ = value; --count; Q_FALLTHROUGH();
+    case 8:  *dest++ = value; --count; Q_FALLTHROUGH();
     case 12: *dest++ = value; --count;
     }
 
     const int rest = count & 0x3;
     if (rest) {
         switch (rest) {
-        case 3: dest[count - 3] = value;
-        case 2: dest[count - 2] = value;
+        case 3: dest[count - 3] = value; Q_FALLTHROUGH();
+        case 2: dest[count - 2] = value; Q_FALLTHROUGH();
         case 1: dest[count - 1] = value;
         }
     }
@@ -281,8 +277,8 @@ void qt_memfill32(quint32 *dest, quint32 value, int count)
     }
 
     switch (count128 & 0x3) {
-    case 3:      _mm_stream_si128(dst128++, value128);
-    case 2:      _mm_stream_si128(dst128++, value128);
+    case 3:      _mm_stream_si128(dst128++, value128); Q_FALLTHROUGH();
+    case 2:      _mm_stream_si128(dst128++, value128); Q_FALLTHROUGH();
     case 1:      _mm_stream_si128(dst128++, value128);
     }
 }
@@ -313,7 +309,7 @@ void QT_FASTCALL comp_func_solid_SourceOver_sse2(uint *destPixels, int length, u
             dstVector = _mm_add_epi8(colorVector, dstVector);
             _mm_store_si128((__m128i *)&dst[x], dstVector);
         }
-        for (;x < length; ++x)
+        SIMD_EPILOGUE(x, length, 3)
             destPixels[x] = color + BYTE_MUL(destPixels[x], minusAlphaOfColor);
     }
 }
@@ -322,7 +318,7 @@ void qt_memfill16(quint16 *dest, quint16 value, int count)
 {
     if (count < 3) {
         switch (count) {
-        case 2: *dest++ = value;
+        case 2: *dest++ = value; Q_FALLTHROUGH();
         case 1: *dest = value;
         }
         return;
@@ -345,7 +341,7 @@ void qt_bitmapblit32_sse2_base(QRasterBuffer *rasterBuffer, int x, int y,
                           const uchar *src, int width, int height, int stride)
 {
     quint32 *dest = reinterpret_cast<quint32*>(rasterBuffer->scanLine(y)) + x;
-    const int destStride = rasterBuffer->bytesPerLine() / sizeof(quint32);
+    const int destStride = rasterBuffer->stride<quint32>();
 
     const __m128i c128 = _mm_set1_epi32(color);
     const __m128i maskmask1 = _mm_set_epi32(0x10101010, 0x20202020,
@@ -411,7 +407,7 @@ void qt_bitmapblit16_sse2(QRasterBuffer *rasterBuffer, int x, int y,
 {
     const quint16 c = qConvertRgb32To16(color.toArgb32());
     quint16 *dest = reinterpret_cast<quint16*>(rasterBuffer->scanLine(y)) + x;
-    const int destStride = rasterBuffer->bytesPerLine() / sizeof(quint16);
+    const int destStride = rasterBuffer->stride<quint32>();
 
     const __m128i c128 = _mm_set1_epi16(c);
 QT_WARNING_DISABLE_MSVC(4309) // truncation of constant value
@@ -592,7 +588,7 @@ void qt_scale_image_argb32_on_argb32_sse2(uchar *destPixels, int dbpl,
             BLEND_SOURCE_OVER_ARGB32_SSE2_helper(dst, srcVector, nullVector, half, one, colorMask, alphaMask);
         }
 
-        for (; x<w; x++) {
+        SIMD_EPILOGUE(x, w, 3) {
             uint s = src[(basex + x*ix) >> 16];
             dst[x] = s + BYTE_MUL(dst[x], qAlpha(~s));
         }

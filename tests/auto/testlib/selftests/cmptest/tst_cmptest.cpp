@@ -33,6 +33,9 @@
 #include <QtGui/QColor>
 #include <QtGui/QImage>
 #include <QtGui/QPixmap>
+#include <QtGui/QVector2D>
+#include <QtGui/QVector3D>
+#include <QtGui/QVector4D>
 #endif
 
 /* XPM test data for QPixmap, QImage tests (use drag cursors as example) */
@@ -128,6 +131,7 @@ private slots:
     void compare_registered_enums();
     void compare_class_enums();
     void compare_boolfuncs();
+    void compare_to_nullptr();
     void compare_pointerfuncs();
     void compare_tostring();
     void compare_tostring_data();
@@ -136,6 +140,7 @@ private slots:
     void compareQListInt();
     void compareQListDouble();
 #ifdef QT_GUI_LIB
+    void compareQColor_data();
     void compareQColor();
     void compareQPixmaps();
     void compareQPixmaps_data();
@@ -143,11 +148,15 @@ private slots:
     void compareQImages_data();
     void compareQRegion_data();
     void compareQRegion();
+    void compareQVector2D();
+    void compareQVector3D();
+    void compareQVector4D();
 #endif
     void verify();
     void verify2();
     void tryVerify();
     void tryVerify2();
+    void verifyExplicitOperatorBool();
 };
 
 enum MyUnregisteredEnum { MyUnregisteredEnumValue1, MyUnregisteredEnumValue2 };
@@ -181,6 +190,24 @@ void tst_Cmptest::compare_boolfuncs()
     QCOMPARE(!boolfunc(), !boolfunc2());
     QCOMPARE(boolfunc(), true);
     QCOMPARE(!boolfunc(), false);
+}
+
+namespace {
+template <typename T>
+T *null() Q_DECL_NOTHROW { return nullptr; }
+}
+
+void tst_Cmptest::compare_to_nullptr()
+{
+    QCOMPARE(null<int>(), nullptr);
+    QCOMPARE(null<const int>(), nullptr);
+    QCOMPARE(null<volatile int>(), nullptr);
+    QCOMPARE(null<const volatile int>(), nullptr);
+
+    QCOMPARE(nullptr, null<int>());
+    QCOMPARE(nullptr, null<const int>());
+    QCOMPARE(nullptr, null<volatile int>());
+    QCOMPARE(nullptr, null<const volatile int>());
 }
 
 static int i = 0;
@@ -351,13 +378,22 @@ void tst_Cmptest::compareQListDouble()
 }
 
 #ifdef QT_GUI_LIB
+void tst_Cmptest::compareQColor_data()
+{
+    QTest::addColumn<QColor>("colorA");
+    QTest::addColumn<QColor>("colorB");
+
+    QTest::newRow("Qt::yellow vs \"yellow\"") << QColor(Qt::yellow) << QColor(QStringLiteral("yellow"));
+    QTest::newRow("Qt::yellow vs Qt::green") << QColor(Qt::yellow) << QColor(Qt::green);
+    QTest::newRow("0x88ff0000 vs 0xffff0000") << QColor::fromRgba(0x88ff0000) << QColor::fromRgba(0xffff0000);
+}
+
 void tst_Cmptest::compareQColor()
 {
-    const QColor yellow(Qt::yellow);
-    const QColor yellowFromName(QStringLiteral("yellow"));
-    const QColor green(Qt::green);
-    QCOMPARE(yellow, yellowFromName);
-    QCOMPARE(yellow, green);
+    QFETCH(QColor, colorA);
+    QFETCH(QColor, colorB);
+
+    QCOMPARE(colorA, colorB);
 }
 
 void tst_Cmptest::compareQPixmaps_data()
@@ -434,6 +470,33 @@ void tst_Cmptest::compareQRegion()
 
     QCOMPARE(rA, rB);
 }
+
+void tst_Cmptest::compareQVector2D()
+{
+    QVector2D v2a{1, 2};
+    QVector2D v2b = v2a;
+    QCOMPARE(v2a, v2b);
+    v2b.setY(3);
+    QCOMPARE(v2a, v2b);
+}
+
+void tst_Cmptest::compareQVector3D()
+{
+    QVector3D v3a{1, 2, 3};
+    QVector3D v3b = v3a;
+    QCOMPARE(v3a, v3b);
+    v3b.setY(3);
+    QCOMPARE(v3a, v3b);
+}
+
+void tst_Cmptest::compareQVector4D()
+{
+    QVector4D v4a{1, 2, 3, 4};
+    QVector4D v4b = v4a;
+    QCOMPARE(v4a, v4b);
+    v4b.setY(3);
+    QCOMPARE(v4a, v4b);
+}
 #endif // QT_GUI_LIB
 
 static int opaqueFunc()
@@ -463,6 +526,22 @@ void tst_Cmptest::tryVerify2()
 {
     QTRY_VERIFY2(opaqueFunc() > 2, QByteArray::number(opaqueFunc()).constData());
     QTRY_VERIFY2_WITH_TIMEOUT(opaqueFunc() < 2, QByteArray::number(opaqueFunc()).constData(), 1);
+}
+
+void tst_Cmptest::verifyExplicitOperatorBool()
+{
+    struct ExplicitOperatorBool {
+        int m_i;
+        explicit ExplicitOperatorBool(int i) : m_i(i) {}
+        explicit operator bool() const { return m_i > 0; }
+        bool operator !() const { return !bool(*this); }
+    };
+
+    ExplicitOperatorBool val1(42);
+    QVERIFY(val1);
+
+    ExplicitOperatorBool val2(-273);
+    QVERIFY(!val2);
 }
 
 QTEST_MAIN(tst_Cmptest)

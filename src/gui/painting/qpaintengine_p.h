@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include "QtGui/qpainter.h"
 #include "QtGui/qpaintengine.h"
 #include "QtGui/qregion.h"
@@ -70,6 +71,7 @@ public:
 
     QPaintDevice *pdev;
     QPaintEngine *q_ptr;
+    QRegion baseSystemClip;
     QRegion systemClip;
     QRect systemRect;
     QRegion systemViewport;
@@ -78,8 +80,9 @@ public:
     uint hasSystemTransform : 1;
     uint hasSystemViewport : 1;
 
-    inline void transformSystemClip()
+    inline void updateSystemClip()
     {
+        systemClip = baseSystemClip;
         if (systemClip.isEmpty())
             return;
 
@@ -103,20 +106,40 @@ public:
     inline void setSystemTransform(const QTransform &xform)
     {
         systemTransform = xform;
-        if ((hasSystemTransform = !xform.isIdentity()) || hasSystemViewport)
-            transformSystemClip();
-        systemStateChanged();
+        hasSystemTransform = !xform.isIdentity();
+        updateSystemClip();
+        if (q_ptr->state)
+            systemStateChanged();
     }
 
     inline void setSystemViewport(const QRegion &region)
     {
         systemViewport = region;
         hasSystemViewport = !systemViewport.isEmpty();
+        updateSystemClip();
+        if (q_ptr->state)
+            systemStateChanged();
+    }
+
+    inline void setSystemTransformAndViewport(const QTransform &xform, const QRegion &region)
+    {
+        systemTransform = xform;
+        hasSystemTransform = !xform.isIdentity();
+        systemViewport = region;
+        hasSystemViewport = !systemViewport.isEmpty();
+        updateSystemClip();
+        if (q_ptr->state)
+            systemStateChanged();
     }
 
     virtual void systemStateChanged() { }
 
     void drawBoxTextItem(const QPointF &p, const QTextItemInt &ti);
+
+    static QPaintEnginePrivate *get(QPaintEngine *paintEngine) { return paintEngine->d_func(); }
+
+    virtual QPaintEngine *aggregateEngine() { return 0; }
+    virtual Qt::HANDLE nativeHandle() { return 0; }
 };
 
 QT_END_NAMESPACE

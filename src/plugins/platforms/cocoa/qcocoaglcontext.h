@@ -45,7 +45,6 @@
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QWindow>
 
-#undef slots
 #include <AppKit/AppKit.h>
 
 QT_BEGIN_NAMESPACE
@@ -85,6 +84,7 @@ private:
     NSOpenGLContext *m_shareContext;
     QSurfaceFormat m_format;
     QPointer<QWindow> m_currentWindow;
+    bool m_didCheckForSoftwareContext;
 };
 
 QT_END_NAMESPACE

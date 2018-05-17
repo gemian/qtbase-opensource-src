@@ -87,6 +87,9 @@
     \value UnsupportedFormatError Qt does not support the requested
     image format.
 
+    \value InvalidImageError An attempt was made to write an invalid QImage. An
+    example of an invalid image would be a null QImage.
+
     \value UnknownError An unknown error occurred. If you get this
     value after calling write(), it is most likely caused by a bug in
     QImageWriter.
@@ -114,12 +117,6 @@
 #include <private/qxpmhandler_p.h>
 #ifndef QT_NO_IMAGEFORMAT_PNG
 #include <private/qpnghandler_p.h>
-#endif
-#ifndef QT_NO_IMAGEFORMAT_JPEG
-#include <private/qjpeghandler_p.h>
-#endif
-#ifdef QT_BUILTIN_GIF_READER
-#include <private/qgifhandler_p.h>
 #endif
 
 #include <algorithm>
@@ -183,14 +180,6 @@ static QImageIOHandler *createWriteHandlerHelper(QIODevice *device,
 #ifndef QT_NO_IMAGEFORMAT_PNG
         } else if (testFormat == "png") {
             handler = new QPngHandler;
-#endif
-#ifndef QT_NO_IMAGEFORMAT_JPEG
-        } else if (testFormat == "jpg" || testFormat == "jpeg") {
-            handler = new QJpegHandler;
-#endif
-#ifdef QT_BUILTIN_GIF_READER
-        } else if (testFormat == "gif") {
-            handler = new QGifHandler;
 #endif
 #ifndef QT_NO_IMAGEFORMAT_BMP
         } else if (testFormat == "bmp") {
@@ -297,8 +286,13 @@ bool QImageWriterPrivate::canWriteHelper()
         errorString = QImageWriter::tr("Device is not set");
         return false;
     }
-    if (!device->isOpen())
-        device->open(QIODevice::WriteOnly);
+    if (!device->isOpen()) {
+        if (!device->open(QIODevice::WriteOnly)) {
+            imageWriterError = QImageWriter::DeviceError;
+            errorString = QImageWriter::tr("Cannot open device for writing: %1").arg(device->errorString());
+            return false;
+        }
+    }
     if (!device->isWritable()) {
         imageWriterError = QImageWriter::DeviceError;
         errorString = QImageWriter::tr("Device not writable");
@@ -340,12 +334,9 @@ QImageWriter::QImageWriter(QIODevice *device, const QByteArray &format)
     by inspecting the extension of \a fileName.
 */
 QImageWriter::QImageWriter(const QString &fileName, const QByteArray &format)
-    : d(new QImageWriterPrivate(this))
+    : QImageWriter(new QFile(fileName), format)
 {
-    QFile *file = new QFile(fileName);
-    d->device = file;
     d->deleteDevice = true;
-    d->format = format;
 }
 
 /*!
@@ -722,6 +713,11 @@ bool QImageWriter::canWrite() const
     if (QFile *file = qobject_cast<QFile *>(d->device)) {
         const bool remove = !file->isOpen() && !file->exists();
         const bool result = d->canWriteHelper();
+
+        // This looks strange (why remove if it doesn't exist?) but the issue
+        // here is that canWriteHelper will create the file in the process of
+        // checking if the write can succeed. If it subsequently fails, we
+        // should remove that empty file.
         if (!result && remove)
             file->remove();
         return result;
@@ -743,6 +739,13 @@ extern void qt_imageTransform(QImage &src, QImageIOHandler::Transformations orie
 */
 bool QImageWriter::write(const QImage &image)
 {
+    // Do this before canWrite, so it doesn't create a file if this fails.
+    if (Q_UNLIKELY(image.isNull())) {
+        d->imageWriterError = QImageWriter::InvalidImageError;
+        d->errorString = QImageWriter::tr("Image is empty");
+        return false;
+    }
+
     if (!canWrite())
         return false;
 
@@ -910,9 +913,6 @@ QList<QByteArray> QImageWriter::supportedImageFormats()
 #ifndef QT_NO_IMAGEFORMAT_PNG
     formats << "png";
 #endif
-#ifndef QT_NO_IMAGEFORMAT_JPEG
-    formats << "jpg" << "jpeg";
-#endif
 
 #ifndef QT_NO_IMAGEFORMATPLUGIN
     supportedImageHandlerFormats(loader(), QImageIOPlugin::CanWrite, &formats);
@@ -950,9 +950,6 @@ QList<QByteArray> QImageWriter::supportedMimeTypes()
 #endif
 #ifndef QT_NO_IMAGEFORMAT_PNG
     mimeTypes << "image/png";
-#endif
-#ifndef QT_NO_IMAGEFORMAT_JPEG
-    mimeTypes << "image/jpeg";
 #endif
 
 #ifndef QT_NO_IMAGEFORMATPLUGIN

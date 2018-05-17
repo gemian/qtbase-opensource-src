@@ -46,14 +46,12 @@
 #include <QtCore/QRect>
 
 #include "qxcbexport.h"
+#include "qxcbconnection.h"
 
 QT_BEGIN_NAMESPACE
 
-class QWidget;
 class QXcbScreen;
-class QXcbConnection;
 class QXcbNativeInterfaceHandler;
-class QDBusMenuConnection;
 
 class Q_XCB_EXPORT QXcbNativeInterface : public QPlatformNativeInterface
 {
@@ -73,29 +71,32 @@ public:
         RootWindow,
         ScreenSubpixelType,
         ScreenAntialiasingEnabled,
-        NoFontHinting,
         AtspiBus,
-        CompositingEnabled
+        CompositingEnabled,
+        VkSurface,
+        GeneratePeekerId,
+        RemovePeekerId,
+        PeekEventQueue
     };
 
     QXcbNativeInterface();
 
-    void *nativeResourceForIntegration(const QByteArray &resource) Q_DECL_OVERRIDE;
-    void *nativeResourceForContext(const QByteArray &resourceString, QOpenGLContext *context) Q_DECL_OVERRIDE;
-    void *nativeResourceForScreen(const QByteArray &resource, QScreen *screen) Q_DECL_OVERRIDE;
-    void *nativeResourceForWindow(const QByteArray &resourceString, QWindow *window) Q_DECL_OVERRIDE;
-    void *nativeResourceForBackingStore(const QByteArray &resource, QBackingStore *backingStore) Q_DECL_OVERRIDE;
+    void *nativeResourceForIntegration(const QByteArray &resource) override;
+    void *nativeResourceForContext(const QByteArray &resourceString, QOpenGLContext *context) override;
+    void *nativeResourceForScreen(const QByteArray &resource, QScreen *screen) override;
+    void *nativeResourceForWindow(const QByteArray &resourceString, QWindow *window) override;
+    void *nativeResourceForBackingStore(const QByteArray &resource, QBackingStore *backingStore) override;
 #ifndef QT_NO_CURSOR
-    void *nativeResourceForCursor(const QByteArray &resource, const QCursor &cursor) Q_DECL_OVERRIDE;
+    void *nativeResourceForCursor(const QByteArray &resource, const QCursor &cursor) override;
 #endif
 
-    NativeResourceForIntegrationFunction nativeResourceFunctionForIntegration(const QByteArray &resource) Q_DECL_OVERRIDE;
-    NativeResourceForContextFunction nativeResourceFunctionForContext(const QByteArray &resource) Q_DECL_OVERRIDE;
-    NativeResourceForScreenFunction nativeResourceFunctionForScreen(const QByteArray &resource) Q_DECL_OVERRIDE;
-    NativeResourceForWindowFunction nativeResourceFunctionForWindow(const QByteArray &resource) Q_DECL_OVERRIDE;
-    NativeResourceForBackingStoreFunction nativeResourceFunctionForBackingStore(const QByteArray &resource) Q_DECL_OVERRIDE;
+    NativeResourceForIntegrationFunction nativeResourceFunctionForIntegration(const QByteArray &resource) override;
+    NativeResourceForContextFunction nativeResourceFunctionForContext(const QByteArray &resource) override;
+    NativeResourceForScreenFunction nativeResourceFunctionForScreen(const QByteArray &resource) override;
+    NativeResourceForWindowFunction nativeResourceFunctionForWindow(const QByteArray &resource) override;
+    NativeResourceForBackingStoreFunction nativeResourceFunctionForBackingStore(const QByteArray &resource) override;
 
-    QFunctionPointer platformFunction(const QByteArray &function) const Q_DECL_OVERRIDE;
+    QFunctionPointer platformFunction(const QByteArray &function) const override;
 
     inline const QByteArray &genericEventFilterType() const { return m_genericEventFilterType; }
 
@@ -115,6 +116,12 @@ public:
     static void setAppTime(QScreen *screen, xcb_timestamp_t time);
     static void setAppUserTime(QScreen *screen, xcb_timestamp_t time);
 
+    static qint32 generatePeekerId();
+    static bool removePeekerId(qint32 peekerId);
+    static bool peekEventQueue(QXcbConnection::PeekerCallback peeker, void *peekerData = nullptr,
+                               QXcbConnection::PeekOptions option = QXcbConnection::PeekDefault,
+                               qint32 peekerId = -1);
+
     Q_INVOKABLE bool systemTrayAvailable(const QScreen *screen) const;
     Q_INVOKABLE void setParentRelativeBackPixmap(QWindow *window);
     Q_INVOKABLE bool systrayVisualHasAlphaChannel();
@@ -131,7 +138,7 @@ private:
 
     const QByteArray m_genericEventFilterType;
 
-    xcb_atom_t m_sysTraySelectionAtom;
+    xcb_atom_t m_sysTraySelectionAtom = XCB_ATOM_NONE;
 
     static QXcbScreen *qPlatformScreenForWindow(QWindow *window);
 

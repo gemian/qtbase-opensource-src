@@ -40,13 +40,13 @@
 #ifndef QGRAPHICSGRIDLAYOUT_H
 #define QGRAPHICSGRIDLAYOUT_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qgraphicsitem.h>
 #include <QtWidgets/qgraphicslayout.h>
 
+QT_REQUIRE_CONFIG(graphicsview);
+
 QT_BEGIN_NAMESPACE
-
-
-#if !defined(QT_NO_GRAPHICSVIEW)
 
 class QGraphicsGridLayoutPrivate;
 
@@ -129,9 +129,6 @@ private:
 inline void QGraphicsGridLayout::addItem(QGraphicsLayoutItem *aitem, int arow, int acolumn, Qt::Alignment aalignment)
 { addItem(aitem, arow, acolumn, 1, 1, aalignment); }
 
-#endif
-
 QT_END_NAMESPACE
 
 #endif
-

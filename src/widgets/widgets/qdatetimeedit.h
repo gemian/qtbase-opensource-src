@@ -40,14 +40,14 @@
 #ifndef QDATETIMEEDIT_H
 #define QDATETIMEEDIT_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qdatetime.h>
 #include <QtCore/qvariant.h>
 #include <QtWidgets/qabstractspinbox.h>
 
+QT_REQUIRE_CONFIG(datetimeedit);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_DATETIMEEDIT
 
 class QDateTimeEditPrivate;
 class QStyleOptionSpinBox;
@@ -57,7 +57,6 @@ class Q_WIDGETS_EXPORT QDateTimeEdit : public QAbstractSpinBox
 {
     Q_OBJECT
 
-    Q_FLAGS(Sections)
     Q_PROPERTY(QDateTime dateTime READ dateTime WRITE setDateTime NOTIFY dateTimeChanged USER true)
     Q_PROPERTY(QDate date READ date WRITE setDate NOTIFY dateChanged)
     Q_PROPERTY(QTime time READ time WRITE setTime NOTIFY timeChanged)
@@ -91,6 +90,7 @@ public:
     Q_ENUM(Section)
 
     Q_DECLARE_FLAGS(Sections, Section)
+    Q_FLAG(Sections)
 
     explicit QDateTimeEdit(QWidget *parent = Q_NULLPTR);
     explicit QDateTimeEdit(const QDateTime &dt, QWidget *parent = Q_NULLPTR);
@@ -158,12 +158,12 @@ public:
     Qt::TimeSpec timeSpec() const;
     void setTimeSpec(Qt::TimeSpec spec);
 
-    QSize sizeHint() const;
+    QSize sizeHint() const override;
 
-    virtual void clear();
-    virtual void stepBy(int steps);
+    void clear() override;
+    void stepBy(int steps) override;
 
-    bool event(QEvent *event);
+    bool event(QEvent *event) override;
 Q_SIGNALS:
     void dateTimeChanged(const QDateTime &dateTime);
     void timeChanged(const QTime &time);
@@ -175,20 +175,20 @@ public Q_SLOTS:
     void setTime(const QTime &time);
 
 protected:
-    virtual void keyPressEvent(QKeyEvent *event);
-#ifndef QT_NO_WHEELEVENT
-    virtual void wheelEvent(QWheelEvent *event);
+    void keyPressEvent(QKeyEvent *event) override;
+#if QT_CONFIG(wheelevent)
+    void wheelEvent(QWheelEvent *event) override;
 #endif
-    virtual void focusInEvent(QFocusEvent *event);
-    virtual bool focusNextPrevChild(bool next);
-    virtual QValidator::State validate(QString &input, int &pos) const;
-    virtual void fixup(QString &input) const;
+    void focusInEvent(QFocusEvent *event) override;
+    bool focusNextPrevChild(bool next) override;
+    QValidator::State validate(QString &input, int &pos) const override;
+    void fixup(QString &input) const override;
 
     virtual QDateTime dateTimeFromText(const QString &text) const;
     virtual QString textFromDateTime(const QDateTime &dt) const;
-    virtual StepEnabled stepEnabled() const;
-    virtual void mousePressEvent(QMouseEvent *event);
-    virtual void paintEvent(QPaintEvent *event);
+    StepEnabled stepEnabled() const override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
     void initStyleOption(QStyleOptionSpinBox *option) const;
 
     QDateTimeEdit(const QVariant &val, QVariant::Type parserType, QWidget *parent = Q_NULLPTR);
@@ -226,8 +226,6 @@ Q_SIGNALS:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QDateTimeEdit::Sections)
-
-#endif // QT_NO_DATETIMEEDIT
 
 QT_END_NAMESPACE
 

@@ -51,7 +51,7 @@
 // We mean it.
 //
 
-#include "QtCore/qglobal.h"
+#include <QtGui/private/qtguiglobal_p.h>
 #include "QtCore/qatomic.h"
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/QLinkedList>
@@ -211,6 +211,7 @@ public:
     glyph_metrics_t tightBoundingBox(const QGlyphLayout &glyphs);
 
     virtual QFixed ascent() const = 0;
+    virtual QFixed capHeight() const = 0;
     virtual QFixed descent() const = 0;
     virtual QFixed leading() const = 0;
     virtual QFixed xHeight() const;
@@ -241,6 +242,12 @@ public:
     void *harfbuzzFace() const;
     bool supportsScript(QChar::Script script) const;
 
+    inline static bool scriptRequiresOpenType(QChar::Script script)
+    {
+        return ((script >= QChar::Script_Syriac && script <= QChar::Script_Sinhala)
+                || script == QChar::Script_Khmer || script == QChar::Script_Nko);
+    }
+
     virtual int getPointInOutline(glyph_t glyph, int flags, quint32 point, QFixed *xpos, QFixed *ypos, quint32 *nPoints);
 
     void clearGlyphCache(const void *key);
@@ -253,6 +260,7 @@ public:
     static QByteArray convertToPostscriptFontFamilyName(const QByteArray &fontFamily);
 
     virtual bool hasUnreliableGlyphOutline() const;
+    virtual bool expectsGammaCorrectedBlending() const;
 
     enum HintStyle {
         HintNone,
@@ -324,6 +332,7 @@ public:
     uint cache_cost; // amount of mem used in bytes by the font
     uint fsType : 16;
     bool symbol;
+    bool isSmoothlyScalable;
     struct KernPair {
         uint left_right;
         QFixed adjust;
@@ -348,6 +357,7 @@ protected:
     QFixed lastRightBearing(const QGlyphLayout &glyphs, bool round = false);
 
     inline void setUserData(const QVariant &userData) { m_userData = userData; }
+    QFixed calculatedCapHeight() const;
 
 private:
     struct GlyphCacheEntry {
@@ -413,6 +423,7 @@ public:
     virtual QFontEngine *cloneWithSize(qreal pixelSize) const Q_DECL_OVERRIDE;
 
     virtual QFixed ascent() const Q_DECL_OVERRIDE;
+    virtual QFixed capHeight() const Q_DECL_OVERRIDE;
     virtual QFixed descent() const Q_DECL_OVERRIDE;
     virtual QFixed leading() const Q_DECL_OVERRIDE;
     virtual qreal maxCharWidth() const Q_DECL_OVERRIDE;
@@ -450,6 +461,7 @@ public:
     virtual void getGlyphBearings(glyph_t glyph, qreal *leftBearing = 0, qreal *rightBearing = 0) Q_DECL_OVERRIDE;
 
     virtual QFixed ascent() const Q_DECL_OVERRIDE;
+    virtual QFixed capHeight() const Q_DECL_OVERRIDE;
     virtual QFixed descent() const Q_DECL_OVERRIDE;
     virtual QFixed leading() const Q_DECL_OVERRIDE;
     virtual QFixed xHeight() const Q_DECL_OVERRIDE;

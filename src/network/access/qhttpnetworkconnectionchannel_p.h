@@ -50,6 +50,8 @@
 //
 // We mean it.
 //
+
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include <QtNetwork/qnetworkrequest.h>
 #include <QtNetwork/qnetworkreply.h>
 #include <QtNetwork/qabstractsocket.h>
@@ -75,6 +77,8 @@
 #else
 #   include <QtNetwork/qtcpsocket.h>
 #endif
+
+#include <QtCore/qscopedpointer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -119,18 +123,22 @@ public:
     bool authenticationCredentialsSent;
     bool proxyCredentialsSent;
     QScopedPointer<QAbstractProtocolHandler> protocolHandler;
+    // SPDY or HTTP/2 requests; SPDY is TLS-only, but
+    // HTTP/2 can be cleartext also, that's why it's
+    // outside of QT_NO_SSL section. Sorted by priority:
+    QMultiMap<int, HttpMessagePair> spdyRequestsToSend;
+    bool switchedToHttp2 = false;
 #ifndef QT_NO_SSL
     bool ignoreAllSslErrors;
     QList<QSslError> ignoreSslErrorsList;
-    QSslConfiguration sslConfiguration;
-    QMultiMap<int, HttpMessagePair> spdyRequestsToSend; // sorted by priority
+    QScopedPointer<QSslConfiguration> sslConfiguration;
     void ignoreSslErrors();
     void ignoreSslErrors(const QList<QSslError> &errors);
     void setSslConfiguration(const QSslConfiguration &config);
     void requeueSpdyRequests(); // when we wanted SPDY but got HTTP
+#endif
     // to emit the signal for all in-flight replies:
     void emitFinishedWithError(QNetworkReply::NetworkError error, const char *message);
-#endif
 #ifndef QT_NO_BEARERMANAGEMENT
     QSharedPointer<QNetworkSession> networkSession;
 #endif

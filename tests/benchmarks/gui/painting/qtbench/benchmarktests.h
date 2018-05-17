@@ -37,6 +37,7 @@
 #include <QDebug>
 #include <QStaticText>
 #include <QPainter>
+#include <QRandomGenerator>
 
 class Benchmark
 {
@@ -47,9 +48,9 @@ public:
             : m_size(size)
     {
         for (int i=0; i<16; ++i) {
-            m_colors[i] = QColor::fromRgbF((rand() % 4) / 3.0,
-                                           (rand() % 4) / 3.0,
-                                           (rand() % 4) / 3.0,
+            m_colors[i] = QColor::fromRgbF((QRandomGenerator::global()->bounded(4)) / 3.0,
+                                           (QRandomGenerator::global()->bounded(4)) / 3.0,
+                                           (QRandomGenerator::global()->bounded(4)) / 3.0,
                                            1);
         }
     }
@@ -142,7 +143,7 @@ public:
     ImageFillRectBenchmark(int size)
         : Benchmark(QSize(size, size))
     {
-        int s = rand() % 24 + 8;
+        int s = QRandomGenerator::global()->bounded(24) + 8;
         m_content = QImage(s, s, QImage::Format_ARGB32_Premultiplied);
         QPainter p(&m_content);
         p.fillRect(0, 0, s, s, Qt::white);
@@ -320,7 +321,7 @@ public:
     DrawScaledImage(const QImage &image, qreal scale, bool asPixmap)
         : Benchmark(QSize(image.width(), image.height())),
           m_image(image),
-          m_type(m_as_pixmap ? "Pixmap" : "Image"),
+          m_type(asPixmap ? "Pixmap" : "Image"),
           m_scale(scale),
           m_as_pixmap(asPixmap)
     {
@@ -368,7 +369,7 @@ public:
     DrawTransformedImage(const QImage &image, bool asPixmap)
         : Benchmark(QSize(image.width(), image.height())),
           m_image(image),
-          m_type(m_as_pixmap ? "Pixmap" : "Image"),
+          m_type(asPixmap ? "Pixmap" : "Image"),
           m_as_pixmap(asPixmap)
     {
         m_pixmap = QPixmap::fromImage(m_image);
@@ -414,7 +415,7 @@ public:
     DrawImage(const QImage &image, bool asPixmap)
         : Benchmark(QSize(image.width(), image.height())),
           m_image(image),
-          m_type(m_as_pixmap ? "Pixmap" : "Image"),
+          m_type(asPixmap ? "Pixmap" : "Image"),
           m_as_pixmap(asPixmap)
     {
         m_pixmap = QPixmap::fromImage(image);

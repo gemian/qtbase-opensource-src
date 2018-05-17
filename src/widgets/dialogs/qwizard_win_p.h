@@ -51,10 +51,9 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 
-#ifndef QT_NO_WIZARD
-#ifndef QT_NO_STYLE_WINDOWSVISTA
+#if QT_CONFIG(style_windowsvista)
 
 #include <qobject.h>
 #include <qwidget.h>
@@ -62,6 +61,8 @@
 #include <QtWidgets/private/qwidget_p.h>
 #include <QtWidgets/private/qstylehelper_p.h>
 #include <qt_windows.h>
+
+QT_REQUIRE_CONFIG(wizard);
 
 QT_BEGIN_NAMESPACE
 
@@ -126,7 +127,6 @@ private:
     int leftMargin() { return backButton_->isVisible() ? backButtonSize() + iconSpacing : 0; }
 
     int titleOffset();
-    bool resolveSymbols();
     void drawTitleBar(QPainter *painter);
     void setMouseCursor(QPoint pos);
     void collapseTopFrameStrut();
@@ -137,7 +137,6 @@ private:
     bool eventFilter(QObject *obj, QEvent *event);
 
     static int instanceCount;
-    static bool is_vista;
     static VistaState cachedVistaState;
     static bool isCompositionEnabled();
     static bool isThemeActive();
@@ -158,6 +157,5 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QT_NO_STYLE_WINDOWSVISTA
-#endif // QT_NO_WIZARD
+#endif // style_windowsvista
 #endif // QWIZARD_WIN_P_H

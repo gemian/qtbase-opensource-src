@@ -259,7 +259,6 @@ static NSString *const kSelectorPrefix = @"_qtMenuItem_";
 
 QIOSMenuItem::QIOSMenuItem()
     : QPlatformMenuItem()
-    , m_tag(0)
     , m_visible(true)
     , m_text(QString())
     , m_role(MenuRole(0))
@@ -267,16 +266,6 @@ QIOSMenuItem::QIOSMenuItem()
     , m_separator(false)
     , m_menu(0)
 {
-}
-
-void QIOSMenuItem::setTag(quintptr tag)
-{
-    m_tag = tag;
-}
-
-quintptr QIOSMenuItem::tag() const
-{
-    return m_tag;
 }
 
 void QIOSMenuItem::setText(const QString &text)
@@ -304,10 +293,12 @@ void QIOSMenuItem::setRole(QPlatformMenuItem::MenuRole role)
     m_role = role;
 }
 
+#ifndef QT_NO_SHORTCUT
 void QIOSMenuItem::setShortcut(const QKeySequence &sequence)
 {
     m_shortcut = sequence;
 }
+#endif
 
 void QIOSMenuItem::setEnabled(bool enabled)
 {
@@ -317,7 +308,6 @@ void QIOSMenuItem::setEnabled(bool enabled)
 
 QIOSMenu::QIOSMenu()
     : QPlatformMenu()
-    , m_tag(0)
     , m_enabled(true)
     , m_visible(false)
     , m_text(QString())
@@ -367,16 +357,6 @@ void QIOSMenu::syncMenuItem(QPlatformMenuItem *)
         [m_pickerView setVisibleMenuItems:visibleMenuItems() selectItem:m_targetItem];
         break;
     }
-}
-
-void QIOSMenu::setTag(quintptr tag)
-{
-    m_tag = tag;
-}
-
-quintptr QIOSMenu::tag() const
-{
-    return m_tag;
 }
 
 void QIOSMenu::setText(const QString &text)
@@ -551,6 +531,7 @@ QIOSMenuItemList QIOSMenu::filterFirstResponderActions(const QIOSMenuItemList &m
 
     for (int i = 0; i < menuItems.count(); ++i) {
         QIOSMenuItem *menuItem = menuItems.at(i);
+#ifndef QT_NO_SHORTCUT
         QKeySequence shortcut = menuItem->m_shortcut;
         if ((shortcut == QKeySequence::Cut && [responder canPerformAction:@selector(cut:) withSender:nil])
                 || (shortcut == QKeySequence::Copy && [responder canPerformAction:@selector(copy:) withSender:nil])
@@ -564,6 +545,7 @@ QIOSMenuItemList QIOSMenu::filterFirstResponderActions(const QIOSMenuItemList &m
                 || (shortcut == QKeySequence::Underline && [responder canPerformAction:@selector(toggleUnderline:) withSender:nil])) {
             continue;
         }
+#endif
         filteredMenuItems.append(menuItem);
     }
     return filteredMenuItems;
@@ -574,7 +556,7 @@ void QIOSMenu::repositionMenu()
     switch (m_effectiveMenuType) {
     case EditMenu: {
         UIView *view = reinterpret_cast<UIView *>(m_parentWindow->winId());
-        [[UIMenuController sharedMenuController] setTargetRect:toCGRect(m_targetRect) inView:view];
+        [[UIMenuController sharedMenuController] setTargetRect:m_targetRect.toCGRect() inView:view];
         [[UIMenuController sharedMenuController] setMenuVisible:YES animated:YES];
         break; }
     default:

@@ -39,10 +39,9 @@
 
 #include "qsplashscreen.h"
 
-#ifndef QT_NO_SPLASHSCREEN
-
 #include "qapplication.h"
 #include "qdesktopwidget.h"
+#include <private/qdesktopwidget_p.h>
 #include "qpainter.h"
 #include "qpixmap.h"
 #include "qtextdocument.h"
@@ -142,7 +141,7 @@ QSplashScreen::QSplashScreen(const QPixmap &pixmap, Qt::WindowFlags f)
     one. In that case pass the proper desktop() as the \a parent.
 */
 QSplashScreen::QSplashScreen(QWidget *parent, const QPixmap &pixmap, Qt::WindowFlags f)
-    : QWidget(*new QSplashScreenPrivate, parent, Qt::SplashScreen | f)
+    : QWidget(*new QSplashScreenPrivate, parent, Qt::SplashScreen | Qt::FramelessWindowHint | f)
 {
     d_func()->pixmap = pixmap;
     setPixmap(d_func()->pixmap);  // Does an implicit repaint
@@ -164,15 +163,14 @@ void QSplashScreen::mousePressEvent(QMouseEvent *)
 }
 
 /*!
-    This overrides QWidget::repaint(). It differs from the standard
-    repaint function in that it also calls QApplication::flush() to
-    ensure the updates are displayed, even when there is no event loop
-    present.
+    This overrides QWidget::repaint(). It differs from the standard repaint
+    function in that it also calls QApplication::processEvents() to ensure
+    the updates are displayed, even when there is no event loop present.
 */
 void QSplashScreen::repaint()
 {
     QWidget::repaint();
-    QApplication::flush();
+    QApplication::processEvents();
 }
 
 /*!
@@ -190,13 +188,9 @@ void QSplashScreen::repaint()
 /*!
     Draws the \a message text onto the splash screen with color \a
     color and aligns the text according to the flags in \a alignment.
-
-    To make sure the splash screen is repainted immediately, you can
-    call \l{QCoreApplication}'s
-    \l{QCoreApplication::}{processEvents()} after the call to
-    showMessage(). You usually want this to make sure that the message
-    is kept up to date with what your application is doing (e.g.,
-    loading files).
+    This function calls repaint() to make sure the splash screen is
+    repainted immediately. As a result the message is kept up
+    to date with what your application is doing (e.g. loading files).
 
     \sa Qt::Alignment, clearMessage(), message()
 */
@@ -289,7 +283,7 @@ void QSplashScreen::setPixmap(const QPixmap &pixmap)
 
     QRect r(QPoint(), d->pixmap.size()  / d->pixmap.devicePixelRatio());
     resize(r.size());
-    move(QApplication::desktop()->screenGeometry().center() - r.center());
+    move(QDesktopWidgetPrivate::screenGeometry().center() - r.center());
     if (isVisible())
         repaint();
 }
@@ -359,5 +353,3 @@ bool QSplashScreen::event(QEvent *e)
 QT_END_NAMESPACE
 
 #include "moc_qsplashscreen.cpp"
-
-#endif //QT_NO_SPLASHSCREEN

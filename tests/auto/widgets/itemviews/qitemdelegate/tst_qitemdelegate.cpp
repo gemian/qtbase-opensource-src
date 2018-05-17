@@ -55,7 +55,7 @@
 
 Q_DECLARE_METATYPE(QAbstractItemDelegate::EndEditHint)
 
-#if defined (Q_OS_WIN) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#if defined (Q_OS_WIN) && !defined(Q_OS_WINRT)
 #include <windows.h>
 #define Q_CHECK_PAINTEVENTS \
     if (::SwitchDesktop(::GetThreadDesktop(::GetCurrentThreadId())) == 0) \
@@ -1021,7 +1021,7 @@ void tst_QItemDelegate::decoration()
     }
     case QVariant::Image: {
         QImage img(size, QImage::Format_Mono);
-        memset(img.bits(), 0, img.byteCount());
+        memset(img.bits(), 0, img.sizeInBytes());
         value = img;
         break;
     }
@@ -1350,7 +1350,7 @@ void tst_QItemDelegate::QTBUG4435_keepSelectionOnCheck()
     }
     QTableView view;
     view.setModel(&model);
-    view.setItemDelegate(new TestItemDelegate);
+    view.setItemDelegate(new TestItemDelegate(&view));
     view.show();
     view.selectAll();
     QVERIFY(QTest::qWaitForWindowExposed(&view));

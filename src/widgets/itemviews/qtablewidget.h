@@ -40,15 +40,14 @@
 #ifndef QTABLEWIDGET_H
 #define QTABLEWIDGET_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qtableview.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qvector.h>
-//#include <QtWidgets/qitemselectionmodel.h>
+
+QT_REQUIRE_CONFIG(tablewidget);
 
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_TABLEWIDGET
 
 class Q_WIDGETS_EXPORT QTableWidgetSelectionRange
 {
@@ -117,7 +116,7 @@ public:
     inline void setToolTip(const QString &toolTip);
 #endif
 
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
     inline QString whatsThis() const
         { return data(Qt::WhatsThisRole).toString(); }
     inline void setWhatsThis(const QString &whatsThis);
@@ -197,7 +196,7 @@ inline void QTableWidgetItem::setToolTip(const QString &atoolTip)
 { setData(Qt::ToolTipRole, atoolTip); }
 #endif
 
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
 inline void QTableWidgetItem::setWhatsThis(const QString &awhatsThis)
 { setData(Qt::WhatsThisRole, awhatsThis); }
 #endif
@@ -262,6 +261,8 @@ public:
     void editItem(QTableWidgetItem *item);
     void openPersistentEditor(QTableWidgetItem *item);
     void closePersistentEditor(QTableWidgetItem *item);
+    using QAbstractItemView::isPersistentEditorOpen;
+    bool isPersistentEditorOpen(QTableWidgetItem *item) const;
 
     QWidget *cellWidget(int row, int column) const;
     void setCellWidget(int row, int column, QWidget *widget);
@@ -326,12 +327,21 @@ protected:
 #endif
     virtual bool dropMimeData(int row, int column, const QMimeData *data, Qt::DropAction action);
     virtual Qt::DropActions supportedDropActions() const;
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+public:
+#else
+protected:
+#endif
     QList<QTableWidgetItem*> items(const QMimeData *data) const;
 
     QModelIndex indexFromItem(QTableWidgetItem *item) const;
     QTableWidgetItem *itemFromIndex(const QModelIndex &index) const;
-    void dropEvent(QDropEvent *event) Q_DECL_OVERRIDE;
 
+protected:
+#if QT_CONFIG(draganddrop)
+    void dropEvent(QDropEvent *event) Q_DECL_OVERRIDE;
+#endif
 private:
     void setModel(QAbstractItemModel *model) Q_DECL_OVERRIDE;
 
@@ -366,8 +376,6 @@ inline void QTableWidgetItem::setSelected(bool aselect)
 
 inline bool QTableWidgetItem::isSelected() const
 { return (view ? view->isItemSelected(this) : false); }
-
-#endif // QT_NO_TABLEWIDGET
 
 QT_END_NAMESPACE
 

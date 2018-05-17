@@ -39,40 +39,49 @@
 
 #include "qlinuxfbintegration.h"
 #include "qlinuxfbscreen.h"
+#if QT_CONFIG(kms)
+#include "qlinuxfbdrmscreen.h"
+#endif
 
-#include <QtPlatformSupport/private/qgenericunixfontdatabase_p.h>
-#include <QtPlatformSupport/private/qgenericunixservices_p.h>
-#include <QtPlatformSupport/private/qgenericunixeventdispatcher_p.h>
+#include <QtFontDatabaseSupport/private/qgenericunixfontdatabase_p.h>
+#include <QtServiceSupport/private/qgenericunixservices_p.h>
+#include <QtEventDispatcherSupport/private/qgenericunixeventdispatcher_p.h>
 
-#include <QtPlatformSupport/private/qfbvthandler_p.h>
-#include <QtPlatformSupport/private/qfbbackingstore_p.h>
-#include <QtPlatformSupport/private/qfbwindow_p.h>
-#include <QtPlatformSupport/private/qfbcursor_p.h>
+#include <QtFbSupport/private/qfbvthandler_p.h>
+#include <QtFbSupport/private/qfbbackingstore_p.h>
+#include <QtFbSupport/private/qfbwindow_p.h>
+#include <QtFbSupport/private/qfbcursor_p.h>
 
 #include <QtGui/private/qguiapplication_p.h>
 #include <qpa/qplatforminputcontextfactory_p.h>
 
-#ifndef QT_NO_LIBINPUT
-#include <QtPlatformSupport/private/qlibinputhandler_p.h>
+#if QT_CONFIG(libinput)
+#include <QtInputSupport/private/qlibinputhandler_p.h>
 #endif
 
-#if !defined(QT_NO_EVDEV) && !defined(Q_OS_ANDROID)
-#include <QtPlatformSupport/private/qevdevmousemanager_p.h>
-#include <QtPlatformSupport/private/qevdevkeyboardmanager_p.h>
-#include <QtPlatformSupport/private/qevdevtouchmanager_p.h>
+#if QT_CONFIG(evdev)
+#include <QtInputSupport/private/qevdevmousemanager_p.h>
+#include <QtInputSupport/private/qevdevkeyboardmanager_p.h>
+#include <QtInputSupport/private/qevdevtouchmanager_p.h>
 #endif
 
-#if !defined(QT_NO_TSLIB) && !defined(Q_OS_ANDROID)
-#include <QtPlatformSupport/private/qtslib_p.h>
+#if QT_CONFIG(tslib)
+#include <QtInputSupport/private/qtslib_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
 
 QLinuxFbIntegration::QLinuxFbIntegration(const QStringList &paramList)
-    : m_fontDb(new QGenericUnixFontDatabase),
+    : m_primaryScreen(nullptr),
+      m_fontDb(new QGenericUnixFontDatabase),
       m_services(new QGenericUnixServices)
 {
-    m_primaryScreen = new QLinuxFbScreen(paramList);
+#if QT_CONFIG(kms)
+    if (qEnvironmentVariableIntValue("QT_QPA_FB_DRM") != 0)
+        m_primaryScreen = new QLinuxFbDrmScreen(paramList);
+#endif
+    if (!m_primaryScreen)
+        m_primaryScreen = new QLinuxFbScreen(paramList);
 }
 
 QLinuxFbIntegration::~QLinuxFbIntegration()
@@ -140,22 +149,25 @@ QPlatformServices *QLinuxFbIntegration::services() const
 
 void QLinuxFbIntegration::createInputHandlers()
 {
-#ifndef QT_NO_LIBINPUT
+#if QT_CONFIG(libinput)
     if (!qEnvironmentVariableIntValue("QT_QPA_FB_NO_LIBINPUT")) {
         new QLibInputHandler(QLatin1String("libinput"), QString());
         return;
     }
 #endif
 
-#if !defined(QT_NO_EVDEV) && !defined(Q_OS_ANDROID)
-    new QEvdevKeyboardManager(QLatin1String("EvdevKeyboard"), QString(), this);
-    new QEvdevMouseManager(QLatin1String("EvdevMouse"), QString(), this);
-#ifndef QT_NO_TSLIB
-    const bool useTslib = qEnvironmentVariableIntValue("QT_QPA_FB_TSLIB");
+#if QT_CONFIG(tslib)
+    bool useTslib = qEnvironmentVariableIntValue("QT_QPA_FB_TSLIB");
     if (useTslib)
         new QTsLibMouseHandler(QLatin1String("TsLib"), QString());
-    else
-#endif // QT_NO_TSLIB
+#endif
+
+#if QT_CONFIG(evdev)
+    new QEvdevKeyboardManager(QLatin1String("EvdevKeyboard"), QString(), this);
+    new QEvdevMouseManager(QLatin1String("EvdevMouse"), QString(), this);
+#if QT_CONFIG(tslib)
+    if (!useTslib)
+#endif
         new QEvdevTouchManager(QLatin1String("EvdevTouch"), QString() /* spec */, this);
 #endif
 }

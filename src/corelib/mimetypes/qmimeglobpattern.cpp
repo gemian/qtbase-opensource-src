@@ -58,9 +58,13 @@ QT_BEGIN_NAMESPACE
 
 void QMimeGlobMatchResult::addMatch(const QString &mimeType, int weight, const QString &pattern)
 {
-    // Is this a lower-weight pattern than the last match? Skip this match then.
-    if (weight < m_weight)
+    if (m_allMatchingMimeTypes.contains(mimeType))
         return;
+    // Is this a lower-weight pattern than the last match? Skip this match then.
+    if (weight < m_weight) {
+        m_allMatchingMimeTypes.append(mimeType);
+        return;
+    }
     bool replace = weight > m_weight;
     if (!replace) {
         // Compare the length of the match
@@ -79,6 +83,7 @@ void QMimeGlobMatchResult::addMatch(const QString &mimeType, int weight, const Q
     }
     if (!m_matchingMimeTypes.contains(mimeType)) {
         m_matchingMimeTypes.append(mimeType);
+        m_allMatchingMimeTypes.append(mimeType);
         if (pattern.startsWith(QLatin1String("*.")))
             m_foundSuffix = pattern.mid(2);
     }
@@ -124,7 +129,7 @@ bool QMimeGlobPattern::matchFileName(const QString &inputFilename) const
     if (starCount == 1 && m_pattern.at(pattern_len - 1) == QLatin1Char('*')) {
         if (len + 1 < pattern_len) return false;
         if (m_pattern.at(0) == QLatin1Char('*'))
-            return filename.indexOf(m_pattern.mid(1, pattern_len - 2)) != -1;
+            return filename.indexOf(m_pattern.midRef(1, pattern_len - 2)) != -1;
 
         const QChar *c1 = m_pattern.unicode();
         const QChar *c2 = filename.unicode();
@@ -201,35 +206,32 @@ void QMimeGlobPatternList::match(QMimeGlobMatchResult &result,
     }
 }
 
-QStringList QMimeAllGlobPatterns::matchingGlobs(const QString &fileName, QString *foundSuffix) const
+QMimeGlobMatchResult QMimeAllGlobPatterns::matchingGlobs(const QString &fileName) const
 {
     // First try the high weight matches (>50), if any.
     QMimeGlobMatchResult result;
     m_highWeightGlobs.match(result, fileName);
-    if (result.m_matchingMimeTypes.isEmpty()) {
 
-        // Now use the "fast patterns" dict, for simple *.foo patterns with weight 50
-        // (which is most of them, so this optimization is definitely worth it)
-        const int lastDot = fileName.lastIndexOf(QLatin1Char('.'));
-        if (lastDot != -1) { // if no '.', skip the extension lookup
-            const int ext_len = fileName.length() - lastDot - 1;
-            const QString simpleExtension = fileName.right(ext_len).toLower();
-            // (toLower because fast patterns are always case-insensitive and saved as lowercase)
+    // Now use the "fast patterns" dict, for simple *.foo patterns with weight 50
+    // (which is most of them, so this optimization is definitely worth it)
+    const int lastDot = fileName.lastIndexOf(QLatin1Char('.'));
+    if (lastDot != -1) { // if no '.', skip the extension lookup
+        const int ext_len = fileName.length() - lastDot - 1;
+        const QString simpleExtension = fileName.right(ext_len).toLower();
+        // (toLower because fast patterns are always case-insensitive and saved as lowercase)
 
-            const QStringList matchingMimeTypes = m_fastPatterns.value(simpleExtension);
-            const QString simplePattern = QLatin1String("*.") + simpleExtension;
-            for (const QString &mime : matchingMimeTypes)
-                result.addMatch(mime, 50, simplePattern);
-            // Can't return yet; *.tar.bz2 has to win over *.bz2, so we need the low-weight mimetypes anyway,
-            // at least those with weight 50.
-        }
-
-        // Finally, try the low weight matches (<=50)
-        m_lowWeightGlobs.match(result, fileName);
+        const QStringList matchingMimeTypes = m_fastPatterns.value(simpleExtension);
+        const QString simplePattern = QLatin1String("*.") + simpleExtension;
+        for (const QString &mime : matchingMimeTypes)
+            result.addMatch(mime, 50, simplePattern);
+        // Can't return yet; *.tar.bz2 has to win over *.bz2, so we need the low-weight mimetypes anyway,
+        // at least those with weight 50.
     }
-    if (foundSuffix)
-        *foundSuffix = result.m_foundSuffix;
-    return result.m_matchingMimeTypes;
+
+    // Finally, try the low weight matches (<=50)
+    m_lowWeightGlobs.match(result, fileName);
+
+    return result;
 }
 
 void QMimeAllGlobPatterns::clear()

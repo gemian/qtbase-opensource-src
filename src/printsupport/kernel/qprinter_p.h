@@ -52,7 +52,7 @@
 //
 
 
-#include "QtCore/qglobal.h"
+#include <QtPrintSupport/private/qtprintsupportglobal_p.h>
 
 #ifndef QT_NO_PRINTER
 
@@ -75,11 +75,12 @@ class Q_PRINTSUPPORT_EXPORT QPrinterPrivate
     Q_DECLARE_PUBLIC(QPrinter)
 public:
     QPrinterPrivate(QPrinter *printer)
-        : printEngine(0),
+        : pdfVersion(QPrinter::PdfVersion_1_4),
+          printEngine(0),
           paintEngine(0),
           realPrintEngine(0),
           realPaintEngine(0),
-#ifndef QT_NO_PRINTPREVIEWWIDGET
+#if QT_CONFIG(printpreviewwidget)
           previewEngine(0),
 #endif
           q_ptr(printer),
@@ -98,7 +99,7 @@ public:
     QPrinterInfo findValidPrinter(const QPrinterInfo &printer = QPrinterInfo());
     void initEngines(QPrinter::OutputFormat format, const QPrinterInfo &printer);
     void changeEngines(QPrinter::OutputFormat format, const QPrinterInfo &printer);
-#ifndef QT_NO_PRINTPREVIEWWIDGET
+#if QT_CONFIG(printpreviewwidget)
     QList<const QPicture *> previewPages() const;
     void setPreviewMode(bool);
 #endif
@@ -107,12 +108,13 @@ public:
 
     QPrinter::PrinterMode printerMode;
     QPrinter::OutputFormat outputFormat;
+    QPrinter::PdfVersion pdfVersion;
     QPrintEngine *printEngine;
     QPaintEngine *paintEngine;
 
     QPrintEngine *realPrintEngine;
     QPaintEngine *realPaintEngine;
-#ifndef QT_NO_PRINTPREVIEWWIDGET
+#if QT_CONFIG(printpreviewwidget)
     QPreviewPaintEngine *previewEngine;
 #endif
 

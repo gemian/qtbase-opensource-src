@@ -40,10 +40,9 @@
 #ifndef QDBUSREPLY_H
 #define QDBUSREPLY_H
 
-#include <QtCore/qglobal.h>
+#include <QtDBus/qtdbusglobal.h>
 #include <QtCore/qvariant.h>
 
-#include <QtDBus/qdbusmacros.h>
 #include <QtDBus/qdbusmessage.h>
 #include <QtDBus/qdbuserror.h>
 #include <QtDBus/qdbusextratypes.h>
@@ -67,7 +66,7 @@ public:
     }
     inline QDBusReply& operator=(const QDBusMessage &reply)
     {
-        QVariant data(qMetaTypeId<Type>(), reinterpret_cast<void*>(0));
+        QVariant data(qMetaTypeId<Type>(), nullptr);
         qDBusReplyFill(reply, m_error, data);
         m_data = qvariant_cast<Type>(data);
         return *this;

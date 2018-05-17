@@ -37,10 +37,6 @@
 # undef QT_ASCII_CAST_WARNINGS
 #endif
 
-#if defined(Q_OS_WIN) && defined(Q_OS_WINCE)
-#define Q_OS_WIN_AND_WINCE
-#endif
-
 #include <QtTest/QtTest>
 #include <qregexp.h>
 #include <qregularexpression.h>
@@ -88,11 +84,11 @@ public:
 
     template <typename MemFun>
     void apply0(QString &s, MemFun mf) const
-    { Q_FOREACH (QChar ch, this->pinned) (s.*mf)(ch); }
+    { for (QChar ch : qAsConst(this->pinned)) (s.*mf)(ch); }
 
     template <typename MemFun, typename A1>
     void apply1(QString &s, MemFun mf, A1 a1) const
-    { Q_FOREACH (QChar ch, this->pinned) (s.*mf)(a1, ch); }
+    { for (QChar ch : qAsConst(this->pinned)) (s.*mf)(a1, ch); }
 };
 
 template <>
@@ -258,6 +254,9 @@ public:
 };
 
 } // unnamed namespace
+QT_BEGIN_NAMESPACE
+Q_DECLARE_TYPEINFO(CharStarContainer, Q_PRIMITIVE_TYPE);
+QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(CharStarContainer)
 
@@ -531,7 +530,7 @@ private slots:
     void integer_conversion();
     void tortureSprintfDouble();
     void toNum();
-#if !defined(Q_OS_WIN) || defined(Q_OS_WIN_AND_WINCE)
+#if !defined(Q_OS_WIN)
     void localeAwareCompare_data();
     void localeAwareCompare();
 #endif
@@ -649,7 +648,7 @@ QString verifyZeroTermination(const QString &str)
     } while (0)                                                         \
     /**/
 
-typedef QList<int> IntList;
+typedef QVector<int> IntList;
 
 tst_QString::tst_QString()
 {
@@ -1057,10 +1056,6 @@ void tst_QString::acc_01()
     QVERIFY(a.isNull());
     QVERIFY(*a.toLatin1().constData() == '\0');
     {
-#if defined(Q_OS_WINCE)
-        int argc = 0;
-        QCoreApplication app(argc, 0);
-#endif
         QFile f("COMPARE.txt");
         f.open(QIODevice::ReadOnly);
         QTextStream ts( &f );
@@ -1071,6 +1066,7 @@ void tst_QString::acc_01()
 
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_GCC("-Wformat-security")
+QT_WARNING_DISABLE_CLANG("-Wformat-security")
 
 void tst_QString::isNull()
 {
@@ -1204,7 +1200,7 @@ void tst_QString::macTypes()
 #ifndef Q_OS_MAC
     QSKIP("This is a Mac-only test");
 #else
-    extern void tst_QString_macTypes(); // in qstring_mac.mm
+    extern void tst_QString_macTypes(); // in qcore_foundation.mm
     tst_QString_macTypes();
 #endif
 }
@@ -1260,6 +1256,11 @@ void tst_QString::fill()
     QCOMPARE(f, QLatin1String("FFF"));
 }
 
+static inline const void *ptrValue(quintptr v)
+{
+    return reinterpret_cast<const void *>(v);
+}
+
 void tst_QString::sprintf()
 {
     QString a;
@@ -1271,21 +1272,21 @@ void tst_QString::sprintf()
     QCOMPARE(a.sprintf("X%9iY", 50000 ), QLatin1String("X    50000Y"));
     QCOMPARE(a.sprintf("X%-9sY","hello"), QLatin1String("Xhello    Y"));
     QCOMPARE(a.sprintf("X%-9iY", 50000 ), QLatin1String("X50000    Y"));
-    QCOMPARE(a.sprintf("%lf", 1.23), QString("1.230000"));
-    QCOMPARE(a.sprintf("%lf", 1.23456789), QString("1.234568"));
-    QCOMPARE(a.sprintf("%p", (void *)0xbfffd350), QString("0xbfffd350"));
-    QCOMPARE(a.sprintf("%p", (void *)0), QString("0x0"));
+    QCOMPARE(a.sprintf("%lf", 1.23), QLatin1String("1.230000"));
+    QCOMPARE(a.sprintf("%lf", 1.23456789), QLatin1String("1.234568"));
+    QCOMPARE(a.sprintf("%p", ptrValue(0xbfffd350)), QLatin1String("0xbfffd350"));
+    QCOMPARE(a.sprintf("%p", ptrValue(0)), QLatin1String("0x0"));
 
     int i = 6;
     long l = -2;
     float f = 4.023f;
     QString S1;
     S1.sprintf("%d %ld %f",i,l,f);
-    QCOMPARE(S1,QString("6 -2 4.023000"));
+    QCOMPARE(S1, QLatin1String("6 -2 4.023000"));
 
     double d = -514.25683;
     S1.sprintf("%f",d);
-    QCOMPARE(S1, QString("-514.256830"));
+    QCOMPARE(S1, QLatin1String("-514.256830"));
 }
 
 void tst_QString::sprintfS()
@@ -3817,7 +3818,7 @@ void tst_QString::startsWith()
     QVERIFY( !a.startsWith(QLatin1Char('x')) );
     QVERIFY( !a.startsWith(QChar()) );
 
-    a = QString::null;
+    a = QString();
     QVERIFY( !a.startsWith("") );
     QVERIFY( a.startsWith(QString::null) );
     QVERIFY( !a.startsWith("ABC") );
@@ -3927,7 +3928,7 @@ void tst_QString::endsWith()
     QVERIFY( a.endsWith(QLatin1String(0)) );
     QVERIFY( !a.endsWith(QLatin1String("ABC")) );
 
-    a = QString::null;
+    a = QString();
     QVERIFY( !a.endsWith("") );
     QVERIFY( a.endsWith(QString::null) );
     QVERIFY( !a.endsWith("ABC") );
@@ -4272,11 +4273,7 @@ void tst_QString::local8Bit_data()
     QTest::addColumn<QString>("local8Bit");
     QTest::addColumn<QByteArray>("result");
 
-/*
-    QString::local8Bit() called on a null QString returns an _empty_
-    QByteArray.
-*/
-    QTest::newRow("nullString") << QString() << QByteArray("");
+    QTest::newRow("nullString") << QString() << QByteArray();
     QTest::newRow("emptyString") << QString("") << QByteArray("");
     QTest::newRow("string") << QString("test") << QByteArray("test");
 
@@ -4729,8 +4726,8 @@ void tst_QString::arg()
     QString s14( "%1%2%3" );
 
     QCOMPARE( s4.arg("foo"), QLatin1String("[foo]") );
-    QCOMPARE( s5.arg("foo"), QLatin1String("[foo]") );
-    QCOMPARE( s6.arg("foo"), QLatin1String("[foo]") );
+    QCOMPARE( s5.arg(QLatin1String("foo")), QLatin1String("[foo]") );
+    QCOMPARE( s6.arg(QStringViewLiteral("foo")), QLatin1String("[foo]") );
     QCOMPARE( s7.arg("foo"), QLatin1String("[foo]") );
     QCOMPARE( s8.arg("foo"), QLatin1String("[foo %1]") );
     QCOMPARE( s8.arg("foo").arg("bar"), QLatin1String("[foo bar]") );
@@ -4791,11 +4788,11 @@ void tst_QString::arg()
     QCOMPARE( QString("%%%1%%%2").arg("foo").arg("bar"), QLatin1String("%%foo%%bar") );
 
     QCOMPARE( QString("%1").arg("hello", -10), QLatin1String("hello     ") );
-    QCOMPARE( QString("%1").arg("hello", -5), QLatin1String("hello") );
-    QCOMPARE( QString("%1").arg("hello", -2), QLatin1String("hello") );
+    QCOMPARE( QString("%1").arg(QLatin1String("hello"), -5), QLatin1String("hello") );
+    QCOMPARE( QString("%1").arg(QStringViewLiteral("hello"), -2), QLatin1String("hello") );
     QCOMPARE( QString("%1").arg("hello", 0), QLatin1String("hello") );
-    QCOMPARE( QString("%1").arg("hello", 2), QLatin1String("hello") );
-    QCOMPARE( QString("%1").arg("hello", 5), QLatin1String("hello") );
+    QCOMPARE( QString("%1").arg(QLatin1String("hello"), 2), QLatin1String("hello") );
+    QCOMPARE( QString("%1").arg(QStringViewLiteral("hello"), 5), QLatin1String("hello") );
     QCOMPARE( QString("%1").arg("hello", 10), QLatin1String("     hello") );
     QCOMPARE( QString("%1%1").arg("hello"), QLatin1String("hellohello") );
     QCOMPARE( QString("%2%1").arg("hello"), QLatin1String("%2hello") );
@@ -5082,6 +5079,12 @@ void tst_QString::operator_eqeq_nullstring()
     QVERIFY( QString("") == "" );
     QVERIFY( "" == QString("") );
 
+    QVERIFY(QString() == nullptr);
+    QVERIFY(nullptr == QString());
+
+    QVERIFY(QString("") == nullptr);
+    QVERIFY(nullptr == QString(""));
+
     QVERIFY( QString().size() == 0 );
 
     QVERIFY( QString("").size() == 0 );
@@ -5095,6 +5098,8 @@ void tst_QString::operator_smaller()
     QString null;
     QString empty("");
     QString foo("foo");
+    const char *nullC = nullptr;
+    const char *emptyC = "";
 
     QVERIFY( !(null < QString()) );
     QVERIFY( !(null > QString()) );
@@ -5104,6 +5109,12 @@ void tst_QString::operator_smaller()
 
     QVERIFY( !(null < empty) );
     QVERIFY( !(null > empty) );
+
+    QVERIFY( !(nullC < empty) );
+    QVERIFY( !(nullC > empty) );
+
+    QVERIFY( !(null < emptyC) );
+    QVERIFY( !(null > emptyC) );
 
     QVERIFY( null < foo );
     QVERIFY( !(null > foo) );
@@ -5436,15 +5447,11 @@ void tst_QString::tortureSprintfDouble()
 
 #include <locale.h>
 
-#if !defined(Q_OS_WIN) || defined(Q_OS_WIN_AND_WINCE)
-// On Q_OS_WIN others than Win CE, we cannot set the system or user locale
+#if !defined(Q_OS_WIN)
+// On Q_OS_WIN, we cannot set the system or user locale
 void tst_QString::localeAwareCompare_data()
 {
-#ifdef Q_OS_WIN_AND_WINCE
-    QTest::addColumn<ulong>("locale");
-#else
     QTest::addColumn<QString>("locale");
-#endif
     QTest::addColumn<QString>("s1");
     QTest::addColumn<QString>("s2");
     QTest::addColumn<int>("result");
@@ -5454,15 +5461,9 @@ void tst_QString::localeAwareCompare_data()
         Latin-1-specific characters (I think). Compare with Swedish
         below.
     */
-#ifdef Q_OS_WIN_AND_WINCE // assume c locale to be english
-    QTest::newRow("c1") << MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT) << QString::fromLatin1("\xe5") << QString::fromLatin1("\xe4") << 1;
-    QTest::newRow("c2") << MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT) << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1;
-    QTest::newRow("c3") << MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT) << QString::fromLatin1("\xe5") << QString::fromLatin1("\xf6") << -1;
-#else
     QTest::newRow("c1") << QString("C") << QString::fromLatin1("\xe5") << QString::fromLatin1("\xe4") << 1;
     QTest::newRow("c2") << QString("C") << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1;
     QTest::newRow("c3") << QString("C") << QString::fromLatin1("\xe5") << QString::fromLatin1("\xf6") << -1;
-#endif
 
     /*
         It's hard to test English, because it's treated differently
@@ -5472,15 +5473,9 @@ void tst_QString::localeAwareCompare_data()
         comparison of Latin-1 values, although I'm not sure. So I
         just test digits to make sure that it's not totally broken.
     */
-#ifdef Q_OS_WIN_AND_WINCE
-    QTest::newRow("english1") << MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT) << QString("5") << QString("4") << 1;
-    QTest::newRow("english2") << MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT) << QString("4") << QString("6") << -1;
-    QTest::newRow("english3") << MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT) << QString("5") << QString("6") << -1;
-#else
     QTest::newRow("english1") << QString("en_US") << QString("5") << QString("4") << 1;
     QTest::newRow("english2") << QString("en_US") << QString("4") << QString("6") << -1;
     QTest::newRow("english3") << QString("en_US") << QString("5") << QString("6") << -1;
-#endif
     /*
         In Swedish, a with ring above (E5) comes before a with
         diaresis (E4), which comes before o diaresis (F6), which
@@ -5491,11 +5486,6 @@ void tst_QString::localeAwareCompare_data()
     QTest::newRow("swedish2") << QString("sv_SE.ISO8859-1") << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1;
     QTest::newRow("swedish3") << QString("sv_SE.ISO8859-1") << QString::fromLatin1("\xe5") << QString::fromLatin1("\xf6") << -1;
     QTest::newRow("swedish4") << QString("sv_SE.ISO8859-1") << QString::fromLatin1("z") << QString::fromLatin1("\xe5") << -1;
-#elif defined(Q_OS_WIN_AND_WINCE)
-    QTest::newRow("swedish1") << MAKELCID(MAKELANGID(LANG_SWEDISH, SUBLANG_SWEDISH), SORT_DEFAULT) << QString::fromLatin1("\xe5") << QString::fromLatin1("\xe4") << -1;
-    QTest::newRow("swedish2") << MAKELCID(MAKELANGID(LANG_SWEDISH, SUBLANG_SWEDISH), SORT_DEFAULT) << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1;
-    QTest::newRow("swedish3") << MAKELCID(MAKELANGID(LANG_SWEDISH, SUBLANG_SWEDISH), SORT_DEFAULT) << QString::fromLatin1("\xe5") << QString::fromLatin1("\xf6") << -1;
-    QTest::newRow("swedish4") << MAKELCID(MAKELANGID(LANG_SWEDISH, SUBLANG_SWEDISH), SORT_DEFAULT) << QString::fromLatin1("z") << QString::fromLatin1("\xe5") << -1;
 #else
     QTest::newRow("swedish1") << QString("sv_SE") << QString::fromLatin1("\xe5") << QString::fromLatin1("\xe4") << -1;
     QTest::newRow("swedish2") << QString("sv_SE") << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1;
@@ -5521,10 +5511,6 @@ void tst_QString::localeAwareCompare_data()
     QTest::newRow("german1") << QString("de_DE.ISO8859-1") << QString::fromLatin1("z") << QString::fromLatin1("\xe4") << 1;
     QTest::newRow("german2") << QString("de_DE.ISO8859-1") << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1;
     QTest::newRow("german3") << QString("de_DE.ISO8859-1") << QString::fromLatin1("z") << QString::fromLatin1("\xf6") << 1;
-#elif defined(Q_OS_WIN_AND_WINCE)
-    QTest::newRow("german1") << MAKELCID(MAKELANGID(LANG_GERMAN, SUBLANG_GERMAN), SORT_DEFAULT) << QString::fromLatin1("z") << QString::fromLatin1("\xe4") << 1;
-    QTest::newRow("german2") << MAKELCID(MAKELANGID(LANG_GERMAN, SUBLANG_GERMAN), SORT_DEFAULT) << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1;
-    QTest::newRow("german3") << MAKELCID(MAKELANGID(LANG_GERMAN, SUBLANG_GERMAN), SORT_DEFAULT) << QString::fromLatin1("z") << QString::fromLatin1("\xf6") << 1;
 #else
     QTest::newRow("german1") << QString("de_DE") << QString::fromLatin1("z") << QString::fromLatin1("\xe4") << 1;
     QTest::newRow("german2") << QString("de_DE") << QString::fromLatin1("\xe4") << QString::fromLatin1("\xf6") << -1;
@@ -5534,11 +5520,7 @@ void tst_QString::localeAwareCompare_data()
 
 void tst_QString::localeAwareCompare()
 {
-#ifdef Q_OS_WIN_AND_WINCE
-    QFETCH(ulong, locale);
-#else
     QFETCH(QString, locale);
-#endif
     QFETCH(QString, s1);
     QFETCH(QString, s2);
     QFETCH(int, result);
@@ -5546,11 +5528,7 @@ void tst_QString::localeAwareCompare()
     QStringRef r1(&s1, 0, s1.length());
     QStringRef r2(&s2, 0, s2.length());
 
-#ifdef Q_OS_WIN_AND_WINCE
-    DWORD oldLcid = GetUserDefaultLCID();
-    SetUserDefaultLCID(locale);
-    QCOMPARE(locale, GetUserDefaultLCID());
-#elif defined (Q_OS_MAC) || defined(QT_USE_ICU)
+#if defined (Q_OS_DARWIN) || defined(QT_USE_ICU)
     QSKIP("Setting the locale is not supported on OS X or ICU (you can set the C locale, but that won't affect localeAwareCompare)");
 #else
     if (!locale.isEmpty()) {
@@ -5612,14 +5590,10 @@ void tst_QString::localeAwareCompare()
         QVERIFY(testres == 0);
     }
 
-#ifdef Q_OS_WIN_AND_WINCE
-    SetUserDefaultLCID(oldLcid);
-#else
     if (!locale.isEmpty())
             setlocale(LC_ALL, "");
-#endif
 }
-#endif //!defined(Q_OS_WIN) || defined(Q_OS_WIN_AND_WINCE)
+#endif //!defined(Q_OS_WIN)
 
 void tst_QString::reverseIterators()
 {
@@ -5876,7 +5850,7 @@ void tst_QString::fromUtf16_char16()
 
 void tst_QString::unicodeStrings()
 {
-#ifdef Q_COMPILER_UNICODE_STRINGS
+#ifdef Q_STDLIB_UNICODE_STRINGS
     QString s1, s2;
     static const std::u16string u16str1(u"Hello Unicode World");
     static const std::u32string u32str1(U"Hello Unicode World");
@@ -5891,7 +5865,7 @@ void tst_QString::unicodeStrings()
     s1 = QString::fromStdU32String(std::u32string(U"\u221212\U000020AC\U00010000"));
     QCOMPARE(s1, QString::fromUtf8("\342\210\222" "12" "\342\202\254" "\360\220\200\200"));
 #else
-    QSKIP("Compiler does not support C++11 unicode strings");
+    QSKIP("Standard Library does not support C++11 unicode strings");
 #endif
 }
 
@@ -6069,8 +6043,14 @@ void tst_QString::compare_data()
     QTest::addColumn<int>("csr"); // case sensitive result
     QTest::addColumn<int>("cir"); // case insensitive result
 
-
     // null strings
+    QTest::newRow("null-null") << QString() << QString() << 0 << 0;
+    QTest::newRow("text-null") << QString("a") << QString() << 1 << 1;
+    QTest::newRow("null-text") << QString() << QString("a") << -1 << -1;
+    QTest::newRow("null-empty") << QString() << QString("") << 0 << 0;
+    QTest::newRow("empty-null") << QString("") << QString() << 0 << 0;
+
+    // empty strings
     QTest::newRow("data0") << QString("") << QString("") << 0 << 0;
     QTest::newRow("data1") << QString("a") << QString("") << 1 << 1;
     QTest::newRow("data2") << QString("") << QString("a") << -1 << -1;
@@ -6101,6 +6081,44 @@ void tst_QString::compare_data()
     QTest::newRow("data13") << QString("ab\0c") << QString(QByteArray("ab\0c", 4)) << 0 << 0;
     QTest::newRow("data14") << QString(QByteArray("ab\0c", 4)) << QString("abc") << -1 << -1;
     QTest::newRow("data15") << QString("abc") << QString(QByteArray("ab\0c", 4)) << 1 << 1;*/
+
+    // All tests below (generated by the 3 for-loops) are meant to excercise the vectorized versions
+    // of ucstrncmp.
+
+    QString in1, in2;
+    for (int i = 0; i < 70; ++i) {
+        in1 += QString::number(i % 10);
+        in2 += QString::number((70 - i + 1) % 10);
+    }
+    Q_ASSERT(in1.length() == in2.length());
+    Q_ASSERT(in1 != in2);
+    Q_ASSERT(in1.at(0) < in2.at(0));
+    for (int i = 0; i < in1.length(); ++i) {
+        Q_ASSERT(in1.at(i) != in2.at(i));
+    }
+
+    for (int i = 1; i <= 65; ++i) {
+        QString inp1 = in1.left(i);
+        QString inp2 = in2.left(i);
+        QTest::addRow("all-different-%d", i) << inp1 << inp2 << -1 << -1;
+    }
+
+    for (int i = 1; i <= 65; ++i) {
+        QString start(i - 1, 'a');
+
+        QString in = start + QLatin1Char('a');
+        QTest::addRow("all-same-%d", i) << in << in << 0 << 0;
+
+        QString in2 = start + QLatin1Char('b');
+        QTest::addRow("last-different-%d", i) << in << in2 << -1 << -1;
+    }
+
+    for (int i = 0; i < 16; ++i) {
+        QString in1(16, 'a');
+        QString in2 = in1;
+        in2[i] = 'b';
+        QTest::addRow("all-same-except-char-%d", i) << in1 << in2 << -1 << -1;
+    }
 }
 
 static bool isLatin(const QString &s)
@@ -6360,7 +6378,7 @@ void tst_QString::repeatedSignature() const
 {
     /* repated() should be a const member. */
     const QString string;
-    string.repeated(3);
+    (void) string.repeated(3);
 }
 
 void tst_QString::repeated() const

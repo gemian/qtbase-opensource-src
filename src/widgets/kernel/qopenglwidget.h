@@ -40,7 +40,7 @@
 #ifndef QOPENGLWIDGET_H
 #define QOPENGLWIDGET_H
 
-#include <QtCore/qglobal.h>
+#include <QtWidgets/qtwidgetsglobal.h>
 
 #ifndef QT_NO_OPENGL
 
@@ -71,6 +71,9 @@ public:
 
     void setFormat(const QSurfaceFormat &format);
     QSurfaceFormat format() const;
+
+    GLenum textureFormat() const;
+    void setTextureFormat(GLenum texFormat);
 
     bool isValid() const;
 

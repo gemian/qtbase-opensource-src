@@ -45,7 +45,7 @@
 #include <private/qcoreapplication_p.h>
 #include <private/qcore_unix_p.h>
 
-#if defined(Q_OS_OSX)
+#if defined(Q_OS_DARWIN)
 #  include <private/qeventdispatcher_cf_p.h>
 #else
 #  if !defined(QT_NO_GLIB)
@@ -60,6 +60,10 @@
 #include "qthread_p.h"
 
 #include "qdebug.h"
+
+#ifdef __GLIBCXX__
+#include <cxxabi.h>
+#endif
 
 #include <sched.h>
 #include <errno.h>
@@ -101,7 +105,7 @@
 # define SCHED_IDLE    5
 #endif
 
-#if defined(Q_OS_DARWIN) || !defined(Q_OS_OPENBSD) && defined(_POSIX_THREAD_PRIORITY_SCHEDULING) && (_POSIX_THREAD_PRIORITY_SCHEDULING-0 >= 0)
+#if defined(Q_OS_DARWIN) || !defined(Q_OS_ANDROID) && !defined(Q_OS_OPENBSD) && defined(_POSIX_THREAD_PRIORITY_SCHEDULING) && (_POSIX_THREAD_PRIORITY_SCHEDULING-0 >= 0)
 #define QT_HAS_THREAD_PRIORITY_SCHEDULING
 #endif
 
@@ -211,25 +215,25 @@ static void clear_thread_data()
 }
 
 template <typename T>
-static typename QtPrivate::QEnableIf<QTypeInfo<T>::isIntegral, Qt::HANDLE>::Type to_HANDLE(T id)
+static typename std::enable_if<QTypeInfo<T>::isIntegral, Qt::HANDLE>::type to_HANDLE(T id)
 {
     return reinterpret_cast<Qt::HANDLE>(static_cast<intptr_t>(id));
 }
 
 template <typename T>
-static typename QtPrivate::QEnableIf<QTypeInfo<T>::isIntegral, T>::Type from_HANDLE(Qt::HANDLE id)
+static typename std::enable_if<QTypeInfo<T>::isIntegral, T>::type from_HANDLE(Qt::HANDLE id)
 {
     return static_cast<T>(reinterpret_cast<intptr_t>(id));
 }
 
 template <typename T>
-static typename QtPrivate::QEnableIf<QTypeInfo<T>::isPointer, Qt::HANDLE>::Type to_HANDLE(T id)
+static typename std::enable_if<QTypeInfo<T>::isPointer, Qt::HANDLE>::type to_HANDLE(T id)
 {
     return id;
 }
 
 template <typename T>
-static typename QtPrivate::QEnableIf<QTypeInfo<T>::isPointer, T>::Type from_HANDLE(Qt::HANDLE id)
+static typename std::enable_if<QTypeInfo<T>::isPointer, T>::type from_HANDLE(Qt::HANDLE id)
 {
     return static_cast<T>(id);
 }
@@ -255,7 +259,7 @@ QThreadData *QThreadData::current(bool createIfNecessary)
         }
         data->deref();
         data->isAdopted = true;
-        data->threadId = to_HANDLE(pthread_self());
+        data->threadId.store(to_HANDLE(pthread_self()));
         if (!QCoreApplicationPrivate::theMainThread)
             QCoreApplicationPrivate::theMainThread = data->thread.load();
     }
@@ -279,7 +283,7 @@ typedef void*(*QtThreadCallback)(void*);
 
 void QThreadPrivate::createEventDispatcher(QThreadData *data)
 {
-#if defined(Q_OS_OSX)
+#if defined(Q_OS_DARWIN)
     bool ok = false;
     int value = qEnvironmentVariableIntValue("QT_EVENT_DISPATCHER_CORE_FOUNDATION", &ok);
     if (ok && value > 0)
@@ -324,49 +328,70 @@ void *QThreadPrivate::start(void *arg)
 #endif
     pthread_cleanup_push(QThreadPrivate::finish, arg);
 
-    QThread *thr = reinterpret_cast<QThread *>(arg);
-    QThreadData *data = QThreadData::get2(thr);
-
+#ifndef QT_NO_EXCEPTIONS
+    try
+#endif
     {
-        QMutexLocker locker(&thr->d_func()->mutex);
+        QThread *thr = reinterpret_cast<QThread *>(arg);
+        QThreadData *data = QThreadData::get2(thr);
 
-        // do we need to reset the thread priority?
-        if (int(thr->d_func()->priority) & ThreadPriorityResetFlag) {
-            thr->d_func()->setPriority(QThread::Priority(thr->d_func()->priority & ~ThreadPriorityResetFlag));
+        {
+            QMutexLocker locker(&thr->d_func()->mutex);
+
+            // do we need to reset the thread priority?
+            if (int(thr->d_func()->priority) & ThreadPriorityResetFlag) {
+                thr->d_func()->setPriority(QThread::Priority(thr->d_func()->priority & ~ThreadPriorityResetFlag));
+            }
+
+            data->threadId.store(to_HANDLE(pthread_self()));
+            set_thread_data(data);
+
+            data->ref();
+            data->quitNow = thr->d_func()->exited;
         }
 
-        data->threadId = to_HANDLE(pthread_self());
-        set_thread_data(data);
-
-        data->ref();
-        data->quitNow = thr->d_func()->exited;
-    }
-
-    if (data->eventDispatcher.load()) // custom event dispatcher set?
-        data->eventDispatcher.load()->startingUp();
-    else
-        createEventDispatcher(data);
+        if (data->eventDispatcher.load()) // custom event dispatcher set?
+            data->eventDispatcher.load()->startingUp();
+        else
+            createEventDispatcher(data);
 
 #if (defined(Q_OS_LINUX) || defined(Q_OS_MAC) || defined(Q_OS_QNX))
-    {
-        // sets the name of the current thread.
-        QString objectName = thr->objectName();
+        {
+            // sets the name of the current thread.
+            QString objectName = thr->objectName();
 
-        pthread_t thread_id = from_HANDLE<pthread_t>(data->threadId);
-        if (Q_LIKELY(objectName.isEmpty()))
-            setCurrentThreadName(thread_id, thr->metaObject()->className());
-        else
-            setCurrentThreadName(thread_id, objectName.toLocal8Bit());
-    }
+            pthread_t thread_id = from_HANDLE<pthread_t>(data->threadId.load());
+            if (Q_LIKELY(objectName.isEmpty()))
+                setCurrentThreadName(thread_id, thr->metaObject()->className());
+            else
+                setCurrentThreadName(thread_id, objectName.toLocal8Bit());
+        }
 #endif
 
-    emit thr->started(QThread::QPrivateSignal());
+        emit thr->started(QThread::QPrivateSignal());
 #if !defined(Q_OS_ANDROID)
-    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-    pthread_testcancel();
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+        pthread_testcancel();
 #endif
-    thr->run();
+        thr->run();
+    }
+#ifndef QT_NO_EXCEPTIONS
+#ifdef __GLIBCXX__
+    // POSIX thread cancellation under glibc is implemented by throwing an exception
+    // of this type. Do what libstdc++ is doing and handle it specially in order not to
+    // abort the application if user's code calls a cancellation function.
+    catch (const abi::__forced_unwind &) {
+        throw;
+    }
+#endif // __GLIBCXX__
+    catch (...) {
+        qTerminate();
+    }
+#endif // QT_NO_EXCEPTIONS
 
+    // This pop runs finish() below. It's outside the try/catch (and has its
+    // own try/catch) to prevent finish() to be run in case an exception is
+    // thrown.
     pthread_cleanup_pop(1);
 
     return 0;
@@ -374,35 +399,53 @@ void *QThreadPrivate::start(void *arg)
 
 void QThreadPrivate::finish(void *arg)
 {
-    QThread *thr = reinterpret_cast<QThread *>(arg);
-    QThreadPrivate *d = thr->d_func();
+#ifndef QT_NO_EXCEPTIONS
+    try
+#endif
+    {
+        QThread *thr = reinterpret_cast<QThread *>(arg);
+        QThreadPrivate *d = thr->d_func();
 
-    QMutexLocker locker(&d->mutex);
+        QMutexLocker locker(&d->mutex);
 
-    d->isInFinish = true;
-    d->priority = QThread::InheritPriority;
-    void *data = &d->data->tls;
-    locker.unlock();
-    emit thr->finished(QThread::QPrivateSignal());
-    QCoreApplication::sendPostedEvents(0, QEvent::DeferredDelete);
-    QThreadStorageData::finish((void **)data);
-    locker.relock();
-
-    QAbstractEventDispatcher *eventDispatcher = d->data->eventDispatcher.load();
-    if (eventDispatcher) {
-        d->data->eventDispatcher = 0;
+        d->isInFinish = true;
+        d->priority = QThread::InheritPriority;
+        void *data = &d->data->tls;
         locker.unlock();
-        eventDispatcher->closingDown();
-        delete eventDispatcher;
+        emit thr->finished(QThread::QPrivateSignal());
+        QCoreApplication::sendPostedEvents(0, QEvent::DeferredDelete);
+        QThreadStorageData::finish((void **)data);
         locker.relock();
+
+        QAbstractEventDispatcher *eventDispatcher = d->data->eventDispatcher.load();
+        if (eventDispatcher) {
+            d->data->eventDispatcher = 0;
+            locker.unlock();
+            eventDispatcher->closingDown();
+            delete eventDispatcher;
+            locker.relock();
+        }
+
+        d->running = false;
+        d->finished = true;
+        d->interruptionRequested = false;
+
+        d->isInFinish = false;
+        d->thread_done.wakeAll();
     }
-
-    d->running = false;
-    d->finished = true;
-    d->interruptionRequested = false;
-
-    d->isInFinish = false;
-    d->thread_done.wakeAll();
+#ifndef QT_NO_EXCEPTIONS
+#ifdef __GLIBCXX__
+    // POSIX thread cancellation under glibc is implemented by throwing an exception
+    // of this type. Do what libstdc++ is doing and handle it specially in order not to
+    // abort the application if user's code calls a cancellation function.
+    catch (const abi::__forced_unwind &) {
+        throw;
+    }
+#endif // __GLIBCXX__
+    catch (...) {
+        qTerminate();
+    }
+#endif // QT_NO_EXCEPTIONS
 }
 
 
@@ -651,7 +694,7 @@ void QThread::start(Priority priority)
 #endif
         code = pthread_create(&threadId, &attr, QThreadPrivate::start, this);
     }
-    d->data->threadId = to_HANDLE(threadId);
+    d->data->threadId.store(to_HANDLE(threadId));
 
     pthread_attr_destroy(&attr);
 
@@ -660,7 +703,7 @@ void QThread::start(Priority priority)
 
         d->running = false;
         d->finished = false;
-        d->data->threadId = 0;
+        d->data->threadId.store(nullptr);
     }
 }
 
@@ -670,10 +713,10 @@ void QThread::terminate()
     Q_D(QThread);
     QMutexLocker locker(&d->mutex);
 
-    if (!d->data->threadId)
+    if (!d->data->threadId.load())
         return;
 
-    int code = pthread_cancel(from_HANDLE<pthread_t>(d->data->threadId));
+    int code = pthread_cancel(from_HANDLE<pthread_t>(d->data->threadId.load()));
     if (code) {
         qWarning("QThread::start: Thread termination error: %s",
                  qPrintable(qt_error_string((code))));
@@ -686,7 +729,7 @@ bool QThread::wait(unsigned long time)
     Q_D(QThread);
     QMutexLocker locker(&d->mutex);
 
-    if (from_HANDLE<pthread_t>(d->data->threadId) == pthread_self()) {
+    if (from_HANDLE<pthread_t>(d->data->threadId.load()) == pthread_self()) {
         qWarning("QThread::wait: Thread tried to wait on itself");
         return false;
     }
@@ -728,7 +771,7 @@ void QThreadPrivate::setPriority(QThread::Priority threadPriority)
     int sched_policy;
     sched_param param;
 
-    if (pthread_getschedparam(from_HANDLE<pthread_t>(data->threadId), &sched_policy, &param) != 0) {
+    if (pthread_getschedparam(from_HANDLE<pthread_t>(data->threadId.load()), &sched_policy, &param) != 0) {
         // failed to get the scheduling policy, don't bother setting
         // the priority
         qWarning("QThread::setPriority: Cannot get scheduler parameters");
@@ -744,15 +787,15 @@ void QThreadPrivate::setPriority(QThread::Priority threadPriority)
     }
 
     param.sched_priority = prio;
-    int status = pthread_setschedparam(from_HANDLE<pthread_t>(data->threadId), sched_policy, &param);
+    int status = pthread_setschedparam(from_HANDLE<pthread_t>(data->threadId.load()), sched_policy, &param);
 
 # ifdef SCHED_IDLE
     // were we trying to set to idle priority and failed?
     if (status == -1 && sched_policy == SCHED_IDLE && errno == EINVAL) {
         // reset to lowest priority possible
-        pthread_getschedparam(from_HANDLE<pthread_t>(data->threadId), &sched_policy, &param);
+        pthread_getschedparam(from_HANDLE<pthread_t>(data->threadId.load()), &sched_policy, &param);
         param.sched_priority = sched_get_priority_min(sched_policy);
-        pthread_setschedparam(from_HANDLE<pthread_t>(data->threadId), sched_policy, &param);
+        pthread_setschedparam(from_HANDLE<pthread_t>(data->threadId.load()), sched_policy, &param);
     }
 # else
     Q_UNUSED(status);

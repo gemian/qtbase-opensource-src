@@ -40,15 +40,16 @@
 #ifndef QGRAPHICSEFFECT_H
 #define QGRAPHICSEFFECT_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qrect.h>
 #include <QtGui/qcolor.h>
 #include <QtGui/qbrush.h>
 
-#ifndef QT_NO_GRAPHICSEFFECT
-QT_BEGIN_NAMESPACE
+QT_REQUIRE_CONFIG(graphicseffect);
 
+QT_BEGIN_NAMESPACE
 
 class QGraphicsItem;
 class QStyleOption;
@@ -61,7 +62,6 @@ class QGraphicsEffectPrivate;
 class Q_WIDGETS_EXPORT QGraphicsEffect : public QObject
 {
     Q_OBJECT
-    Q_FLAGS(ChangeFlags)
     Q_PROPERTY(bool enabled READ isEnabled WRITE setEnabled NOTIFY enabledChanged)
 public:
     enum ChangeFlag {
@@ -71,6 +71,7 @@ public:
         SourceInvalidated = 0x8
     };
     Q_DECLARE_FLAGS(ChangeFlags, ChangeFlag)
+    Q_FLAG(ChangeFlags)
 
     enum PixmapPadMode {
         NoPad,
@@ -154,7 +155,6 @@ class QGraphicsBlurEffectPrivate;
 class Q_WIDGETS_EXPORT QGraphicsBlurEffect: public QGraphicsEffect
 {
     Q_OBJECT
-    Q_FLAGS(BlurHint BlurHints)
     Q_PROPERTY(qreal blurRadius READ blurRadius WRITE setBlurRadius NOTIFY blurRadiusChanged)
     Q_PROPERTY(BlurHints blurHints READ blurHints WRITE setBlurHints NOTIFY blurHintsChanged)
 public:
@@ -163,7 +163,9 @@ public:
         QualityHint = 0x01,
         AnimationHint = 0x02
     };
+    Q_FLAG(BlurHint)
     Q_DECLARE_FLAGS(BlurHints, BlurHint)
+    Q_FLAG(BlurHints)
 
     QGraphicsBlurEffect(QObject *parent = Q_NULLPTR);
     ~QGraphicsBlurEffect();
@@ -276,8 +278,6 @@ private:
 };
 
 QT_END_NAMESPACE
-
-#endif //QT_NO_GRAPHICSEFFECT
 
 #endif // QGRAPHICSEFFECT_H
 

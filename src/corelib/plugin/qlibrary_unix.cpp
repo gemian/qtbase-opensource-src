@@ -44,23 +44,13 @@
 #include <qcoreapplication.h>
 #include <private/qfilesystementry_p.h>
 
-#ifndef QT_NO_LIBRARY
-
 #ifdef Q_OS_MAC
 #  include <private/qcore_mac_p.h>
 #endif
 
-#if defined(QT_AOUT_UNDERSCORE)
-#include <string.h>
-#endif
-
-#if (defined(Q_OS_VXWORKS) && !defined(VXWORKS_RTP)) || defined (Q_OS_NACL)
-#define QT_NO_DYNAMIC_LIBRARY
-#endif
-
 QT_BEGIN_NAMESPACE
 
-#if !defined(QT_HPUX_LD) && !defined(QT_NO_DYNAMIC_LIBRARY)
+#if !defined(QT_HPUX_LD)
 QT_BEGIN_INCLUDE_NAMESPACE
 #include <dlfcn.h>
 QT_END_INCLUDE_NAMESPACE
@@ -68,9 +58,7 @@ QT_END_INCLUDE_NAMESPACE
 
 static QString qdlerror()
 {
-#if defined(QT_NO_DYNAMIC_LIBRARY)
-    const char *err = "This platform does not support dynamic libraries.";
-#elif !defined(QT_HPUX_LD)
+#if !defined(QT_HPUX_LD)
     const char *err = dlerror();
 #else
     const char *err = strerror(errno);
@@ -135,7 +123,6 @@ QStringList QLibraryPrivate::prefixes_sys()
 bool QLibraryPrivate::load_sys()
 {
     QString attempt;
-#if !defined(QT_NO_DYNAMIC_LIBRARY)
     QFileSystemEntry fsEntry(fileName);
 
     QString path = fsEntry.path();
@@ -171,9 +158,6 @@ bool QLibraryPrivate::load_sys()
     }
 #if !defined(Q_OS_CYGWIN)
     else {
-#if defined(Q_OS_MAC)
-        if (QSysInfo::MacintoshVersion >= QSysInfo::MV_10_4)
-#endif
         dlFlags |= RTLD_LOCAL;
     }
 #endif
@@ -257,9 +241,8 @@ bool QLibraryPrivate::load_sys()
         }
     }
 #endif
-#endif // QT_NO_DYNAMIC_LIBRARY
     if (!pHnd) {
-        errorString = QLibrary::tr("Cannot load library %1: %2").arg(fileName).arg(qdlerror());
+        errorString = QLibrary::tr("Cannot load library %1: %2").arg(fileName, qdlerror());
     }
     if (pHnd) {
         qualifiedFileName = attempt;
@@ -270,29 +253,27 @@ bool QLibraryPrivate::load_sys()
 
 bool QLibraryPrivate::unload_sys()
 {
-#if !defined(QT_NO_DYNAMIC_LIBRARY)
-#  if defined(QT_HPUX_LD)
+#if defined(QT_HPUX_LD)
     if (shl_unload((shl_t)pHnd)) {
-#  else
+#else
     if (dlclose(pHnd)) {
-#  endif
-#  if defined (Q_OS_QNX)              // Workaround until fixed in QNX; fixes crash in
+#endif
+#if defined (Q_OS_QNX)                // Workaround until fixed in QNX; fixes crash in
         char *error = dlerror();      // QtDeclarative auto test "qqmlenginecleanup" for instance
         if (!qstrcmp(error, "Shared objects still referenced")) // On QNX that's only "informative"
             return true;
-        errorString = QLibrary::tr("Cannot unload library %1: %2").arg(fileName)
-                                                                  .arg(QLatin1String(error));
-#  else
-        errorString = QLibrary::tr("Cannot unload library %1: %2").arg(fileName).arg(qdlerror());
-#  endif
+        errorString = QLibrary::tr("Cannot unload library %1: %2").arg(fileName,
+                                                                       QLatin1String(error));
+#else
+        errorString = QLibrary::tr("Cannot unload library %1: %2").arg(fileName, qdlerror());
+#endif
         return false;
     }
-#endif
     errorString.clear();
     return true;
 }
 
-#if defined(Q_OS_LINUX) && !defined(QT_NO_DYNAMIC_LIBRARY)
+#if defined(Q_OS_LINUX)
 Q_CORE_EXPORT QFunctionPointer qt_linux_find_symbol_sys(const char *symbol)
 {
     return QFunctionPointer(dlsym(RTLD_DEFAULT, symbol));
@@ -308,25 +289,16 @@ Q_CORE_EXPORT QFunctionPointer qt_mac_resolve_sys(void *handle, const char *symb
 
 QFunctionPointer QLibraryPrivate::resolve_sys(const char* symbol)
 {
-#if defined(QT_AOUT_UNDERSCORE)
-    // older a.out systems add an underscore in front of symbols
-    char* undrscr_symbol = new char[strlen(symbol)+2];
-    undrscr_symbol[0] = '_';
-    strcpy(undrscr_symbol+1, symbol);
-    QFunctionPointer address = QFunctionPointer(dlsym(pHnd, undrscr_symbol));
-    delete [] undrscr_symbol;
-#elif defined(QT_HPUX_LD)
+#if defined(QT_HPUX_LD)
     QFunctionPointer address = 0;
     if (shl_findsym((shl_t*)&pHnd, symbol, TYPE_UNDEFINED, &address) < 0)
         address = 0;
-#elif defined (QT_NO_DYNAMIC_LIBRARY)
-    QFunctionPointer address = 0;
 #else
     QFunctionPointer address = QFunctionPointer(dlsym(pHnd, symbol));
 #endif
     if (!address) {
         errorString = QLibrary::tr("Cannot resolve symbol \"%1\" in %2: %3").arg(
-            QString::fromLatin1(symbol)).arg(fileName).arg(qdlerror());
+            QString::fromLatin1(symbol), fileName, qdlerror());
     } else {
         errorString.clear();
     }
@@ -334,5 +306,3 @@ QFunctionPointer QLibraryPrivate::resolve_sys(const char* symbol)
 }
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_LIBRARY

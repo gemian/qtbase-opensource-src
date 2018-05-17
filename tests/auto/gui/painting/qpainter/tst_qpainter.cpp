@@ -39,14 +39,13 @@
 #include <qimage.h>
 #include <qthread.h>
 #include <limits.h>
-#if !defined(Q_OS_WINCE)
 #include <math.h>
-#endif
 #include <qpaintengine.h>
 #ifndef QT_NO_WIDGETS
 #include <qdesktopwidget.h>
 #endif
 #include <qpixmap.h>
+#include <qrandom.h>
 
 #include <private/qdrawhelper_p.h>
 #include <qpainter.h>
@@ -297,6 +296,16 @@ private slots:
 
     void QTBUG50153_drawImage_assert();
 
+    void rotateImage_data();
+    void rotateImage();
+
+    void QTBUG56252();
+
+    void blendNullRGB32();
+    void toRGB64();
+
+    void fillPolygon();
+
 private:
     void fillData();
     void setPenColor(QPainter& p);
@@ -391,51 +400,6 @@ void tst_QPainter::cleanupTestCase()
     QFile::remove(QLatin1String("foo.png"));
 }
 
-static const char* const maskSource_data[] = {
-"16 13 6 1",
-". c None",
-"d c #000000",
-"# c #999999",
-"c c #cccccc",
-"b c #ffff00",
-"a c #ffffff",
-"...#####........",
-"..#aaaaa#.......",
-".#abcbcba######.",
-".#acbcbcaaaaaa#d",
-".#abcbcbcbcbcb#d",
-"#############b#d",
-"#aaaaaaaaaa##c#d",
-"#abcbcbcbcbbd##d",
-".#abcbcbcbcbcd#d",
-".#acbcbcbcbcbd#d",
-"..#acbcbcbcbb#dd",
-"..#############d",
-"...ddddddddddddd"};
-
-static const char* const maskResult_data[] = {
-"16 13 6 1",
-". c #ff0000",
-"d c #000000",
-"# c #999999",
-"c c #cccccc",
-"b c #ffff00",
-"a c #ffffff",
-"...#####........",
-"..#aaaaa#.......",
-".#abcbcba######.",
-".#acbcbcaaaaaa#d",
-".#abcbcbcbcbcb#d",
-"#############b#d",
-"#aaaaaaaaaa##c#d",
-"#abcbcbcbcbbd##d",
-".#abcbcbcbcbcd#d",
-".#acbcbcbcbcbd#d",
-"..#acbcbcbcbb#dd",
-"..#############d",
-"...ddddddddddddd"};
-
-
 #ifndef QT_NO_WIDGETS
 void tst_QPainter::drawPixmap_comp_data()
 {
@@ -496,7 +460,7 @@ void tst_QPainter::drawPixmap_comp()
     destPm.fill(c1);
     srcPm.fill(c2);
 
-#if defined(Q_DEAD_CODE_FROM_QT4_X11)
+#if 0 // Used to be included in Qt4 for Q_WS_X11
     if (!destPm.x11PictureHandle())
         QSKIP("Requires XRender support");
 #endif
@@ -2998,6 +2962,10 @@ void fpe_steepSlopes()
 
 void fpe_radialGradients()
 {
+#if defined(Q_PROCESSOR_ARM)
+    QEXPECT_FAIL("", "Test fails for ARM (QTBUG-59961)", Continue);
+#endif
+
     FpExceptionChecker checker(FE_UNDERFLOW | FE_OVERFLOW | FE_INVALID | FE_DIVBYZERO);
 
     QImage img(21, 21, QImage::Format_ARGB32_Premultiplied);
@@ -3085,7 +3053,7 @@ void tst_QPainter::fpe_steepSlopes_data()
 
 qreal randf()
 {
-    return rand() / (RAND_MAX + 1.0);
+    return QRandomGenerator::global()->bounded(1.0);
 }
 
 QPointF randInRect(const QRectF &rect)
@@ -3547,11 +3515,9 @@ void tst_QPainter::drawImage_data()
                 continue;
             for (int odd_x = 0; odd_x <= 1; ++odd_x) {
                 for (int odd_width = 0; odd_width <= 1; ++odd_width) {
-                    QString description =
-                        QString("srcFormat %1, dstFormat %2, odd x: %3, odd width: %4")
-                            .arg(srcFormat).arg(dstFormat).arg(odd_x).arg(odd_width);
-
-                    QTest::newRow(qPrintable(description)) << (10 + odd_x) << 10 << (20 + odd_width) << 20
+                    QTest::addRow("srcFormat %d, dstFormat %d, odd x: %d, odd width: %d",
+                                  srcFormat, dstFormat, odd_x, odd_width)
+                        << (10 + odd_x) << 10 << (20 + odd_width) << 20
                         << QImage::Format(srcFormat)
                         << QImage::Format(dstFormat);
                 }
@@ -4837,6 +4803,18 @@ void tst_QPainter::blendARGBonRGB_data()
                                              << QPainter::CompositionMode_SourceIn << qRgba(255, 0, 0, 127) << 127;
     QTest::newRow("ARGB_PM source-in RGBx8888") << QImage::Format_RGBX8888 << QImage::Format_ARGB32_Premultiplied
                                                 << QPainter::CompositionMode_SourceIn << qRgba(127, 0, 0, 127) << 127;
+    QTest::newRow("ARGB over RGBA8888") << QImage::Format_RGBA8888 << QImage::Format_ARGB32
+                                        << QPainter::CompositionMode_SourceOver << qRgba(255, 0, 0, 127) << 127;
+    QTest::newRow("ARGB_PM over RGBA8888") << QImage::Format_RGBA8888 << QImage::Format_ARGB32_Premultiplied
+                                           << QPainter::CompositionMode_SourceOver << qRgba(127, 0, 0, 127) << 127;
+    QTest::newRow("ARGB source RGBA8888") << QImage::Format_RGBA8888 << QImage::Format_ARGB32
+                                          << QPainter::CompositionMode_Source << qRgba(255, 0, 0, 127) << 255;
+    QTest::newRow("ARGB_PM source RGBA8888") << QImage::Format_RGBA8888 << QImage::Format_ARGB32_Premultiplied
+                                             << QPainter::CompositionMode_Source << qRgba(127, 0, 0, 127) << 255;
+    QTest::newRow("ARGB source-in RGBA8888") << QImage::Format_RGBA8888 << QImage::Format_ARGB32
+                                             << QPainter::CompositionMode_SourceIn << qRgba(255, 0, 0, 127) << 255;
+    QTest::newRow("ARGB_PM source-in RGBA8888") << QImage::Format_RGBA8888 << QImage::Format_ARGB32_Premultiplied
+                                                << QPainter::CompositionMode_SourceIn << qRgba(127, 0, 0, 127) << 255;
     QTest::newRow("ARGB over RGB16") << QImage::Format_RGB16 << QImage::Format_ARGB32
                                      << QPainter::CompositionMode_SourceOver << qRgba(255, 0, 0, 127) << 123;
     QTest::newRow("ARGB_PM over RGB16") << QImage::Format_RGB16 << QImage::Format_ARGB32_Premultiplied
@@ -4899,7 +4877,7 @@ void tst_QPainter::blendARGBonRGB()
     painter.drawImage(0, 0, imageArgb);
     painter.end();
 
-    QCOMPARE(qRed(imageRgb.pixel(0,0)), expected_red);
+    QCOMPARE(imageRgb.pixelColor(0,0).red(), expected_red);
 }
 
 enum CosmeticStrokerPaint
@@ -5058,6 +5036,220 @@ void tst_QPainter::QTBUG50153_drawImage_assert()
         backingStorePainter.drawImage(0, 0, image);
 
         // No crash, all fine
+    }
+}
+
+void tst_QPainter::rotateImage_data()
+{
+    QTest::addColumn<QImage>("image");
+    QTest::addColumn<bool>("smooth");
+
+    QImage image(128, 128, QImage::Format_RGB32);
+    for (int y = 0; y < 128; ++y) {
+        for (int x = 0; x < 128; ++x) {
+            image.setPixel(x, y, qRgb(x + y, x + y, x + y));
+        }
+    }
+
+    QTest::newRow("fast") << image << false;
+    QTest::newRow("smooth") << image << true;
+}
+
+void tst_QPainter::rotateImage()
+{
+    QFETCH(QImage, image);
+    QFETCH(bool, smooth);
+
+    QImage dest(184, 184, QImage::Format_ARGB32_Premultiplied);
+    dest.fill(Qt::transparent);
+
+    QPainter painter(&dest);
+    QTransform transform;
+    transform.translate(92, 0);
+    transform.rotate(45);
+    painter.setTransform(transform);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, smooth);
+    painter.drawImage(0, 0, image);
+    painter.end();
+
+    QRgb lastRow = qRgba(0, 0, 0, 0);
+    for (int y = 0; y < 184; ++y) {
+        QRgb row = qRgba(0, 0, 0, 0);
+        for (int x = 0; x < 184; ++x) {
+            QRgb pixel = dest.pixel(x, y);
+            if (qAlpha(pixel) < 255)
+                continue;
+            if (qAlpha(row) == 0) {
+                row = pixel;
+            } else {
+                QCOMPARE(qRed(pixel), qGreen(pixel));
+                QCOMPARE(qGreen(pixel), qBlue(pixel));
+                QVERIFY(qAbs(qRed(row) - qRed(pixel)) <= 2);
+                QVERIFY(qAbs(qGreen(row) - qGreen(pixel)) <= 2);
+                QVERIFY(qAbs(qBlue(row) - qBlue(pixel)) <= 2);
+            }
+
+        }
+        if (qAlpha(row) && qAlpha(lastRow))
+            QVERIFY(qGray(lastRow) <= qGray(row));
+        lastRow = row;
+    }
+
+}
+
+void tst_QPainter::QTBUG56252()
+{
+    QImage sourceImage(1770, 1477, QImage::Format_RGB32);
+    QImage rotatedImage(1478, 1771, QImage::Format_RGB32);
+    QTransform transformCenter;
+    transformCenter.translate(739.0, 885.5);
+    transformCenter.rotate(270.0);
+    transformCenter.translate(-885.0, -738.5);
+    QPainter painter;
+    painter.begin(&rotatedImage);
+    painter.setTransform(transformCenter);
+    painter.drawImage(QPoint(0, 0),sourceImage);
+    painter.end();
+
+    // If no crash or illegal memory read, all is fine
+}
+
+void tst_QPainter::blendNullRGB32()
+{
+    quint32 data[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+    QImage nullImage((const uchar*)data, 16, 1,  QImage::Format_RGB32);
+    QImage image(16, 1, QImage::Format_RGB32);
+    image.fill(Qt::white);
+
+    QPainter paint(&image);
+    paint.setCompositionMode(QPainter::CompositionMode_Source);
+    paint.setOpacity(0.5);
+    paint.drawImage(0, 0, nullImage);
+    paint.end();
+
+    for (int i=0; i < image.width(); ++i)
+        QVERIFY(image.pixel(i,0) != 0xffffffff);
+}
+
+void tst_QPainter::toRGB64()
+{
+    QImage dst(10, 1, QImage::Format_BGR30);
+    QImage src(10, 1, QImage::Format_RGB16);
+    src.fill(Qt::white);
+
+    QPainter paint(&dst);
+    paint.drawImage(0, 0, src);
+    paint.end();
+
+    for (int i=0; i < dst.width(); ++i) {
+        QVERIFY(dst.pixelColor(i,0) == QColor(Qt::white));
+    }
+}
+
+void tst_QPainter::fillPolygon()
+{
+    QImage image(50, 50, QImage::Format_RGB32);
+    image.fill(Qt::white);
+
+    QPainter painter(&image);
+    QBrush brush(Qt::black, Qt::SolidPattern);
+    painter.setBrush(brush);
+
+    QPen pen(Qt::red, 0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
+    painter.setPen(pen);
+
+    const QPoint diamondpoints[5] = {
+        QPoint(-15, 0),
+        QPoint(0, -15),
+        QPoint(15, 0),
+        QPoint(0, 15),
+        QPoint(-15, 0)
+    };
+    enum { Outside1, Border1, Inside, Border2, Outside2 } state;
+
+    for (int i = 0; i < 16 ; i++)
+    {
+        for (int j = 0; j < 16 ; j++)
+        {
+            image.fill(Qt::white);
+            painter.resetTransform();
+            painter.translate(25 + i/16., 25 + j/16.);
+            painter.drawPolygon(diamondpoints, 5);
+
+            for (int x = 0; x < 50; x++) {
+                state = Outside1;
+                for (int y = 0; y < 50; y++) {
+                    QRgb c = image.pixel(x, y);
+                    switch (state) {
+                    case Outside1:
+                        if (c == QColor(Qt::red).rgb())
+                            state = Border1;
+                        else
+                            QCOMPARE(c, QColor(Qt::white).rgb());
+                        break;
+                    case Border1:
+                        if (c == QColor(Qt::black).rgb())
+                            state = Inside;
+                        else if (c == QColor(Qt::white).rgb())
+                            state = Outside2;
+                        else
+                            QCOMPARE(c, QColor(Qt::red).rgb());
+                        break;
+                    case Inside:
+                        if (c == QColor(Qt::red).rgb())
+                            state = Border2;
+                        else
+                            QCOMPARE(c, QColor(Qt::black).rgb());
+                        break;
+                    case Border2:
+                        if (c == QColor(Qt::white).rgb())
+                            state = Outside2;
+                        else
+                            QCOMPARE(c, QColor(Qt::red).rgb());
+                        break;
+                    case Outside2:
+                        QCOMPARE(c, QColor(Qt::white).rgb());
+                    }
+                }
+            }
+            for (int y = 0; y < 50; y++) {
+                state = Outside1;
+                for (int x = 0; x < 50; x++) {
+                    QRgb c = image.pixel(x, y);
+                    switch (state) {
+                    case Outside1:
+                        if (c == QColor(Qt::red).rgb())
+                            state = Border1;
+                        else
+                            QCOMPARE(c, QColor(Qt::white).rgb());
+                        break;
+                    case Border1:
+                        if (c == QColor(Qt::black).rgb())
+                            state = Inside;
+                        else if (c == QColor(Qt::white).rgb())
+                            state = Outside2;
+                        else
+                            QCOMPARE(c, QColor(Qt::red).rgb());
+                        break;
+                    case Inside:
+                        if (c == QColor(Qt::red).rgb())
+                            state = Border2;
+                        else
+                            QCOMPARE(c, QColor(Qt::black).rgb());
+                        break;
+                    case Border2:
+                        if (c == QColor(Qt::white).rgb())
+                            state = Outside2;
+                        else
+                            QCOMPARE(c, QColor(Qt::red).rgb());
+                        break;
+                    case Outside2:
+                        QCOMPARE(c, QColor(Qt::white).rgb());
+                    }
+                }
+            }
+        }
     }
 }
 

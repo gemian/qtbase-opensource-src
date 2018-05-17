@@ -40,6 +40,7 @@
 #ifndef QIMAGEWRITER_H
 #define QIMAGEWRITER_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qlist.h>
@@ -59,7 +60,8 @@ public:
     enum ImageWriterError {
         UnknownError,
         DeviceError,
-        UnsupportedFormatError
+        UnsupportedFormatError,
+        InvalidImageError
     };
 
     QImageWriter();

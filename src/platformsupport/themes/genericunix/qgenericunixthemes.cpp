@@ -38,7 +38,6 @@
 ****************************************************************************/
 
 #include "qgenericunixthemes_p.h"
-#include "../../services/genericunix/qgenericunixservices_p.h"
 
 #include "qpa/qplatformtheme_p.h"
 
@@ -50,6 +49,7 @@
 #include <QtCore/QFile>
 #include <QtCore/QDebug>
 #include <QtCore/QHash>
+#include <QtCore/QMimeDatabase>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QSettings>
 #include <QtCore/QVariant>
@@ -60,11 +60,11 @@
 #include <qpa/qplatformservices.h>
 #include <qpa/qplatformdialoghelper.h>
 #ifndef QT_NO_DBUS
-#include "QtPlatformSupport/private/qdbusplatformmenu_p.h"
-#include "QtPlatformSupport/private/qdbusmenubar_p.h"
+#include "qdbusplatformmenu_p.h"
+#include "qdbusmenubar_p.h"
 #endif
 #if !defined(QT_NO_DBUS) && !defined(QT_NO_SYSTEMTRAYICON)
-#include "QtPlatformSupport/private/qdbustrayicon_p.h"
+#include "qdbustrayicon_p.h"
 #endif
 
 #include <algorithm>
@@ -86,14 +86,6 @@ void ResourceHelper::clear()
     std::fill(palettes, palettes + QPlatformTheme::NPalettes, static_cast<QPalette *>(0));
     std::fill(fonts, fonts + QPlatformTheme::NFonts, static_cast<QFont *>(0));
 }
-
-/*!
-    \class QGenericX11ThemeQKdeTheme
-    \brief QGenericX11Theme is a generic theme implementation for X11.
-    \since 5.0
-    \internal
-    \ingroup qpa
-*/
 
 const char *QGenericUnixTheme::name = "generic";
 
@@ -120,9 +112,11 @@ static bool isDBusTrayAvailable() {
 #ifndef QT_NO_DBUS
 static bool checkDBusGlobalMenuAvailable()
 {
-    QDBusConnection connection = QDBusConnection::sessionBus();
-    QString registrarService = QStringLiteral("com.canonical.AppMenu.Registrar");
-    return connection.interface()->isServiceRegistered(registrarService);
+    const QDBusConnection connection = QDBusConnection::sessionBus();
+    static const QString registrarService = QStringLiteral("com.canonical.AppMenu.Registrar");
+    if (const auto iface = connection.interface())
+        return iface->isServiceRegistered(registrarService);
+    return false;
 }
 
 static bool isDBusGlobalMenuAvailable()
@@ -225,11 +219,37 @@ QVariant QGenericUnixTheme::themeHint(ThemeHint hint) const
     }
     case QPlatformTheme::KeyboardScheme:
         return QVariant(int(X11KeyboardScheme));
+    case QPlatformTheme::UiEffects:
+        return QVariant(int(HoverEffect));
     default:
         break;
     }
     return QPlatformTheme::themeHint(hint);
 }
+
+// Helper functions for implementing QPlatformTheme::fileIcon() for XDG icon themes.
+static QList<QSize> availableXdgFileIconSizes()
+{
+    return QIcon::fromTheme(QStringLiteral("inode-directory")).availableSizes();
+}
+
+#if QT_CONFIG(mimetype)
+static QIcon xdgFileIcon(const QFileInfo &fileInfo)
+{
+    QMimeDatabase mimeDatabase;
+    QMimeType mimeType = mimeDatabase.mimeTypeForFile(fileInfo);
+    if (!mimeType.isValid())
+        return QIcon();
+    const QString &iconName = mimeType.iconName();
+    if (!iconName.isEmpty()) {
+        const QIcon icon = QIcon::fromTheme(iconName);
+        if (!icon.isNull())
+            return icon;
+    }
+    const QString &genericIconName = mimeType.genericIconName();
+    return genericIconName.isEmpty() ? QIcon() : QIcon::fromTheme(genericIconName);
+}
+#endif
 
 #ifndef QT_NO_SETTINGS
 class QKdeThemePrivate : public QPlatformThemePrivate
@@ -238,10 +258,6 @@ public:
     QKdeThemePrivate(const QStringList &kdeDirs, int kdeVersion)
         : kdeDirs(kdeDirs)
         , kdeVersion(kdeVersion)
-        , toolButtonStyle(Qt::ToolButtonTextBesideIcon)
-        , toolBarIconSize(0)
-        , singleClick(true)
-        , wheelScrollLines(3)
     { }
 
     static QString kdeGlobals(const QString &kdeDir, int kdeVersion)
@@ -264,10 +280,15 @@ public:
     QString iconThemeName;
     QString iconFallbackThemeName;
     QStringList styleNames;
-    int toolButtonStyle;
-    int toolBarIconSize;
-    bool singleClick;
-    int wheelScrollLines;
+    int toolButtonStyle = Qt::ToolButtonTextBesideIcon;
+    int toolBarIconSize = 0;
+    bool singleClick = true;
+    bool showIconsOnPushButtons = true;
+    int wheelScrollLines = 3;
+    int doubleClickInterval = 400;
+    int startDragDist = 10;
+    int startDragTime = 500;
+    int cursorBlinkRate = 1000;
 };
 
 void QKdeThemePrivate::refresh()
@@ -303,6 +324,10 @@ void QKdeThemePrivate::refresh()
     if (singleClickValue.isValid())
         singleClick = singleClickValue.toBool();
 
+    const QVariant showIconsOnPushButtonsValue = readKdeSetting(QStringLiteral("KDE/ShowIconsOnPushButtons"), kdeDirs, kdeVersion, kdeSettings);
+    if (showIconsOnPushButtonsValue.isValid())
+        showIconsOnPushButtons = showIconsOnPushButtonsValue.toBool();
+
     const QVariant themeValue = readKdeSetting(QStringLiteral("Icons/Theme"), kdeDirs, kdeVersion, kdeSettings);
     if (themeValue.isValid())
         iconThemeName = themeValue.toString();
@@ -326,6 +351,24 @@ void QKdeThemePrivate::refresh()
     if (wheelScrollLinesValue.isValid())
         wheelScrollLines = wheelScrollLinesValue.toInt();
 
+    const QVariant doubleClickIntervalValue = readKdeSetting(QStringLiteral("KDE/DoubleClickInterval"), kdeDirs, kdeVersion, kdeSettings);
+    if (doubleClickIntervalValue.isValid())
+        doubleClickInterval = doubleClickIntervalValue.toInt();
+
+    const QVariant startDragDistValue = readKdeSetting(QStringLiteral("KDE/StartDragDist"), kdeDirs, kdeVersion, kdeSettings);
+    if (startDragDistValue.isValid())
+        startDragDist = startDragDistValue.toInt();
+
+    const QVariant startDragTimeValue = readKdeSetting(QStringLiteral("KDE/StartDragTime"), kdeDirs, kdeVersion, kdeSettings);
+    if (startDragTimeValue.isValid())
+        startDragTime = startDragTimeValue.toInt();
+
+    const QVariant cursorBlinkRateValue = readKdeSetting(QStringLiteral("KDE/CursorBlinkRate"), kdeDirs, kdeVersion, kdeSettings);
+    if (cursorBlinkRateValue.isValid()) {
+        cursorBlinkRate = cursorBlinkRateValue.toInt();
+        cursorBlinkRate = cursorBlinkRate > 0 ? qBound(200, cursorBlinkRate, 2000) : 0;
+    }
+
     // Read system font, ignore 'smallestReadableFont'
     if (QFont *systemFont = kdeFont(readKdeSetting(QStringLiteral("font"), kdeDirs, kdeVersion, kdeSettings)))
         resources.fonts[QPlatformTheme::SystemFont] = systemFont;
@@ -340,12 +383,20 @@ void QKdeThemePrivate::refresh()
         resources.fonts[QPlatformTheme::FixedFont] = fixedFont;
     }
 
+    if (QFont *menuFont = kdeFont(readKdeSetting(QStringLiteral("menuFont"), kdeDirs, kdeVersion, kdeSettings))) {
+        resources.fonts[QPlatformTheme::MenuFont] = menuFont;
+        resources.fonts[QPlatformTheme::MenuBarFont] = new QFont(*menuFont);
+    }
+
+    if (QFont *toolBarFont = kdeFont(readKdeSetting(QStringLiteral("toolBarFont"), kdeDirs, kdeVersion, kdeSettings)))
+        resources.fonts[QPlatformTheme::ToolButtonFont] = toolBarFont;
+
     qDeleteAll(kdeSettings);
 }
 
 QVariant QKdeThemePrivate::readKdeSetting(const QString &key, const QStringList &kdeDirs, int kdeVersion, QHash<QString, QSettings*> &kdeSettings)
 {
-    foreach (const QString &kdeDir, kdeDirs) {
+    for (const QString &kdeDir : kdeDirs) {
         QSettings *settings = kdeSettings.value(kdeDir);
         if (!settings) {
             const QString kdeGlobalsPath = kdeGlobals(kdeDir, kdeVersion);
@@ -478,7 +529,7 @@ QStringList QKdeThemePrivate::kdeIconThemeSearchPaths(const QStringList &kdeDirs
 {
     QStringList paths = QGenericUnixTheme::xdgIconThemePaths();
     const QString iconPath = QStringLiteral("/share/icons");
-    foreach (const QString &candidate, kdeDirs) {
+    for (const QString &candidate : kdeDirs) {
         const QFileInfo fi(candidate + iconPath);
         if (fi.isDir())
             paths.append(fi.absoluteFilePath());
@@ -493,7 +544,7 @@ QVariant QKdeTheme::themeHint(QPlatformTheme::ThemeHint hint) const
     case QPlatformTheme::UseFullScreenForPopupMenu:
         return QVariant(true);
     case QPlatformTheme::DialogButtonBoxButtonsHaveIcons:
-        return QVariant(true);
+        return QVariant(d->showIconsOnPushButtons);
     case QPlatformTheme::DialogButtonBoxLayout:
         return QVariant(QPlatformDialogHelper::KdeLayout);
     case QPlatformTheme::ToolButtonStyle:
@@ -506,6 +557,8 @@ QVariant QKdeTheme::themeHint(QPlatformTheme::ThemeHint hint) const
         return QVariant(d->iconFallbackThemeName);
     case QPlatformTheme::IconThemeSearchPaths:
         return QVariant(d->kdeIconThemeSearchPaths(d->kdeDirs));
+    case QPlatformTheme::IconPixmapSizes:
+        return QVariant::fromValue(availableXdgFileIconSizes());
     case QPlatformTheme::StyleNames:
         return QVariant(d->styleNames);
     case QPlatformTheme::KeyboardScheme:
@@ -514,10 +567,30 @@ QVariant QKdeTheme::themeHint(QPlatformTheme::ThemeHint hint) const
         return QVariant(d->singleClick);
     case QPlatformTheme::WheelScrollLines:
         return QVariant(d->wheelScrollLines);
+    case QPlatformTheme::MouseDoubleClickInterval:
+        return QVariant(d->doubleClickInterval);
+    case QPlatformTheme::StartDragTime:
+        return QVariant(d->startDragTime);
+    case QPlatformTheme::StartDragDistance:
+        return QVariant(d->startDragDist);
+    case QPlatformTheme::CursorFlashTime:
+        return QVariant(d->cursorBlinkRate);
+    case QPlatformTheme::UiEffects:
+        return QVariant(int(HoverEffect));
     default:
         break;
     }
     return QPlatformTheme::themeHint(hint);
+}
+
+QIcon QKdeTheme::fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions) const
+{
+#if QT_CONFIG(mimetype)
+    return xdgFileIcon(fileInfo);
+#else
+    Q_UNUSED(fileInfo);
+    return QIcon();
+#endif
 }
 
 const QPalette *QKdeTheme::palette(Palette type) const
@@ -657,6 +730,8 @@ QVariant QGnomeTheme::themeHint(QPlatformTheme::ThemeHint hint) const
         return QVariant(QStringLiteral("gnome"));
     case QPlatformTheme::IconThemeSearchPaths:
         return QVariant(QGenericUnixTheme::xdgIconThemePaths());
+    case QPlatformTheme::IconPixmapSizes:
+        return QVariant::fromValue(availableXdgFileIconSizes());
     case QPlatformTheme::StyleNames: {
         QStringList styleNames;
         styleNames << QStringLiteral("fusion") << QStringLiteral("windows");
@@ -666,10 +741,22 @@ QVariant QGnomeTheme::themeHint(QPlatformTheme::ThemeHint hint) const
         return QVariant(int(GnomeKeyboardScheme));
     case QPlatformTheme::PasswordMaskCharacter:
         return QVariant(QChar(0x2022));
+    case QPlatformTheme::UiEffects:
+        return QVariant(int(HoverEffect));
     default:
         break;
     }
     return QPlatformTheme::themeHint(hint);
+}
+
+QIcon QGnomeTheme::fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions) const
+{
+#if QT_CONFIG(mimetype)
+    return xdgFileIcon(fileInfo);
+#else
+    Q_UNUSED(fileInfo);
+    return QIcon();
+#endif
 }
 
 const QFont *QGnomeTheme::font(Font type) const
@@ -759,8 +846,8 @@ QStringList QGenericUnixTheme::themeNames()
                              << "MATE"
                              << "XFCE"
                              << "LXDE";
-        QList<QByteArray> desktopNames = desktopEnvironment.split(':');
-        Q_FOREACH (const QByteArray &desktopName, desktopNames) {
+        const QList<QByteArray> desktopNames = desktopEnvironment.split(':');
+        for (const QByteArray &desktopName : desktopNames) {
             if (desktopEnvironment == "KDE") {
 #ifndef QT_NO_SETTINGS
                 result.push_back(QLatin1String(QKdeTheme::name));
@@ -770,11 +857,13 @@ QStringList QGenericUnixTheme::themeNames()
                 result.push_back(QStringLiteral("gtk3"));
                 // fallback to the generic Gnome theme if loading the GTK3 theme fails
                 result.push_back(QLatin1String(QGnomeTheme::name));
+            } else {
+                // unknown, but lowercase the name (our standard practice) and
+                // remove any "x-" prefix
+                QString s = QString::fromLatin1(desktopName.toLower());
+                result.push_back(s.startsWith(QLatin1String("x-")) ? s.mid(2) : s);
             }
         }
-        const QString session = QString::fromLocal8Bit(qgetenv("DESKTOP_SESSION"));
-        if (!session.isEmpty() && session != QLatin1String("default") && !result.contains(session))
-            result.push_back(session);
     } // desktopSettingsAware
     result.append(QLatin1String(QGenericUnixTheme::name));
     return result;

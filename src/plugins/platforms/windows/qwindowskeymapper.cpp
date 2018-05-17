@@ -49,7 +49,7 @@
 #include <private/qguiapplication_p.h>
 #include <private/qhighdpiscaling_p.h>
 #include <QtGui/QKeyEvent>
-#include <QtPlatformSupport/private/qwindowsguieventdispatcher_p.h>
+#include <QtEventDispatcherSupport/private/qwindowsguieventdispatcher_p.h>
 
 #if defined(WM_APPCOMMAND)
 #  ifndef FAPPCOMMAND_MOUSE
@@ -144,13 +144,11 @@ struct KeyRecord {
 static const int QT_MAX_KEY_RECORDINGS = 64; // User has LOTS of fingers...
 struct KeyRecorder
 {
-    KeyRecorder() : nrecs(0) {}
-
     inline KeyRecord *findKey(int code, bool remove);
     inline void storeKey(int code, int ascii, int state, const QString& text);
     inline void clearKeys();
 
-    int nrecs;
+    int nrecs = 0;
     KeyRecord deleted_record; // A copy of last entry removed from records[]
     KeyRecord records[QT_MAX_KEY_RECORDINGS];
 };
@@ -507,7 +505,7 @@ static const uint CmdTbl[] = { // Multimedia keys mapping table
     Qt::Key_Open,           //  30   0x1e   APPCOMMAND_OPEN
     Qt::Key_Close,          //  31   0x1f   APPCOMMAND_CLOSE
     Qt::Key_Save,           //  32   0x20   APPCOMMAND_SAVE
-    Qt::Key_Print,          //  33   0x21   APPCOMMAND_PRINT
+    Qt::Key_Printer,        //  33   0x21   APPCOMMAND_PRINT
     Qt::Key_Undo,           //  34   0x22   APPCOMMAND_UNDO
     Qt::Key_Redo,           //  35   0x23   APPCOMMAND_REDO
     Qt::Key_Copy,           //  36   0x24   APPCOMMAND_COPY
@@ -552,34 +550,6 @@ inline quint32 winceKeyBend(quint32 keyCode)
 {
     return KeyTbl[keyCode];
 }
-
-#ifdef Q_OS_WINCE
-QT_BEGIN_INCLUDE_NAMESPACE
-int ToUnicode(UINT vk, int /*scancode*/, unsigned char* /*kbdBuffer*/, LPWSTR unicodeBuffer, int, int)
-{
-    QT_USE_NAMESPACE
-    QChar* buf = reinterpret_cast< QChar*>(unicodeBuffer);
-    if (KeyTbl[vk] == 0) {
-        buf[0] = vk;
-        return 1;
-    }
-    return 0;
-}
-
-int ToAscii(UINT vk, int scancode, unsigned char *kbdBuffer, LPWORD unicodeBuffer, int flag)
-{
-    return ToUnicode(vk, scancode, kbdBuffer, (LPWSTR) unicodeBuffer, 0, flag);
-
-}
-
-bool GetKeyboardState(unsigned char* kbuffer)
-{
-    for (int i=0; i< 256; ++i)
-        kbuffer[i] = GetAsyncKeyState(i);
-    return true;
-}
-QT_END_INCLUDE_NAMESPACE
-#endif // Q_OS_WINCE
 
 // Translate a VK into a Qt key code, or unicode character
 static inline quint32 toKeyOrUnicode(quint32 vk, quint32 scancode, unsigned char *kbdBuffer, bool *isDeadkey = 0)
@@ -731,7 +701,8 @@ void QWindowsKeyMapper::updatePossibleKeyCodes(unsigned char *kbdBuffer, quint32
     quint32 fallbackKey = winceKeyBend(vk_key);
     if (!fallbackKey || fallbackKey == Qt::Key_unknown) {
         fallbackKey = 0;
-        if (vk_key != keyLayout[vk_key].qtKey[0] && vk_key < 0x5B && vk_key > 0x2F)
+        if (vk_key != keyLayout[vk_key].qtKey[0] && vk_key != keyLayout[vk_key].qtKey[1]
+            && vk_key < 0x5B && vk_key > 0x2F)
             fallbackKey = vk_key;
     }
     keyLayout[vk_key].qtKey[8] = fallbackKey;
@@ -781,7 +752,6 @@ static void showSystemMenu(QWindow* w)
     if (!menu)
         return; // no menu for this window
 
-#ifndef Q_OS_WINCE
 #define enabled (MF_BYCOMMAND | MF_ENABLED)
 #define disabled (MF_BYCOMMAND | MF_GRAYED)
 
@@ -806,7 +776,6 @@ static void showSystemMenu(QWindow* w)
 
 #undef enabled
 #undef disabled
-#endif // !Q_OS_WINCE
     const QPoint pos = QHighDpi::toNativePixels(topLevel->geometry().topLeft(), topLevel);
     const int ret = TrackPopupMenuEx(menu,
                                TPM_LEFTALIGN  | TPM_TOPALIGN | TPM_NONOTIFY | TPM_RETURNCMD,
@@ -867,6 +836,9 @@ bool QWindowsKeyMapper::translateKeyEvent(QWindow *widget, HWND hwnd,
 bool QWindowsKeyMapper::translateMultimediaKeyEventInternal(QWindow *window, const MSG &msg)
 {
 #if defined(WM_APPCOMMAND)
+    // QTBUG-57198, do not send mouse-synthesized commands as key events in addition
+    if (GET_DEVICE_LPARAM(msg.lParam) == FAPPCOMMAND_MOUSE)
+        return false;
     const int cmd = GET_APPCOMMAND_LPARAM(msg.lParam);
     const int dwKeys = GET_KEYSTATE_LPARAM(msg.lParam);
     int state = 0;
@@ -930,6 +902,12 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, const MSG &ms
         sendExtendedPressRelease(receiver, 0, Qt::KeyboardModifier(state), scancode, vk_key, nModifiers, messageKeyText(msg), false);
         return true;
     }
+
+    // Enable Alt accelerators ("&File") on menus
+    if (msgType == WM_SYSKEYDOWN && (nModifiers & AltAny) != 0 && GetMenu(msg.hwnd) != nullptr)
+        return false;
+    if (msgType == WM_SYSKEYUP && nModifiers == 0 && GetMenu(msg.hwnd) != nullptr)
+        return false;
 
     bool result = false;
     // handle Directionality changes (BiDi) with RTL extensions
@@ -1036,6 +1014,7 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, const MSG &ms
             state |= ((msg.wParam >= '0' && msg.wParam <= '9')
                       || (msg.wParam >= VK_OEM_PLUS && msg.wParam <= VK_OEM_3))
                     ? 0 : int(Qt::KeypadModifier);
+            Q_FALLTHROUGH();
         default:
             if (uint(msg.lParam) == 0x004c0001 || uint(msg.lParam) == 0xc04c0001)
                 state |= Qt::KeypadModifier;
@@ -1188,7 +1167,6 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, const MSG &ms
                                                            modifiers, scancode, quint32(msg.wParam), nModifiers, text, false);
             result =true;
             bool store = true;
-#ifndef Q_OS_WINCE
             // Alt+<alphanumerical> go to the Win32 menu system if unhandled by Qt
             if (msgType == WM_SYSKEYDOWN && !result && a) {
                 HWND parent = GetParent(QWindowsWindow::handleOf(receiver));
@@ -1202,7 +1180,6 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, const MSG &ms
                     parent = GetParent(parent);
                 }
             }
-#endif // !Q_OS_WINCE
             if (!store)
                 key_recorder.findKey(int(msg.wParam), true);
         }
@@ -1232,7 +1209,6 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, const MSG &ms
                                                            nModifiers,
                                                            (rec ? rec->text : QString()), false);
             result = true;
-#ifndef Q_OS_WINCE
             // don't pass Alt to Windows unless we are embedded in a non-Qt window
             if (code == Qt::Key_Alt) {
                 const QWindowsContext *context = QWindowsContext::instance();
@@ -1245,7 +1221,6 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, const MSG &ms
                     parent = GetParent(parent);
                 }
             }
-#endif
         }
     }
     return result;

@@ -39,8 +39,6 @@
 
 #include "qtoolbox.h"
 
-#ifndef QT_NO_TOOLBOX
-
 #include <qapplication.h>
 #include <qeventloop.h>
 #include <qlayout.h>
@@ -117,7 +115,7 @@ public:
     void _q_buttonClicked();
     void _q_widgetDestroyed(QObject*);
 
-    const Page *page(QWidget *widget) const;
+    const Page *page(const QObject *widget) const;
     const Page *page(int index) const;
     Page *page(int index);
 
@@ -129,7 +127,7 @@ public:
     Page *currentPage;
 };
 
-const QToolBoxPrivate::Page *QToolBoxPrivate::page(QWidget *widget) const
+const QToolBoxPrivate::Page *QToolBoxPrivate::page(const QObject *widget) const
 {
     if (!widget)
         return 0;
@@ -449,11 +447,9 @@ void QToolBoxPrivate::relayout()
 void QToolBoxPrivate::_q_widgetDestroyed(QObject *object)
 {
     Q_Q(QToolBox);
-    // no verification - vtbl corrupted already
-    QWidget *p = (QWidget*)object;
 
-    const QToolBoxPrivate::Page *c = page(p);
-    if (!p || !c)
+    const QToolBoxPrivate::Page * const c = page(object);
+    if (!c)
         return;
 
     layout->removeWidget(c->sv);
@@ -736,5 +732,3 @@ QT_END_NAMESPACE
 
 #include "moc_qtoolbox.cpp"
 #include "qtoolbox.moc"
-
-#endif //QT_NO_TOOLBOX

@@ -1265,18 +1265,8 @@ void QXmlInputSource::fetchData()
         } else if (device->isOpen() || device->open(QIODevice::ReadOnly)) {
             rawData.resize(BufferSize);
             qint64 size = device->read(rawData.data(), BufferSize);
-
-            if (size != -1) {
-                // We don't want to give fromRawData() less than four bytes if we can avoid it.
-                while (size < 4) {
-                    if (!device->waitForReadyRead(-1))
-                        break;
-                    int ret = device->read(rawData.data() + size, BufferSize - size);
-                    if (ret <= 0)
-                        break;
-                    size += ret;
-                }
-            }
+            if (size == 0 && device->waitForReadyRead(-1))
+                size = device->read(rawData.data(), BufferSize);
 
             rawData.resize(qMax(qint64(0), size));
         }
@@ -1407,7 +1397,7 @@ QString QXmlInputSource::fromRawData(const QByteArray &data, bool beginning)
         QString encoding = extractEncodingDecl(d->encodingDeclChars, &needMoreText);
 
         if (!encoding.isEmpty()) {
-            if (QTextCodec *codec = QTextCodec::codecForName(encoding.toLatin1())) {
+            if (QTextCodec *codec = QTextCodec::codecForName(std::move(encoding).toLatin1())) {
                 /* If the encoding is the same, we don't have to do toUnicode() all over again. */
                 if(codec->mibEnum() != mib) {
                     delete d->encMapper;

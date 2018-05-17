@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2017 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
@@ -101,7 +101,7 @@ QOpenGLCompositorBackingStore::~QOpenGLCompositorBackingStore()
             ctx->makeCurrent(tempSurface.data());
         }
 
-        if (ctx && m_bsTextureContext && ctx->shareGroup() == m_bsTextureContext->shareGroup())
+        if (m_bsTextureContext && ctx->shareGroup() == m_bsTextureContext->shareGroup())
             glDeleteTextures(1, &m_bsTexture);
         else
             qWarning("QOpenGLCompositorBackingStore: Texture is not valid in the current context");
@@ -140,7 +140,7 @@ void QOpenGLCompositorBackingStore::updateTexture()
 
         QOpenGLContext *ctx = QOpenGLContext::currentContext();
         if (!ctx->isOpenGLES() || ctx->format().majorVersion() >= 3) {
-            foreach (const QRect &rect, m_dirty.rects()) {
+            for (const QRect &rect : m_dirty) {
                 QRect r = imageRect & rect;
                 glPixelStorei(GL_UNPACK_ROW_LENGTH, m_image.width());
                 glTexSubImage2D(GL_TEXTURE_2D, 0, r.x(), r.y(), r.width(), r.height(), GL_RGBA, GL_UNSIGNED_BYTE,
@@ -148,7 +148,7 @@ void QOpenGLCompositorBackingStore::updateTexture()
                 glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
             }
         } else {
-            foreach (const QRect &rect, m_dirty.rects()) {
+            for (const QRect &rect : m_dirty) {
                 // intersect with image rect to be sure
                 QRect r = imageRect & rect;
 
@@ -161,7 +161,7 @@ void QOpenGLCompositorBackingStore::updateTexture()
 
                 fixed |= r;
             }
-            foreach (const QRect &rect, fixed.rects()) {
+            for (const QRect &rect : fixed) {
                 // if the sub-rect is full-width we can pass the image data directly to
                 // OpenGL instead of copying, since there's no gap between scanlines
                 if (rect.width() == imageRect.width()) {
@@ -202,14 +202,13 @@ void QOpenGLCompositorBackingStore::flush(QWindow *window, const QRegion &region
 }
 
 void QOpenGLCompositorBackingStore::composeAndFlush(QWindow *window, const QRegion &region, const QPoint &offset,
-                                               QPlatformTextureList *textures, QOpenGLContext *context,
+                                               QPlatformTextureList *textures,
                                                bool translucentBackground)
 {
     // QOpenGLWidget/QQuickWidget content provided as textures. The raster content goes on top.
 
     Q_UNUSED(region);
     Q_UNUSED(offset);
-    Q_UNUSED(context);
     Q_UNUSED(translucentBackground);
 
     QOpenGLCompositor *compositor = QOpenGLCompositor::instance();
@@ -218,7 +217,7 @@ void QOpenGLCompositorBackingStore::composeAndFlush(QWindow *window, const QRegi
 
     // The compositor's context and the context to which QOpenGLWidget/QQuickWidget
     // textures belong are not the same. They share resources, though.
-    Q_ASSERT(context->shareGroup() == dstCtx->shareGroup());
+    Q_ASSERT(qt_window_private(window)->shareContext()->shareGroup() == dstCtx->shareGroup());
 
     QWindow *dstWin = compositor->targetWindow();
     if (!dstWin)
@@ -258,7 +257,7 @@ void QOpenGLCompositorBackingStore::beginPaint(const QRegion &region)
     if (m_image.hasAlphaChannel()) {
         QPainter p(&m_image);
         p.setCompositionMode(QPainter::CompositionMode_Source);
-        foreach (const QRect &r, region.rects())
+        for (const QRect &r : region)
             p.fillRect(r, Qt::transparent);
     }
 }

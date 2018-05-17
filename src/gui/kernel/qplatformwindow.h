@@ -48,6 +48,7 @@
 // source and binary incompatible with future versions of Qt.
 //
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qrect.h>
 #include <QtCore/qmargins.h>
@@ -71,24 +72,27 @@ class Q_GUI_EXPORT QPlatformWindow : public QPlatformSurface
     Q_DECLARE_PRIVATE(QPlatformWindow)
 public:
     explicit QPlatformWindow(QWindow *window);
-    virtual ~QPlatformWindow();
+    ~QPlatformWindow() override;
+
+    virtual void initialize();
 
     QWindow *window() const;
     QPlatformWindow *parent() const;
 
     QPlatformScreen *screen() const;
 
-    virtual QSurfaceFormat format() const Q_DECL_OVERRIDE;
+    virtual QSurfaceFormat format() const override;
 
     virtual void setGeometry(const QRect &rect);
     virtual QRect geometry() const;
     virtual QRect normalGeometry() const;
 
     virtual QMargins frameMargins() const;
+    virtual QMargins safeAreaMargins() const;
 
     virtual void setVisible(bool visible);
     virtual void setWindowFlags(Qt::WindowFlags flags);
-    virtual void setWindowState(Qt::WindowState state);
+    virtual void setWindowState(Qt::WindowStates state);
 
     virtual WId winId() const;
     virtual void setParent(const QPlatformWindow *window);
@@ -101,7 +105,9 @@ public:
 
     virtual bool isExposed() const;
     virtual bool isActive() const;
-    virtual bool isEmbedded(const QPlatformWindow *parentWindow = 0) const;
+    virtual bool isAncestorOf(const QPlatformWindow *child) const;
+    virtual bool isEmbedded() const;
+    virtual bool isForeignWindow() const { return window()->type() == Qt::ForeignWindow; };
     virtual QPoint mapToGlobal(const QPoint &pos) const;
     virtual QPoint mapFromGlobal(const QPoint &pos) const;
 

@@ -40,13 +40,15 @@
 #ifndef QGRAPHICSWIDGET_H
 #define QGRAPHICSWIDGET_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtGui/qfont.h>
 #include <QtWidgets/qgraphicslayoutitem.h>
 #include <QtWidgets/qgraphicsitem.h>
 #include <QtGui/qpalette.h>
 
-QT_BEGIN_NAMESPACE
+QT_REQUIRE_CONFIG(graphicsview);
 
+QT_BEGIN_NAMESPACE
 
 class QFont;
 class QFontMetrics;
@@ -56,8 +58,6 @@ class QGraphicsWidgetPrivate;
 class QGraphicsSceneResizeEvent;
 class QStyle;
 class QStyleOption;
-
-#if !defined(QT_NO_GRAPHICSVIEW)
 
 class QGraphicsWidgetPrivate;
 
@@ -237,8 +237,6 @@ private:
 
 inline void QGraphicsWidget::setGeometry(qreal ax, qreal ay, qreal aw, qreal ah)
 { setGeometry(QRectF(ax, ay, aw, ah)); }
-
-#endif
 
 QT_END_NAMESPACE
 

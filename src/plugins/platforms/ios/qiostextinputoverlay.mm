@@ -1,31 +1,37 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2017 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
 **
-** $QT_BEGIN_LICENSE:LGPL21$
+** $QT_BEGIN_LICENSE:LGPL$
 ** Commercial License Usage
 ** Licensees holding valid commercial Qt licenses may use this file in
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** GNU General Public License Usage
+** Alternatively, this file may be used under the terms of the GNU
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -110,6 +116,11 @@ static void executeBlockWithoutAnimation(Block block)
                 dispatch_async(dispatch_get_main_queue (), ^{ self.visible = YES; });
             }
         }];
+        [center addObserverForName:UIKeyboardDidHideNotification object:nil queue:nil
+            usingBlock:^(NSNotification *) {
+                self.visible = NO;
+        }];
+
     }
 
     return self;
@@ -136,7 +147,7 @@ static void executeBlockWithoutAnimation(Block block)
         // first responder, which is normally QIOSTextResponder.
         QRectF cr = qApp->inputMethod()->cursorRectangle();
         QRectF ar = qApp->inputMethod()->anchorRectangle();
-        CGRect targetRect = toCGRect(cr.united(ar));
+        CGRect targetRect = cr.united(ar).toCGRect();
         UIView *focusView = reinterpret_cast<UIView *>(qApp->focusWindow()->winId());
         [[UIMenuController sharedMenuController] setTargetRect:targetRect inView:focusView];
         [[UIMenuController sharedMenuController] setMenuVisible:YES animated:YES];
@@ -218,12 +229,6 @@ static void executeBlockWithoutAnimation(Block block)
         borderLayer.cornerRadius = cornerRadius;
         borderLayer.borderColor = [[UIColor lightGrayColor] CGColor];
         [self addSublayer:borderLayer];
-
-        if (QSysInfo::MacintoshVersion < QSysInfo::MV_IOS_7_0) {
-            // [UIView snapshotViewAfterScreenUpdates:] is available since iOS 7.0.
-            // Just silently ignore showing the loupe for older versions.
-            self.hidden = YES;
-        }
     }
 
     return self;
@@ -267,9 +272,6 @@ static void executeBlockWithoutAnimation(Block block)
 
 - (void)display
 {
-     if (QSysInfo::MacintoshVersion < QSysInfo::MV_IOS_7_0)
-         return;
-
      // Take a snapshow of the target view, magnify the area around the focal
      // point, and add the snapshow layer as a child of the container layer
      // to make it look like a loupe. Then place this layer at the position of
@@ -500,12 +502,12 @@ static void executeBlockWithoutAnimation(Block block)
         QGuiApplication::styleHints()->setCursorFlashTime(0);
         if (!_loupeLayer)
             [self createLoupe];
-        [self updateFocalPoint:fromCGPoint(_lastTouchPoint)];
+        [self updateFocalPoint:QPointF::fromCGPoint(_lastTouchPoint)];
         _loupeLayer.visible = YES;
         break;
     case UIGestureRecognizerStateChanged:
         // Tell the sub class to move the loupe to the correct position
-        [self updateFocalPoint:fromCGPoint(_lastTouchPoint)];
+        [self updateFocalPoint:QPointF::fromCGPoint(_lastTouchPoint)];
         break;
     case UIGestureRecognizerStateEnded:
         // Restore cursor blinking, and hide the loupe
@@ -530,12 +532,12 @@ static void executeBlockWithoutAnimation(Block block)
 
 - (QPointF)focalPoint
 {
-    return fromCGPoint([_loupeLayer.targetView convertPoint:_loupeLayer.focalPoint toView:_focusView]);
+    return QPointF::fromCGPoint([_loupeLayer.targetView convertPoint:_loupeLayer.focalPoint toView:_focusView]);
 }
 
 - (void)setFocalPoint:(QPointF)point
 {
-    _loupeLayer.focalPoint = [_loupeLayer.targetView convertPoint:toCGPoint(point) fromView:_focusView];
+    _loupeLayer.focalPoint = [_loupeLayer.targetView convertPoint:point.toCGPoint() fromView:_focusView];
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
@@ -552,7 +554,7 @@ static void executeBlockWithoutAnimation(Block block)
 
     // If the touch point is accepted by the sub class (e.g touch on cursor), we start a
     // press'n'hold timer that eventually will move the state to UIGestureRecognizerStateBegan.
-    if ([self acceptTouchesBegan:fromCGPoint(_firstTouchPoint)])
+    if ([self acceptTouchesBegan:QPointF::fromCGPoint(_firstTouchPoint)])
         _triggerStateBeganTimer.start();
     else
         self.state = UIGestureRecognizerStateFailed;
@@ -860,8 +862,8 @@ static void executeBlockWithoutAnimation(Block block)
 
     // Adjust handles and input rect to match the new selection
     QRectF inputRect = QGuiApplication::inputMethod()->inputItemClipRectangle();
-    CGRect cursorRect = toCGRect(QGuiApplication::inputMethod()->cursorRectangle());
-    CGRect anchorRect = toCGRect(QGuiApplication::inputMethod()->anchorRectangle());
+    CGRect cursorRect = QGuiApplication::inputMethod()->cursorRectangle().toCGRect();
+    CGRect anchorRect = QGuiApplication::inputMethod()->anchorRectangle().toCGRect();
 
     if (!_multiLine) {
         // Resize the layer a bit bigger to ensure that the handles are
@@ -870,7 +872,7 @@ static void executeBlockWithoutAnimation(Block block)
         inputRect.adjust(-margin / 2, -margin, margin / 2, margin);
     }
 
-    executeBlockWithoutAnimation(^{ _clipRectLayer.frame = toCGRect(inputRect); });
+    executeBlockWithoutAnimation(^{ _clipRectLayer.frame = inputRect.toCGRect(); });
     _cursorLayer.cursorRectangle = [self.focusView.layer convertRect:cursorRect toLayer:_clipRectLayer];
     _anchorLayer.cursorRectangle = [self.focusView.layer convertRect:anchorRect toLayer:_clipRectLayer];
     _cursorLayer.visible = YES;
@@ -938,7 +940,7 @@ static void executeBlockWithoutAnimation(Block block)
     }
 
     QRectF inputRect = QGuiApplication::inputMethod()->inputItemClipRectangle();
-    QPointF touchPos = fromCGPoint([static_cast<UITouch *>([touches anyObject]) locationInView:_focusView]);
+    QPointF touchPos = QPointF::fromCGPoint([static_cast<UITouch *>([touches anyObject]) locationInView:_focusView]);
     if (!inputRect.contains(touchPos))
         self.state = UIGestureRecognizerStateFailed;
 
@@ -947,7 +949,7 @@ static void executeBlockWithoutAnimation(Block block)
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
 {
-    QPointF touchPos = fromCGPoint([static_cast<UITouch *>([touches anyObject]) locationInView:_focusView]);
+    QPointF touchPos = QPointF::fromCGPoint([static_cast<UITouch *>([touches anyObject]) locationInView:_focusView]);
     const QTransform mapToLocal = QGuiApplication::inputMethod()->inputItemTransform().inverted();
     int cursorPosOnRelease = QInputMethod::queryFocusObject(Qt::ImCursorPosition, touchPos * mapToLocal).toInt();
 
@@ -994,7 +996,8 @@ QIOSTextInputOverlay::QIOSTextInputOverlay()
 
 QIOSTextInputOverlay::~QIOSTextInputOverlay()
 {
-    disconnect(qApp, 0, this, 0);
+    if (qApp)
+        disconnect(qApp, 0, this, 0);
 }
 
 void QIOSTextInputOverlay::updateFocusObject()

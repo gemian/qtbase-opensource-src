@@ -48,8 +48,6 @@
 #include <QtWidgets/qscrollbar.h>
 #include <QtWidgets/qstyleoption.h>
 
-#ifndef QT_NO_PRINTPREVIEWWIDGET
-
 QT_BEGIN_NAMESPACE
 
 namespace {
@@ -147,7 +145,7 @@ class GraphicsView : public QGraphicsView
 {
     Q_OBJECT
 public:
-    GraphicsView(QWidget* parent = 0)
+    GraphicsView(QWidget* parent = nullptr)
         : QGraphicsView(parent)
     {
 #ifdef Q_OS_MAC
@@ -181,7 +179,7 @@ class QPrintPreviewWidgetPrivate : public QWidgetPrivate
     Q_DECLARE_PUBLIC(QPrintPreviewWidget)
 public:
     QPrintPreviewWidgetPrivate()
-        : scene(0), curPage(1),
+        : scene(nullptr), curPage(1),
           viewMode(QPrintPreviewWidget::SinglePageView),
           zoomMode(QPrintPreviewWidget::FitInView),
           zoomFactor(1), initialized(false), fitting(true)
@@ -326,8 +324,7 @@ void QPrintPreviewWidgetPrivate::init()
     scene->setBackgroundBrush(Qt::gray);
     graphicsView->setScene(scene);
 
-    QVBoxLayout *layout = new QVBoxLayout;
-    q->setLayout(layout);
+    QVBoxLayout *layout = new QVBoxLayout(q);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(graphicsView);
 }
@@ -831,5 +828,3 @@ QT_END_NAMESPACE
 
 #include "moc_qprintpreviewwidget.cpp"
 #include "qprintpreviewwidget.moc"
-
-#endif // QT_NO_PRINTPREVIEWWIDGET

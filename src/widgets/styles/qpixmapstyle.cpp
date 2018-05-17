@@ -43,24 +43,38 @@
 #include "qpixmapstyle_p_p.h"
 
 #include <QDebug>
+#if QT_CONFIG(textedit)
 #include <QTextEdit>
+#endif
 #include <QStringBuilder>
 #include <QPainter>
 #include <QPixmapCache>
 #include <QStyleOption>
 #include <QString>
+#if QT_CONFIG(progressbar)
 #include <QProgressBar>
+#endif
+#if QT_CONFIG(slider)
 #include <QSlider>
+#endif
 #include <QEvent>
+#if QT_CONFIG(combobox)
 #include <QComboBox>
+#endif
+#if QT_CONFIG(itemviews)
 #include <QAbstractItemView>
-#include <QListView>
-#include <QTreeView>
 #include <QStyledItemDelegate>
+#endif
+#if QT_CONFIG(listview)
+#include <QListView>
+#endif
 #include <QAbstractScrollArea>
+#if QT_CONFIG(scrollbar)
 #include <QScrollBar>
-
+#endif
+#if QT_CONFIG(scroller)
 #include <qscroller.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -108,7 +122,7 @@ QPixmapStyle::~QPixmapStyle()
 void QPixmapStyle::polish(QApplication *application)
 {
     QCommonStyle::polish(application);
-#if defined(Q_DEAD_CODE_FROM_QT4_WIN)
+#if 0 // Used to be included in Qt4 for Q_WS_WIN
     QApplication::setEffectEnabled(Qt::UI_AnimateCombo, false);
 #endif
 }
@@ -129,12 +143,14 @@ void QPixmapStyle::polish(QWidget *widget)
     Q_D(QPixmapStyle);
 
     // Don't fill the interior of the QTextEdit
+#if QT_CONFIG(textedit)
     if (qobject_cast<QTextEdit*>(widget)) {
         QPalette p = widget->palette();
         p.setBrush(QPalette::Base, Qt::NoBrush);
         widget->setPalette(p);
     }
-
+#endif
+#if QT_CONFIG(progressbar)
     if (QProgressBar *pb = qobject_cast<QProgressBar*>(widget)) {
         // Center the text in the progress bar
         pb->setAlignment(Qt::AlignCenter);
@@ -143,10 +159,12 @@ void QPixmapStyle::polish(QWidget *widget)
         font.setPixelSize(d->descriptors.value(PB_HBackground).size.height()/2);
         pb->setFont(font);
     }
-
+#endif
+#if QT_CONFIG(slider)
     if (qobject_cast<QSlider*>(widget))
         widget->installEventFilter(this);
-
+#endif
+#if QT_CONFIG(combobox)
     if (QComboBox *cb = qobject_cast<QComboBox*>(widget)) {
         widget->installEventFilter(this);
         // NOTE: This will break if the private API of QComboBox changes drastically
@@ -170,29 +188,38 @@ void QPixmapStyle::polish(QWidget *widget)
             frame->setContentsMargins(pix.margins.left(), desc.margins.top(),
                                       pix.margins.right(), desc.margins.bottom());
             frame->setAttribute(Qt::WA_TranslucentBackground);
-#ifdef Q_DEAD_CODE_FROM_QT4_WIN
+#if 0 // Used to be included in Qt4 for Q_WS_WIN
             // FramelessWindowHint is needed on windows to make
             // WA_TranslucentBackground work properly
             frame->setWindowFlags(widget->windowFlags() | Qt::FramelessWindowHint);
 #endif
         }
     }
-
+#endif // QT_CONFIG(combobox)
     if (qstrcmp(widget->metaObject()->className(),"QComboBoxPrivateContainer") == 0)
         widget->installEventFilter(this);
 
+#if QT_CONFIG(scrollarea)
     if (QAbstractScrollArea *scrollArea = qobject_cast<QAbstractScrollArea*>(widget)) {
         scrollArea->viewport()->setAutoFillBackground(false);
+#if QT_CONFIG(itemviews)
         if (QAbstractItemView *view = qobject_cast<QAbstractItemView*>(scrollArea)) {
             view->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
             view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
         }
+#endif
+#if QT_CONFIG(gestures) && QT_CONFIG(scroller)
         QScroller::grabGesture(scrollArea->viewport(), QScroller::LeftMouseButtonGesture);
+#endif
     }
-
+#endif // QT_CONFIG(scrollarea)
+#if QT_CONFIG(scrollbar)
     if (qobject_cast<QScrollBar*>(widget))
         widget->setAttribute(Qt::WA_OpaquePaintEvent, false);
-
+#endif
+#if !QT_CONFIG(progressbar) && !QT_CONFIG(combobox)
+    Q_UNUSED(d);
+#endif
     QCommonStyle::polish(widget);
 }
 
@@ -209,16 +236,26 @@ void QPixmapStyle::unpolish(QApplication *application)
 */
 void QPixmapStyle::unpolish(QWidget *widget)
 {
-    if (qobject_cast<QSlider*>(widget) ||
-            qobject_cast<QComboBox*>(widget)) {
+    if (
+#if QT_CONFIG(slider)
+        qobject_cast<QSlider*>(widget)
+#else
+        false
+#endif
+#if QT_CONFIG(combobox)
+          ||  qobject_cast<QComboBox*>(widget)
+#endif
+        ) {
         widget->removeEventFilter(this);
     }
 
     if (qstrcmp(widget->metaObject()->className(),"QComboBoxPrivateContainer") == 0)
         widget->removeEventFilter(this);
 
+#if QT_CONFIG(gestures) && QT_CONFIG(scrollarea) && QT_CONFIG(scroller)
     if (QAbstractScrollArea *scrollArea = qobject_cast<QAbstractScrollArea*>(widget))
         QScroller::ungrabGesture(scrollArea->viewport());
+#endif
 
     QCommonStyle::unpolish(widget);
 }
@@ -241,10 +278,12 @@ void QPixmapStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *o
         drawLineEdit(option, painter, widget);
         break;
     case PE_Frame:
+#if QT_CONFIG(textedit)
     case PE_FrameDefaultButton:
         if (qobject_cast<const QTextEdit*>(widget))
             drawTextEdit(option, painter, widget);
         break;
+#endif
     case PE_IndicatorCheckBox:
         drawCheckBox(option, painter, widget);
         break;
@@ -252,9 +291,11 @@ void QPixmapStyle::drawPrimitive(PrimitiveElement element, const QStyleOption *o
         drawRadioButton(option, painter, widget);
         break;
     case PE_PanelItemViewItem:
+#if QT_CONFIG(listview)
         if (qobject_cast<const QListView*>(widget))
             drawPanelItemViewItem(option, painter, widget);
         else
+#endif
             QCommonStyle::drawPrimitive(element, option, painter, widget);
         break;
     default:
@@ -400,11 +441,13 @@ int QPixmapStyle::pixelMetric(PixelMetric metric, const QStyleOption *option,
     case PM_ButtonShiftVertical:
         return 0;
     case PM_DefaultFrameWidth:
+#if QT_CONFIG(textedit)
         if (qobject_cast<const QTextEdit*>(widget)) {
             const QPixmapStyleDescriptor &desc = d->descriptors.value(LE_Enabled);
             return qMax(qMax(desc.margins.left(), desc.margins.right()),
                         qMax(desc.margins.top(), desc.margins.bottom()));
         }
+#endif
         return 0;
     case PM_IndicatorWidth:
         return d->pixmaps.value(CB_Enabled).pixmap.width();
@@ -426,6 +469,7 @@ int QPixmapStyle::pixelMetric(PixelMetric metric, const QStyleOption *option,
         return qMax(qMax(pix.margins.left(), pix.margins.right()),
                     qMax(pix.margins.top(), pix.margins.bottom()));
     }
+#if QT_CONFIG(slider)
     case PM_SliderThickness:
         if (const QStyleOptionSlider *slider =
                     qstyleoption_cast<const QStyleOptionSlider*>(option)) {
@@ -466,6 +510,7 @@ int QPixmapStyle::pixelMetric(PixelMetric metric, const QStyleOption *option,
                                                 ? desc.size.height() : desc.size.width();
         }
         break;
+#endif // QT_CONFIG(slider)
     case PM_ScrollBarSliderMin:
         return 0;
     default: ;
@@ -516,7 +561,7 @@ QStyle::SubControl QPixmapStyle::hitTestComplexControl(QStyle::ComplexControl co
 bool QPixmapStyle::eventFilter(QObject *watched, QEvent *event)
 {
     Q_D(QPixmapStyle);
-
+#if QT_CONFIG(slider)
     if (QSlider *slider = qobject_cast<QSlider*>(watched)) {
         switch (event->type()) {
         case QEvent::MouseButtonPress:
@@ -527,7 +572,8 @@ bool QPixmapStyle::eventFilter(QObject *watched, QEvent *event)
         default: ;
         }
     }
-
+#endif // QT_CONFIG(slider)
+#if QT_CONFIG(combobox)
     if (QComboBox *comboBox = qobject_cast<QComboBox*>(watched)) {
         switch (event->type()) {
         case QEvent::MouseButtonPress:
@@ -548,6 +594,7 @@ bool QPixmapStyle::eventFilter(QObject *watched, QEvent *event)
         default: ;
         }
     }
+#endif // QT_CONFIG(combobox)
 
     if (qstrcmp(watched->metaObject()->className(),"QComboBoxPrivateContainer") == 0) {
         if (event->type() == QEvent::Show) {
@@ -624,10 +671,10 @@ void QPixmapStyle::drawCachedPixmap(QPixmapStyle::ControlDescriptor control, con
                                     QPainter *p) const
 {
     Q_D(const QPixmapStyle);
-    if (!d->descriptors.contains(control))
+    auto descriptor = d->descriptors.constFind(control);
+    if (descriptor == d->descriptors.constEnd())
         return;
-    const QPixmapStyleDescriptor &desc = d->descriptors.value(control);
-    const QPixmap pix = d->getCachedPixmap(control, desc, rect.size());
+    const QPixmap pix = d->getCachedPixmap(control, descriptor.value(), rect.size());
     Q_ASSERT(!pix.isNull());
     p->drawPixmap(rect, pix);
 }
@@ -697,9 +744,12 @@ void QPixmapStyle::drawLineEdit(const QStyleOption *option,
                                 QPainter *painter, const QWidget *widget) const
 {
     // Don't draw for the line edit inside a combobox
+#if QT_CONFIG(combobox)
     if (widget && qobject_cast<const QComboBox*>(widget->parentWidget()))
         return;
-
+#else
+    Q_UNUSED(widget);
+#endif
     const bool enabled = option->state & State_Enabled;
     const bool focused = option->state & State_HasFocus;
     ControlDescriptor control = enabled ? (focused ? LE_Focused : LE_Enabled) : LE_Disabled;
@@ -815,11 +865,14 @@ void QPixmapStyle::drawProgressBarFill(const QStyleOption *option,
         drawCachedPixmap(vertical ? PB_VComplete : PB_HComplete, option->rect, painter);
 
     } else {
-        if (pbar->progress == 0)
+        if (pbar->progress == pbar->minimum)
             return;
-        const int maximum = pbar->maximum;
-        const qreal ratio = qreal(vertical?option->rect.height():option->rect.width())/maximum;
-        const int progress = pbar->progress*ratio;
+        const auto totalSteps = qint64(pbar->maximum) - pbar->minimum;
+        const auto progressSteps = qint64(pbar->progress) - pbar->minimum;
+        const auto availablePixels = vertical ? option->rect.height() : option->rect.width();
+        const auto pixelsPerStep = double(availablePixels) / totalSteps;
+
+        const auto progress = static_cast<int>(progressSteps * pixelsPerStep); // width in pixels
 
         QRect optRect = option->rect;
         if (vertical) {
@@ -841,6 +894,7 @@ void QPixmapStyle::drawProgressBarFill(const QStyleOption *option,
 void QPixmapStyle::drawSlider(const QStyleOptionComplex *option,
                               QPainter *painter, const QWidget *widget) const
 {
+#if QT_CONFIG(slider)
     Q_D(const QPixmapStyle);
 
     const QStyleOptionSlider *slider = qstyleoption_cast<const QStyleOptionSlider*>(option);
@@ -890,6 +944,11 @@ void QPixmapStyle::drawSlider(const QStyleOptionComplex *option,
             painter->drawPixmap(handle, d->pixmaps.value(pix).pixmap);
         }
     }
+#else
+    Q_UNUSED(option);
+    Q_UNUSED(painter);
+    Q_UNUSED(widget);
+#endif // QT_CONFIG(slider)
 }
 
 void QPixmapStyle::drawComboBox(const QStyleOptionComplex *option,
@@ -916,6 +975,7 @@ void QPixmapStyle::drawComboBox(const QStyleOptionComplex *option,
 void QPixmapStyle::drawScrollBar(const QStyleOptionComplex *option,
                                  QPainter *painter, const QWidget *widget) const
 {
+#if QT_CONFIG(slider)
     if (const QStyleOptionSlider *slider =
                     qstyleoption_cast<const QStyleOptionSlider*>(option)) {
         // Do not draw the scrollbar
@@ -927,6 +987,11 @@ void QPixmapStyle::drawScrollBar(const QStyleOptionComplex *option,
                 ? SB_Horizontal : SB_Vertical;
         drawCachedPixmap(control, rect, painter);
     }
+#else
+    Q_UNUSED(option);
+    Q_UNUSED(painter);
+    Q_UNUSED(widget);
+#endif // QT_CONFIG(slider)
 }
 
 QSize QPixmapStyle::pushButtonSizeFromContents(const QStyleOption *option,
@@ -985,6 +1050,7 @@ QSize QPixmapStyle::sliderSizeFromContents(const QStyleOption *option,
                                            const QSize &contentsSize,
                                            const QWidget *widget) const
 {
+#if QT_CONFIG(slider)
     Q_D(const QPixmapStyle);
 
     const QStyleOptionSlider *slider = qstyleoption_cast<const QStyleOptionSlider*>(option);
@@ -1000,6 +1066,12 @@ QSize QPixmapStyle::sliderSizeFromContents(const QStyleOption *option,
         return QSize(result.width(), desc.size.height());
     else
         return QSize(desc.size.width(), result.height());
+#else // QT_CONFIG(slider)
+    Q_UNUSED(option);
+    Q_UNUSED(contentsSize);
+    Q_UNUSED(widget);
+    return QSize();
+#endif // QT_CONFIG(slider)
 }
 
 QSize QPixmapStyle::comboBoxSizeFromContents(const QStyleOption *option,
@@ -1067,6 +1139,7 @@ QRect QPixmapStyle::comboBoxSubControlRect(const QStyleOptionComplex *option,
 QRect QPixmapStyle::scrollBarSubControlRect(const QStyleOptionComplex *option,
                                             QStyle::SubControl sc, const QWidget *) const
 {
+#if QT_CONFIG(slider)
     if (const QStyleOptionSlider *slider =
                 qstyleoption_cast<const QStyleOptionSlider*>(option)) {
         int length = (slider->orientation == Qt::Horizontal)
@@ -1113,6 +1186,10 @@ QRect QPixmapStyle::scrollBarSubControlRect(const QStyleOptionComplex *option,
             }
         }
     }
+#else
+    Q_UNUSED(option);
+    Q_UNUSED(sc);
+#endif // QT_CONFIG(slider)
     return QRect();
 }
 

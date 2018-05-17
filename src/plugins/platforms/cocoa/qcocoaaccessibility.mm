@@ -41,8 +41,6 @@
 #include <QtGui/qaccessible.h>
 #include <private/qcore_mac_p.h>
 
-#include <Carbon/Carbon.h>
-
 QT_BEGIN_NAMESPACE
 
 #ifndef QT_NO_ACCESSIBILITY
@@ -359,7 +357,7 @@ id getValueAttribute(QAccessibleInterface *interface)
 {
     const QAccessible::Role qtrole = interface->role();
     if (qtrole == QAccessible::StaticText) {
-        return QCFString::toNSString(interface->text(QAccessible::Name));
+        return interface->text(QAccessible::Name).toNSString();
     }
     if (qtrole == QAccessible::EditableText) {
         if (QAccessibleTextInterface *textInterface = interface->textInterface()) {
@@ -369,7 +367,7 @@ id getValueAttribute(QAccessibleInterface *interface)
             QString text;
             if (interface->state().passwordEdit) {
                 // return round password replacement chars
-                text = QString(end, QChar(kBulletUnicode));
+                text = QString(end, QChar(0x2022));
             } else {
                 // VoiceOver will read out the entire text string at once when returning
                 // text as a value. For large text edits the size of the returned string
@@ -380,12 +378,12 @@ id getValueAttribute(QAccessibleInterface *interface)
                 //    textInterface->textAfterOffset(0, QAccessible2::SentenceBoundary, &begin, &end);
                 text = textInterface->text(begin, end);
             }
-            return QCFString::toNSString(text);
+            return text.toNSString();
         }
     }
 
     if (QAccessibleValueInterface *valueInterface = interface->valueInterface()) {
-        return QCFString::toNSString(valueInterface->currentValue().toString());
+        return valueInterface->currentValue().toString().toNSString();
     }
 
     if (interface->state().checkable) {

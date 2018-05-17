@@ -33,6 +33,9 @@
 #include <qfileinfo.h>
 #include <qsysinfo.h>
 #include <qregexp.h>
+#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT) && !defined(Q_OS_WINCE)
+#  include <qt_windows.h>
+#endif
 
 #ifdef Q_OS_UNIX
 #include <unistd.h>
@@ -42,6 +45,8 @@
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MAC) && !defined(Q_OS_ANDROID)
 #define Q_XDG_PLATFORM
 #endif
+
+#include "emulationdetector.h"
 
 // Update this when adding new enum values; update enumNames too
 static const int MaxStandardLocation = QStandardPaths::AppConfigLocation;
@@ -126,6 +131,16 @@ static const char * const enumNames[MaxStandardLocation + 1 - int(QStandardPaths
 
 void tst_qstandardpaths::initTestCase()
 {
+#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT) && !defined(Q_OS_WINCE)
+    // Disable WOW64 redirection, see testFindExecutable()
+    if (QSysInfo::buildCpuArchitecture() != QSysInfo::currentCpuArchitecture()) {
+        void *oldMode;
+        const bool disabledDisableWow64FsRedirection = Wow64DisableWow64FsRedirection(&oldMode) == TRUE;
+        if (!disabledDisableWow64FsRedirection)
+            qErrnoWarning("Wow64DisableWow64FsRedirection() failed");
+        QVERIFY(disabledDisableWow64FsRedirection);
+    }
+#endif // Q_OS_WIN && !Q_OS_WINRT && !Q_OS_WINCE
     QVERIFY2(m_localConfigTempDir.isValid(), qPrintable(m_localConfigTempDir.errorString()));
     QVERIFY2(m_globalConfigTempDir.isValid(), qPrintable(m_globalConfigTempDir.errorString()));
     QVERIFY2(m_localAppTempDir.isValid(), qPrintable(m_localAppTempDir.errorString()));
@@ -372,9 +387,10 @@ void tst_qstandardpaths::testFindExecutable_data()
     QTest::newRow("win-cmd-nosuffix")
         << QString() << QString::fromLatin1("cmd") << cmdPath;
 
-    if (QSysInfo::windowsVersion() >= QSysInfo::WV_WINDOWS8) {
+    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows8) {
         // The logo executable on Windows 8 is perfectly suited for testing that the
         // suffix mechanism is not thrown off by dots in the name.
+        // Note: Requires disabling WOW64 redirection, see initTestCase()
         const QString logo = QLatin1String("microsoft.windows.softwarelogo.showdesktop");
         const QString logoPath = cmdFi.absolutePath() + QLatin1Char('/') + logo + QLatin1String(".exe");
         QTest::newRow("win8-logo")
@@ -471,14 +487,24 @@ void tst_qstandardpaths::testCustomRuntimeDirectory()
     EnvVarRestorer restorer;
 
     // When $XDG_RUNTIME_DIR points to a directory with wrong ownership, QStandardPaths should warn
-    qputenv("XDG_RUNTIME_DIR", QFile::encodeName("/tmp"));
+    QByteArray rootOwnedFileName = "/tmp";
+    if (EmulationDetector::isRunningArmOnX86()) {
+        // Directory "tmp" under toolchain sysroot is detected by qemu and has same uid as current user.
+        // Try /opt instead, it might not be located in the sysroot.
+        QFileInfo rootOwnedFile = QFileInfo(QString::fromLatin1(rootOwnedFileName));
+        if (rootOwnedFile.ownerId() == ::geteuid()) {
+            rootOwnedFileName = "/opt";
+        }
+    }
+    qputenv("XDG_RUNTIME_DIR", QFile::encodeName(rootOwnedFileName));
+
     // It's very unlikely that /tmp is 0600 or that we can chmod it
     // The call below outputs
     //   "QStandardPaths: wrong ownership on runtime directory /tmp, 0 instead of $UID"
     // but we can't reliably expect that it's owned by uid 0, I think.
     const uid_t uid = geteuid();
     QTest::ignoreMessage(QtWarningMsg,
-            qPrintable(QString::fromLatin1("QStandardPaths: wrong ownership on runtime directory /tmp, 0 instead of %1").arg(uid)));
+            qPrintable(QString::fromLatin1("QStandardPaths: wrong ownership on runtime directory " + rootOwnedFileName + ", 0 instead of %1").arg(uid)));
     const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     QVERIFY2(runtimeDir.isEmpty(), qPrintable(runtimeDir));
 

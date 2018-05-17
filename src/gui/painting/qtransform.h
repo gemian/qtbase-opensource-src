@@ -39,6 +39,7 @@
 #ifndef QTRANSFORM_H
 #define QTRANSFORM_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtGui/qmatrix.h>
 #include <QtGui/qpainterpath.h>
 #include <QtGui/qpolygon.h>
@@ -77,14 +78,14 @@ public:
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     // ### Qt 6: remove; the compiler-generated ones are fine!
     QTransform &operator=(QTransform &&other) Q_DECL_NOTHROW // = default
-    { memcpy(this, &other, sizeof(QTransform)); return *this; }
+    { memcpy(static_cast<void *>(this), static_cast<void *>(&other), sizeof(QTransform)); return *this; }
     QTransform &operator=(const QTransform &) Q_DECL_NOTHROW; // = default
     QTransform(QTransform &&other) Q_DECL_NOTHROW // = default
         : affine(Qt::Uninitialized)
-    { memcpy(this, &other, sizeof(QTransform)); }
+    { memcpy(static_cast<void *>(this), static_cast<void *>(&other), sizeof(QTransform)); }
     QTransform(const QTransform &other) Q_DECL_NOTHROW // = default
         : affine(Qt::Uninitialized)
-    { memcpy(this, &other, sizeof(QTransform)); }
+    { memcpy(static_cast<void *>(this), static_cast<const void *>(&other), sizeof(QTransform)); }
 #endif
 
     bool isAffine() const;
@@ -115,9 +116,9 @@ public:
                    qreal m21, qreal m22, qreal m23,
                    qreal m31, qreal m32, qreal m33);
 
-    QTransform inverted(bool *invertible = Q_NULLPTR) const Q_REQUIRED_RESULT;
-    QTransform adjoint() const Q_REQUIRED_RESULT;
-    QTransform transposed() const Q_REQUIRED_RESULT;
+    Q_REQUIRED_RESULT QTransform inverted(bool *invertible = Q_NULLPTR) const;
+    Q_REQUIRED_RESULT QTransform adjoint() const;
+    Q_REQUIRED_RESULT QTransform transposed() const;
 
     QTransform &translate(qreal dx, qreal dy);
     QTransform &scale(qreal sx, qreal sy);
@@ -290,6 +291,10 @@ inline qreal QTransform::dy() const
     return affine._dy;
 }
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_CLANG("-Wfloat-equal")
+QT_WARNING_DISABLE_GCC("-Wfloat-equal")
+
 inline QTransform &QTransform::operator*=(qreal num)
 {
     if (num == 1.)
@@ -346,6 +351,8 @@ inline QTransform &QTransform::operator-=(qreal num)
     m_dirty     = TxProject;
     return *this;
 }
+
+QT_WARNING_POP
 
 inline bool qFuzzyCompare(const QTransform& t1, const QTransform& t2)
 {

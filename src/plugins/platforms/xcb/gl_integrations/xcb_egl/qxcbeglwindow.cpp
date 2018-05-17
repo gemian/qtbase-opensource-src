@@ -41,8 +41,8 @@
 
 #include "qxcbeglintegration.h"
 
-#include <QtPlatformSupport/private/qeglconvenience_p.h>
-#include <QtPlatformSupport/private/qxlibeglintegration_p.h>
+#include <QtEglSupport/private/qeglconvenience_p.h>
+#include <QtEglSupport/private/qxlibeglintegration_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -65,7 +65,7 @@ void QXcbEglWindow::resolveFormat(const QSurfaceFormat &format)
     m_format = q_glFormatFromConfig(m_glIntegration->eglDisplay(), m_config, format);
 }
 
-#ifdef XCB_USE_XLIB
+#if QT_CONFIG(xcb_xlib)
 const xcb_visualtype_t *QXcbEglWindow::createVisual()
 {
     QXcbScreen *scr = xcbScreen();

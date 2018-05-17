@@ -31,12 +31,15 @@
 #include <QtGui/QOpenGLFunctions>
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QPainter>
+#include <private/qguiapplication_p.h>
+#include <qpa/qplatformintegration.h>
 
 class tst_QOpenGLWindow : public QObject
 {
     Q_OBJECT
 
 private slots:
+    void initTestCase();
     void create();
     void basic();
     void painter();
@@ -44,6 +47,12 @@ private slots:
     void partial();
     void underOver();
 };
+
+void tst_QOpenGLWindow::initTestCase()
+{
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::OpenGL))
+        QSKIP("OpenGL is not supported on this platform.");
+}
 
 void tst_QOpenGLWindow::create()
 {
@@ -53,7 +62,7 @@ void tst_QOpenGLWindow::create()
     w.resize(640, 480);
     w.show();
 
-    QTest::qWaitForWindowExposed(&w);
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
 
     QVERIFY(w.isValid());
 }
@@ -102,7 +111,7 @@ void tst_QOpenGLWindow::basic()
     w.reset();
     w.resize(640, 480);
     w.show();
-    QTest::qWaitForWindowExposed(&w);
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
 
     // Check that the virtuals are invoked.
     QCOMPARE(w.initCount, 1);
@@ -161,7 +170,7 @@ void tst_QOpenGLWindow::painter()
     PainterWindow w;
     w.resize(400, 400);
     w.show();
-    QTest::qWaitForWindowExposed(&w);
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
 
     QCOMPARE(w.img.size(), w.size() * w.devicePixelRatio());
     QVERIFY(w.img.pixel(QPoint(5, 5) * w.devicePixelRatio()) == qRgb(0, 0, 255));
@@ -203,7 +212,7 @@ void tst_QOpenGLWindow::partial()
     PartialPainterWindow w(u);
     w.resize(800, 400);
     w.show();
-    QTest::qWaitForWindowExposed(&w);
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
 
     // Add a couple of small blue rects.
     for (int i = 0; i < 10; ++i) {
@@ -276,7 +285,7 @@ void tst_QOpenGLWindow::underOver()
     PaintUnderOverWindow w;
     w.resize(400, 400);
     w.show();
-    QTest::qWaitForWindowExposed(&w);
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
 
     // under -> paint -> over -> under -> paint -> ... is the only acceptable sequence
     QCOMPARE(w.m_state, PaintUnderOverWindow::PaintOver);

@@ -43,16 +43,26 @@
 
 #include "qaction.h"
 #include "qapplication.h"
+#if QT_CONFIG(groupbox)
 #include "qgroupbox.h"
+#endif
+#if QT_CONFIG(label)
 #include "qlabel.h"
+#endif
 #include "qtooltip.h"
+#if QT_CONFIG(whatsthis)
 #include "qwhatsthis.h"
+#endif
 #include "qwidget.h"
 #include "qdebug.h"
 #include <qmath.h>
+#if QT_CONFIG(rubberband)
 #include <QRubberBand>
+#endif
 #include <QFocusFrame>
+#if QT_CONFIG(menu)
 #include <QMenu>
+#endif
 #include <QtWidgets/private/qwidget_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -64,7 +74,7 @@ static QList<QWidget*> childWidgets(const QWidget *widget)
         QWidget *w = qobject_cast<QWidget *>(o);
         if (w && !w->isWindow()
             && !qobject_cast<QFocusFrame*>(w)
-#if !defined(QT_NO_MENU)
+#if QT_CONFIG(menu)
             && !qobject_cast<QMenu*>(w)
 #endif
             && w->objectName() != QLatin1String("qt_rubberband")
@@ -81,7 +91,7 @@ static QString buddyString(const QWidget *widget)
     QWidget *parent = widget->parentWidget();
     if (!parent)
         return QString();
-#ifndef QT_NO_SHORTCUT
+#if QT_CONFIG(shortcut) && QT_CONFIG(label)
     for (QObject *o : parent->children()) {
         QLabel *label = qobject_cast<QLabel*>(o);
         if (label && label->buddy() == widget)
@@ -89,7 +99,7 @@ static QString buddyString(const QWidget *widget)
     }
 #endif
 
-#ifndef QT_NO_GROUPBOX
+#if QT_CONFIG(groupbox)
     QGroupBox *groupbox = qobject_cast<QGroupBox*>(parent);
     if (groupbox)
         return groupbox->title();
@@ -142,9 +152,13 @@ QString qt_accStripAmp(const QString &text)
 
 QString qt_accHotKey(const QString &text)
 {
+#ifndef QT_NO_SHORTCUT
     int ampIndex = qt_accAmpIndex(text);
     if (ampIndex != -1)
         return QKeySequence(Qt::ALT).toString(QKeySequence::NativeText) + text.at(ampIndex + 1);
+#else
+    Q_UNUSED(text)
+#endif
 
     return QString();
 }
@@ -307,7 +321,7 @@ QAccessibleWidget::relations(QAccessible::Relation match /*= QAccessible::AllRel
     if (match & QAccessible::Label) {
         const QAccessible::Relation rel = QAccessible::Label;
         if (QWidget *parent = widget()->parentWidget()) {
-#ifndef QT_NO_SHORTCUT
+#if QT_CONFIG(shortcut) && QT_CONFIG(label)
             // first check for all siblings that are labels to us
             // ideally we would go through all objects and check, but that
             // will be too expensive
@@ -321,7 +335,7 @@ QAccessibleWidget::relations(QAccessible::Relation match /*= QAccessible::AllRel
                 }
             }
 #endif
-#ifndef QT_NO_GROUPBOX
+#if QT_CONFIG(groupbox)
             QGroupBox *groupbox = qobject_cast<QGroupBox*>(parent);
             if (groupbox && !groupbox->title().isEmpty()) {
                 QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(groupbox);
@@ -430,7 +444,7 @@ QString QAccessibleWidget::text(QAccessible::Text t) const
 #endif
         break;
     case QAccessible::Help:
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
         str = widget()->whatsThis();
 #endif
         break;

@@ -35,6 +35,8 @@
 #include <qset.h>
 #include <qstring.h>
 
+#include <set>
+
 QT_BEGIN_NAMESPACE
 
 class QTextStream;
@@ -52,7 +54,6 @@ struct WriteIncludes : public TreeWalker
     void acceptLayout(DomLayout *node) Q_DECL_OVERRIDE;
     void acceptSpacer(DomSpacer *node) Q_DECL_OVERRIDE;
     void acceptProperty(DomProperty *node) Q_DECL_OVERRIDE;
-    void acceptWidgetScripts(const DomScripts &, DomWidget *, const DomWidgets &) Q_DECL_OVERRIDE;
 
 //
 // custom widgets
@@ -66,18 +67,15 @@ struct WriteIncludes : public TreeWalker
     void acceptIncludes(DomIncludes *node) Q_DECL_OVERRIDE;
     void acceptInclude(DomInclude *node) Q_DECL_OVERRIDE;
 
-    bool scriptsActivated() const { return m_scriptsActivated; }
-
 private:
     void add(const QString &className, bool determineHeader = true, const QString &header = QString(), bool global = false);
 
 private:
-    typedef QMap<QString, bool> OrderedSet;
+    typedef std::set<QString> OrderedSet;
     void insertIncludeForClass(const QString &className, QString header = QString(), bool global = false);
     void insertInclude(const QString &header, bool global);
     void writeHeaders(const OrderedSet &headers, bool global);
     QString headerForClassName(const QString &className) const;
-    void activateScripts();
 
     const Uic *m_uic;
     QTextStream &m_output;
@@ -92,7 +90,6 @@ private:
     StringMap m_classToHeader;
     StringMap m_oldHeaderToNewHeader;
 
-    bool m_scriptsActivated;
     bool m_laidOut;
 };
 

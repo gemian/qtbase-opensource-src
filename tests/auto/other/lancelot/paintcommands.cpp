@@ -36,6 +36,7 @@
 #include <qtextlayout.h>
 #include <qdebug.h>
 #include <QStaticText>
+#include <private/qimage_p.h>
 
 #ifndef QT_NO_OPENGL
 #include <QOpenGLFramebufferObjectFormat>
@@ -165,7 +166,16 @@ const char *PaintCommands::imageFormatTable[] = {
     "Format_ARGB8555_Premultiplied",
     "Format_RGB888",
     "Format_RGB444",
-    "Format_ARGB4444_Premultiplied"
+    "Format_ARGB4444_Premultiplied",
+    "Format_RGBX8888",
+    "Format_RGBA8888",
+    "Format_RGBA8888_Premultiplied",
+    "Format_BGR30",
+    "Format_A2BGR30_Premultiplied",
+    "Format_RGB30",
+    "Format_A2RGB30_Premultiplied",
+    "Alpha8",
+    "Grayscale8",
 };
 
 int PaintCommands::translateEnum(const char *table[], const QString &pattern, int limit)
@@ -254,7 +264,7 @@ void PaintCommands::staticInit()
                       "path_setFillRule pathName Winding");
     DECL_PAINTCOMMAND("setBrush", command_setBrush,
                       "^setBrush\\s+(#?[\\w.:\\/]*)\\s*(\\w*)?$",
-                      "setBrush <pixmapFileName>\nsetBrush noBrush\nsetBrush <color> <brush style enum>",
+                      "setBrush <imageFileName>\nsetBrush noBrush\nsetBrush <color> <brush style enum>",
                       "setBrush white SolidPattern");
     DECL_PAINTCOMMAND("setBrushOrigin", command_setBrushOrigin,
                       "^setBrushOrigin\\s*(-?\\w*)\\s+(-?\\w*)$",
@@ -1743,13 +1753,13 @@ void PaintCommands::command_setBrush(QRegExp re)
 {
     QStringList caps = re.capturedTexts();
 
-    QPixmap pm = image_load<QPixmap>(caps.at(1));
-    if (!pm.isNull()) { // Assume pixmap
+    QImage img = image_load<QImage>(caps.at(1));
+    if (!img.isNull()) { // Assume image brush
         if (m_verboseMode)
-            printf(" -(lance) setBrush(pixmap=%s, width=%d, height=%d)\n",
-                   qPrintable(caps.at(1)), pm.width(), pm.height());
+            printf(" -(lance) setBrush(image=%s, width=%d, height=%d)\n",
+                   qPrintable(caps.at(1)), img.width(), img.height());
 
-        m_painter->setBrush(QBrush(pm));
+        m_painter->setBrush(QBrush(img));
     } else if (caps.at(1).toLower() == "nobrush") {
         m_painter->setBrush(Qt::NoBrush);
         if (m_verboseMode)
@@ -2369,6 +2379,8 @@ void PaintCommands::command_surface_begin(QRegExp re)
 #ifndef QT_NO_OPENGL
         m_default_glcontext = QOpenGLContext::currentContext();
         m_surface_glcontext = new QOpenGLContext();
+        // Pick up the format from the current context; this is especially
+        // important in order to pick the right version/profile to test.
         m_surface_glcontext->setFormat(m_default_glcontext->format());
         m_surface_glcontext->create();
         m_surface_glcontext->makeCurrent(m_default_glcontext->surface());
@@ -2384,14 +2396,20 @@ void PaintCommands::command_surface_begin(QRegExp re)
         m_painter->fillRect(QRect(0, 0, qRound(w), qRound(h)), Qt::transparent);
         m_painter->restore();
 #endif
-#ifdef Q_DEAD_CODE_FROM_QT4_X11
+#if 0 // Used to be included in Qt4 for Q_WS_X11
     } else if (m_type == WidgetType) {
         m_surface_pixmap = QPixmap(qRound(w), qRound(h));
         m_surface_pixmap.fill(Qt::transparent);
         m_painter = new QPainter(&m_surface_pixmap);
 #endif
     } else {
-        m_surface_image = QImage(qRound(w), qRound(h), QImage::Format_ARGB32_Premultiplied);
+        QImage::Format surface_format;
+        if (QImage::toPixelFormat(m_format).alphaUsage() != QPixelFormat::UsesAlpha)
+            surface_format = qt_alphaVersion(m_format);
+        else
+            surface_format = m_format;
+
+        m_surface_image = QImage(qRound(w), qRound(h), surface_format);
         m_surface_image.fill(0);
         m_painter = new QPainter(&m_surface_image);
     }
@@ -2435,7 +2453,7 @@ void PaintCommands::command_surface_end(QRegExp)
         m_painter->beginNativePainting();
         m_painter->endNativePainting();
 #endif
-#ifdef Q_DEAD_CODE_FROM_QT4_X11
+#if 0 // Used to be included in Qt4 for Q_WS_X11
     } else if (m_type == WidgetType) {
         m_painter->drawPixmap(m_surface_rect.topLeft(), m_surface_pixmap);
         m_surface_pixmap = QPixmap();

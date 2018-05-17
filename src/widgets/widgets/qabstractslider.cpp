@@ -303,9 +303,7 @@ void QAbstractSlider::setOrientation(Qt::Orientation orientation)
 
     d->orientation = orientation;
     if (!testAttribute(Qt::WA_WState_OwnSizePolicy)) {
-        QSizePolicy sp = sizePolicy();
-        sp.transpose();
-        setSizePolicy(sp);
+        setSizePolicy(sizePolicy().transposed());
         setAttribute(Qt::WA_WState_OwnSizePolicy, false);
     }
     update();
@@ -712,7 +710,7 @@ bool QAbstractSliderPrivate::scrollByDelta(Qt::Orientation orientation, Qt::Keyb
         // offset), we might end up with a fraction (e.g. scroll 1.3 lines). We can
         // only scroll whole lines, so we keep the reminder until next event.
         qreal stepsToScrollF =
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
                 QApplication::wheelScrollLines() *
 #endif
                 offset * effectiveSingleStep();
@@ -721,7 +719,7 @@ bool QAbstractSliderPrivate::scrollByDelta(Qt::Orientation orientation, Qt::Keyb
             offset_accumulated = 0;
 
         offset_accumulated += stepsToScrollF;
-#ifndef Q_DEAD_CODE_FROM_QT4_MAC
+#if 1 // Used to be excluded in Qt4 for Q_WS_MAC
         // Don't scroll more than one page in any case:
         stepsToScroll = qBound(-pageStep, int(offset_accumulated), pageStep);
 #else
@@ -761,7 +759,7 @@ bool QAbstractSliderPrivate::scrollByDelta(Qt::Orientation orientation, Qt::Keyb
 /*!
     \reimp
 */
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 void QAbstractSlider::wheelEvent(QWheelEvent * e)
 {
     Q_D(QAbstractSlider);
@@ -933,7 +931,7 @@ void QAbstractSlider::changeEvent(QEvent *ev)
             d->repeatActionTimer.stop();
             setSliderDown(false);
         }
-        // fall through...
+        Q_FALLTHROUGH();
     default:
         QWidget::changeEvent(ev);
     }

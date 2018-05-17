@@ -61,7 +61,9 @@ public:
     static bool preprocessOnly;
     QList<QByteArray> frameworks;
     QSet<QByteArray> preprocessedIncludes;
+    QHash<QByteArray, QByteArray> nonlocalIncludePathResolutionCache;
     Macros macros;
+    QByteArray resolveInclude(const QByteArray &filename, const QByteArray &relativeTo);
     Symbols preprocessed(const QByteArray &filename, QFile *device);
 
     void parseDefineArguments(Macro *m);

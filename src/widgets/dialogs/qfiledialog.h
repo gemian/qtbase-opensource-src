@@ -40,15 +40,15 @@
 #ifndef QFILEDIALOG_H
 #define QFILEDIALOG_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qurl.h>
 #include <QtWidgets/qdialog.h>
 
+QT_REQUIRE_CONFIG(filedialog);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_FILEDIALOG
 
 class QModelIndex;
 class QItemSelection;
@@ -61,7 +61,6 @@ class QAbstractProxyModel;
 class Q_WIDGETS_EXPORT QFileDialog : public QDialog
 {
     Q_OBJECT
-    Q_FLAGS(Options)
     Q_PROPERTY(ViewMode viewMode READ viewMode WRITE setViewMode)
     Q_PROPERTY(FileMode fileMode READ fileMode WRITE setFileMode)
     Q_PROPERTY(AcceptMode acceptMode READ acceptMode WRITE setAcceptMode)
@@ -96,6 +95,7 @@ public:
     };
     Q_ENUM(Option)
     Q_DECLARE_FLAGS(Options, Option)
+    Q_FLAG(Options)
 
     QFileDialog(QWidget *parent, Qt::WindowFlags f);
     explicit QFileDialog(QWidget *parent = Q_NULLPTR,
@@ -124,6 +124,7 @@ public:
     void setNameFilters(const QStringList &filters);
     QStringList nameFilters() const;
     void selectNameFilter(const QString &filter);
+    QString selectedMimeTypeFilter() const;
     QString selectedNameFilter() const;
 
 #ifndef QT_NO_MIMETYPE
@@ -310,8 +311,6 @@ inline void QFileDialog::setDirectory(const QDir &adirectory)
 { setDirectory(adirectory.absolutePath()); }
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QFileDialog::Options)
-
-#endif // QT_NO_FILEDIALOG
 
 QT_END_NAMESPACE
 

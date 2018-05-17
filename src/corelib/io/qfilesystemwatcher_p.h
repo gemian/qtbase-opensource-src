@@ -44,9 +44,9 @@
 //  W A R N I N G
 //  -------------
 //
-// This file is not part of the Qt API.  It exists for the convenience
-// of the QLibrary class.  This header file may change from
-// version to version without notice, or even be removed.
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
 //
 // We mean it.
 //
@@ -58,6 +58,7 @@
 #include <private/qobject_p.h>
 
 #include <QtCore/qstringlist.h>
+#include <QtCore/qhash.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -106,6 +107,15 @@ public:
     // private slots
     void _q_fileChanged(const QString &path, bool removed);
     void _q_directoryChanged(const QString &path, bool removed);
+
+#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+    void _q_winDriveLockForRemoval(const QString &);
+    void _q_winDriveLockForRemovalFailed(const QString &);
+    void _q_winDriveRemoved(const QString &);
+
+private:
+    QHash<QChar, QStringList> temporarilyRemovedPaths;
+#endif // Q_OS_WIN && !Q_OS_WINRT
 };
 
 

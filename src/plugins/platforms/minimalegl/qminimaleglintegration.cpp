@@ -40,17 +40,18 @@
 #include "qminimaleglintegration.h"
 
 #include "qminimaleglwindow.h"
-#include "qminimaleglbackingstore.h"
-
-#include <QtPlatformSupport/private/qgenericunixfontdatabase_p.h>
+#ifndef QT_NO_OPENGL
+# include "qminimaleglbackingstore.h"
+#endif
+#include <QtFontDatabaseSupport/private/qgenericunixfontdatabase_p.h>
 
 #if defined(Q_OS_UNIX)
-#  include <QtPlatformSupport/private/qgenericunixeventdispatcher_p.h>
+#  include <QtEventDispatcherSupport/private/qgenericunixeventdispatcher_p.h>
 #elif defined(Q_OS_WINRT)
 #  include <QtCore/private/qeventdispatcher_winrt_p.h>
 #  include <QtGui/qpa/qwindowsysteminterface.h>
 #elif defined(Q_OS_WIN)
-#  include <QtPlatformSupport/private/qwindowsguieventdispatcher_p.h>
+#  include <QtEventDispatcherSupport/private/qwindowsguieventdispatcher_p.h>
 #endif
 
 #include <qpa/qplatformwindow.h>
@@ -58,7 +59,8 @@
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QScreen>
 
-#include <QtPlatformSupport/private/qt_egl_p.h>
+// this is where EGL headers are pulled in, make sure it is last
+#include "qminimaleglscreen.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -98,6 +100,7 @@ QMinimalEglIntegration::QMinimalEglIntegration()
 QMinimalEglIntegration::~QMinimalEglIntegration()
 {
     destroyScreen(mScreen);
+    delete mFontDb;
 }
 
 bool QMinimalEglIntegration::hasCapability(QPlatformIntegration::Capability cap) const
@@ -126,13 +129,18 @@ QPlatformBackingStore *QMinimalEglIntegration::createPlatformBackingStore(QWindo
 #ifdef QEGL_EXTRA_DEBUG
     qWarning("QMinimalEglIntegration::createWindowSurface %p\n", window);
 #endif
+#ifndef QT_NO_OPENGL
     return new QMinimalEglBackingStore(window);
+#else
+    return nullptr;
+#endif
 }
-
+#ifndef QT_NO_OPENGL
 QPlatformOpenGLContext *QMinimalEglIntegration::createPlatformOpenGLContext(QOpenGLContext *context) const
 {
     return static_cast<QMinimalEglScreen *>(context->screen()->handle())->platformContext();
 }
+#endif
 
 QPlatformFontDatabase *QMinimalEglIntegration::fontDatabase() const
 {

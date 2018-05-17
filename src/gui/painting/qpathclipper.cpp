@@ -1458,25 +1458,6 @@ QPathClipper::QPathClipper(const QPainterPath &subject,
     bMask = clipPath.fillRule() == Qt::WindingFill ? ~0x0 : 0x1;
 }
 
-template <typename Iterator, typename Equality>
-Iterator qRemoveDuplicates(Iterator begin, Iterator end, Equality eq)
-{
-    if (begin == end)
-        return end;
-
-    Iterator last = begin;
-    ++begin;
-    Iterator insert = begin;
-    for (Iterator it = begin; it != end; ++it) {
-        if (!eq(*it, *last)) {
-            *insert++ = *it;
-            last = it;
-        }
-    }
-
-    return insert;
-}
-
 static void clear(QWingedEdge& list, int edge, QPathEdge::Traversal traversal)
 {
     QWingedEdge::TraversalStatus status;
@@ -1643,7 +1624,7 @@ bool QPathClipper::doClip(QWingedEdge &list, ClipperMode mode)
         y_coords << list.vertex(i)->y;
 
     std::sort(y_coords.begin(), y_coords.end());
-    y_coords.resize(qRemoveDuplicates(y_coords.begin(), y_coords.end(), fuzzyCompare) - y_coords.begin());
+    y_coords.erase(std::unique(y_coords.begin(), y_coords.end(), fuzzyCompare), y_coords.end());
 
 #ifdef QDEBUG_CLIPPER
     printf("sorted y coords:\n");
@@ -1760,7 +1741,7 @@ static bool bool_op(bool a, bool b, QPathClipper::Operation op)
     switch (op) {
     case QPathClipper::BoolAnd:
         return a && b;
-    case QPathClipper::BoolOr: // fall-through
+    case QPathClipper::BoolOr:
     case QPathClipper::Simplify:
         return a || b;
     case QPathClipper::BoolSub:
@@ -1956,7 +1937,7 @@ QPointF intersectLine(const QPointF &a, const QPointF &b, qreal t)
 {
     QLineF line(a, b);
     switch (edge) {
-    case Left: // fall-through
+    case Left:
     case Right:
         return line.pointAt((t - a.x()) / (b.x() - a.x()));
     default:
@@ -2115,7 +2096,12 @@ QPainterPath intersectPath(const QPainterPath &path, const QRectF &rect)
                 result.addPath(subPath);
         }
     }
-    return result;
+    // The algorithm above might return one side of \a rect if there was no intersection,
+    // so only return intersections that are not empty rectangles.
+    if (result.boundingRect().isEmpty())
+        return QPainterPath();
+    else
+        return result;
 }
 
 }

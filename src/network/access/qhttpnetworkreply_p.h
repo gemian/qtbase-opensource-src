@@ -50,8 +50,12 @@
 //
 // We mean it.
 //
-#include <qplatformdefs.h>
+
+#include <QtNetwork/private/qtnetworkglobal_p.h>
+
 #ifndef QT_NO_HTTP
+
+#include <qplatformdefs.h>
 
 #ifndef QT_NO_COMPRESS
 struct z_stream_s;
@@ -135,6 +139,7 @@ public:
     bool isPipeliningUsed() const;
     bool isSpdyUsed() const;
     void setSpdyWasUsed(bool spdy);
+    qint64 removedContentLength() const;
 
     bool isRedirecting() const;
 
@@ -176,6 +181,7 @@ private:
     friend class QHttpNetworkConnection;
     friend class QHttpNetworkConnectionPrivate;
     friend class QHttpNetworkConnectionChannel;
+    friend class QHttp2ProtocolHandler;
     friend class QHttpProtocolHandler;
     friend class QSpdyProtocolHandler;
 };
@@ -250,6 +256,7 @@ public:
     qint32 currentlyReceivedDataInWindow; // only for SPDY
     qint32 currentlyUploadedDataInWindow; // only for SPDY
     qint64 totallyUploadedData; // only for SPDY
+    qint64 removedContentLength;
     QPointer<QHttpNetworkConnection> connection;
     QPointer<QHttpNetworkConnectionChannel> connectionChannel;
 

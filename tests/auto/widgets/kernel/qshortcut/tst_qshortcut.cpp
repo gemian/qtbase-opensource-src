@@ -701,14 +701,14 @@ void tst_QShortcut::disabledItems()
     sendKeyEvents( Qt::CTRL+Qt::Key_M, 0 );
     QCOMPARE( currentResult, NoResult );
     if (over_330)
-        QCOMPARE( sbText, QString::null );
+        QCOMPARE( sbText, QString() );
 
     currentResult = NoResult;
     sendKeyEvents( Qt::CTRL+Qt::Key_K, 0 );
     sendKeyEvents( Qt::CTRL+Qt::Key_L, 0 );
     QCOMPARE( currentResult, Slot1Triggered );
     if (over_330)
-        QCOMPARE( sbText, QString::null );
+        QCOMPARE( sbText, QString() );
 #endif
     clearAllShortcuts();
     cut1 = 0;
@@ -1207,7 +1207,8 @@ QShortcut *tst_QShortcut::setupShortcut(QWidget *parent, const char *name, int t
 
 void tst_QShortcut::shortcutDestroyed(QObject* obj)
 {
-    shortcuts.removeAll(static_cast<QShortcut *>(obj));
+    shortcuts.erase(std::remove(shortcuts.begin(), shortcuts.end(), obj),
+                    shortcuts.end());
 }
 
 void tst_QShortcut::sendKeyEvents(int k1, QChar c1, int k2, QChar c2, int k3, QChar c3, int k4, QChar c4)

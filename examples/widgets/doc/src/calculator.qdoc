@@ -29,11 +29,13 @@
     \example widgets/calculator
     \title Calculator Example
     \ingroup examples-widgets
+    \ingroup examples-layout
     \brief The example shows how to use signals and slots to implement the
     functionality of a calculator widget, and how to use QGridLayout
     to place child widgets in a grid.
 
-    \image calculator-example.png Screenshot of the Calculator example
+    \borderedimage calculator-example.png
+    \caption Screenshot of the Calculator example
 
     The example consists of two classes:
 
@@ -261,7 +263,7 @@
 
     \snippet widgets/calculator/calculator.cpp 20
 
-    Like in \c additiveOperatorClicked(), we start by handing any
+    Like in \c additiveOperatorClicked(), we start by handling any
     pending multiplicative and additive operators. Then we display \c
     sumSoFar and reset the variable to zero. Resetting the variable
     to zero is necessary to avoid counting the value twice.
@@ -370,6 +372,7 @@
     QSizePolicy::Expanding in the constructor and if we didn't
     reimplement QWidget::sizeHint().
 
-    \image calculator-ugly.png The Calculator example with default size policies and size hints
+    \borderedimage calculator-ugly.png
+    \caption The Calculator example with default size policies and size hints
 
 */

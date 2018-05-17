@@ -1,4 +1,9 @@
 option(host_build)
+!force_bootstrap {
+    include($$OUT_PWD/../../corelib/qtcore-config.pri)
+    !qtConfig(commandlineparser): \
+        CONFIG += force_bootstrap
+}
 QT = core-private
 force_bootstrap: QT += bootstrap_dbus-private
 else: QT += dbus-private
@@ -7,4 +12,5 @@ QMAKE_CXXFLAGS += $$QT_HOST_CFLAGS_DBUS
 
 SOURCES = qdbusxml2cpp.cpp
 
+QMAKE_TARGET_DESCRIPTION = "Qt D-Bus XML to C++ Compiler"
 load(qt_tool)

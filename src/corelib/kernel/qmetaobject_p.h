@@ -111,7 +111,13 @@ enum MetaObjectFlags {
 
 enum MetaDataFlags {
     IsUnresolvedType = 0x80000000,
-    TypeNameIndexMask = 0x7FFFFFFF
+    TypeNameIndexMask = 0x7FFFFFFF,
+    IsUnresolvedSignal = 0x70000000
+};
+
+enum EnumFlags {
+    EnumIsFlag = 0x1,
+    EnumIsScoped = 0x2
 };
 
 extern int qMetaTypeTypeInternal(const char *);
@@ -138,21 +144,17 @@ public:
     }
     bool operator==(const QArgumentType &other) const
     {
-        if (_type)
+        if (_type && other._type)
             return _type == other._type;
-        else if (other._type)
-            return false;
         else
-            return _name == other._name;
+            return name() == other.name();
     }
     bool operator!=(const QArgumentType &other) const
     {
-        if (_type)
+        if (_type && other._type)
             return _type != other._type;
-        else if (other._type)
-            return true;
         else
-            return _name != other._name;
+            return name() != other.name();
     }
 
 private:
@@ -168,6 +170,7 @@ class QMutex;
 
 struct QMetaObjectPrivate
 {
+    // revision 7 is Qt 5.0 everything lower is not supported
     enum { OutputRevision = 7 }; // Used by moc, qmetaobjectbuilder and qdbus
 
     int revision;
@@ -176,12 +179,9 @@ struct QMetaObjectPrivate
     int methodCount, methodData;
     int propertyCount, propertyData;
     int enumeratorCount, enumeratorData;
-    int constructorCount, constructorData; //since revision 2
-    int flags; //since revision 3
-    int signalCount; //since revision 4
-    // revision 5 introduces changes in normalized signatures, no new members
-    // revision 6 added qt_static_metacall as a member of each Q_OBJECT and inside QMetaObject itself
-    // revision 7 is Qt 5
+    int constructorCount, constructorData;
+    int flags;
+    int signalCount;
 
     static inline const QMetaObjectPrivate *get(const QMetaObject *metaobject)
     { return reinterpret_cast<const QMetaObjectPrivate*>(metaobject->d.data); }

@@ -44,7 +44,6 @@
 static inline void processEvents()
 {
     QPixmapCache::clear();
-    QApplication::flush();
     QApplication::processEvents();
     QApplication::processEvents();
 }
@@ -161,7 +160,7 @@ void tst_QGraphicsView::initTestCase()
     mView.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     mView.tryResize(100, 100);
     mView.show();
-    QTest::qWaitForWindowExposed(&mView);
+    QVERIFY(QTest::qWaitForWindowExposed(&mView));
     QTest::qWait(300);
     processEvents();
 }
@@ -401,9 +400,6 @@ void tst_QGraphicsView::chipTester_data()
 
 void tst_QGraphicsView::chipTester()
 {
-#ifdef Q_OS_WINCE_WM
-    QSKIP("WinCE WM: Fails on Windows Mobile w/o OpenGL");
-#endif
     QFETCH(bool, antialias);
     QFETCH(bool, opengl);
     QFETCH(int, operation);
@@ -413,7 +409,7 @@ void tst_QGraphicsView::chipTester()
     tester.setOpenGL(opengl);
     tester.setOperation(ChipTester::Operation(operation));
     tester.show();
-    QTest::qWaitForWindowExposed(&tester);
+    QVERIFY(QTest::qWaitForWindowExposed(&tester));
     QTest::qWait(250);
     processEvents();
 

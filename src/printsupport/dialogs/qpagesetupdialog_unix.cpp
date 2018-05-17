@@ -39,12 +39,13 @@
 
 #include "qpagesetupdialog.h"
 
-#ifndef QT_NO_PRINTDIALOG
 #include "qpagesetupdialog_unix_p.h"
 
 #include <private/qpagesetupdialog_p.h>
 #include <private/qprintdevice_p.h>
+#if QT_CONFIG(cups)
 #include <private/qcups_p.h>
+#endif
 
 #include "qpainter.h"
 #include "qprintdialog.h"
@@ -229,8 +230,8 @@ void QUnixPageSetupDialogPrivate::init()
 
 QPageSetupWidget::QPageSetupWidget(QWidget *parent)
     : QWidget(parent),
-      m_pagePreview(0),
-      m_printer(0),
+      m_pagePreview(nullptr),
+      m_printer(nullptr),
       m_outputFormat(QPrinter::PdfFormat),
       m_units(QPageLayout::Point),
       m_blockSignals(false)
@@ -238,7 +239,6 @@ QPageSetupWidget::QPageSetupWidget(QWidget *parent)
     m_ui.setupUi(this);
 
     QVBoxLayout *lay = new QVBoxLayout(m_ui.preview);
-    m_ui.preview->setLayout(lay);
     m_pagePreview = new QPagePreview(m_ui.preview);
     m_pagePreview->setPagePreviewLayout(1, 1);
 
@@ -260,21 +260,21 @@ QPageSetupWidget::QPageSetupWidget(QWidget *parent)
     initUnits();
     initPagesPerSheet();
 
-    connect(m_ui.unitCombo, SIGNAL(activated(int)), this, SLOT(unitChanged()));
+    connect(m_ui.unitCombo, QOverload<int>::of(&QComboBox::activated), this, &QPageSetupWidget::unitChanged);
 
-    connect(m_ui.pageSizeCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(pageSizeChanged()));
-    connect(m_ui.pageWidth, SIGNAL(valueChanged(double)), this, SLOT(pageSizeChanged()));
-    connect(m_ui.pageHeight, SIGNAL(valueChanged(double)), this, SLOT(pageSizeChanged()));
+    connect(m_ui.pageSizeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &QPageSetupWidget::pageSizeChanged);
+    connect(m_ui.pageWidth, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::pageSizeChanged);
+    connect(m_ui.pageHeight, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::pageSizeChanged);
 
-    connect(m_ui.leftMargin, SIGNAL(valueChanged(double)), this, SLOT(leftMarginChanged(double)));
-    connect(m_ui.topMargin, SIGNAL(valueChanged(double)), this, SLOT(topMarginChanged(double)));
-    connect(m_ui.rightMargin, SIGNAL(valueChanged(double)), this, SLOT(rightMarginChanged(double)));
-    connect(m_ui.bottomMargin, SIGNAL(valueChanged(double)), this, SLOT(bottomMarginChanged(double)));
+    connect(m_ui.leftMargin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::leftMarginChanged);
+    connect(m_ui.topMargin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::topMarginChanged);
+    connect(m_ui.rightMargin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::rightMarginChanged);
+    connect(m_ui.bottomMargin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &QPageSetupWidget::bottomMarginChanged);
 
-    connect(m_ui.portrait, SIGNAL(clicked()), this, SLOT(pageOrientationChanged()));
-    connect(m_ui.landscape, SIGNAL(clicked()), this, SLOT(pageOrientationChanged()));
+    connect(m_ui.portrait, &QRadioButton::clicked, this, &QPageSetupWidget::pageOrientationChanged);
+    connect(m_ui.landscape, &QRadioButton::clicked, this, &QPageSetupWidget::pageOrientationChanged);
 
-    connect(m_ui.pagesPerSheetCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(pagesPerSheetChanged()));
+    connect(m_ui.pagesPerSheetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &QPageSetupWidget::pagesPerSheetChanged);
 }
 
 // Init the Units combo box
@@ -294,7 +294,7 @@ void QPageSetupWidget::initUnits()
 // Init the Pages Per Sheet (n-up) combo boxes if using CUPS
 void QPageSetupWidget::initPagesPerSheet()
 {
-#if !defined(QT_NO_CUPS)
+#if QT_CONFIG(cups)
     m_ui.pagesPerSheetLayoutCombo->addItem(QPrintDialog::tr("Left to Right, Top to Bottom"),
                                            QVariant::fromValue(QCUPSSupport::LeftToRightTopToBottom));
     m_ui.pagesPerSheetLayoutCombo->addItem(QPrintDialog::tr("Left to Right, Bottom to Top"),
@@ -498,7 +498,7 @@ void QPageSetupWidget::updateWidget()
 void QPageSetupWidget::setupPrinter() const
 {
     m_printer->setPageLayout(m_pageLayout);
-#if !defined(QT_NO_CUPS)
+#if QT_CONFIG(cups)
     QCUPSSupport::PagesPerSheet pagesPerSheet = m_ui.pagesPerSheetCombo->currentData()
                                                     .value<QCUPSSupport::PagesPerSheet>();
     QCUPSSupport::PagesPerSheetLayout pagesPerSheetLayout = m_ui.pagesPerSheetLayoutCombo->currentData()
@@ -545,7 +545,7 @@ void QPageSetupWidget::pageOrientationChanged()
 
 void QPageSetupWidget::pagesPerSheetChanged()
 {
-#if !defined(QT_NO_CUPS)
+#if QT_CONFIG(cups)
     switch (m_ui.pagesPerSheetCombo->currentData().toInt()) {
     case QCUPSSupport::OnePagePerSheet:
         m_pagePreview->setPagePreviewLayout(1, 1);
@@ -642,5 +642,3 @@ int QPageSetupDialog::exec()
 QT_END_NAMESPACE
 
 #include "moc_qpagesetupdialog.cpp"
-
-#endif // QT_NO_PRINTDIALOG

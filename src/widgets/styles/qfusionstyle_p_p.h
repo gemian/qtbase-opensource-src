@@ -51,12 +51,13 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qcommonstyle.h"
 #include "qcommonstyle_p.h"
 #include <qpa/qplatformtheme.h>
 #include "private/qguiapplication_p.h"
 
-#ifndef QT_NO_STYLE_FUSION
+#if QT_CONFIG(style_fusion)
 
 QT_BEGIN_NAMESPACE
 
@@ -146,6 +147,6 @@ public:
 
 QT_END_NAMESPACE
 
-#endif // QT_NO_STYLE_FUSION
+#endif // style_fusion
 
 #endif //QFUSIONSTYLE_P_P_H

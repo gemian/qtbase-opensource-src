@@ -443,14 +443,15 @@ void QPolygon::putPoints(int index, int nPoints, const QPolygon & from, int from
 
 QRect QPolygon::boundingRect() const
 {
-    if (isEmpty())
-        return QRect(0, 0, 0, 0);
     const QPoint *pd = constData();
+    const QPoint *pe = pd + size();
+    if (pd == pe)
+        return QRect(0, 0, 0, 0);
     int minx, maxx, miny, maxy;
     minx = maxx = pd->x();
     miny = maxy = pd->y();
     ++pd;
-    for (int i = 1; i < size(); ++i) {
+    for (; pd != pe; ++pd) {
         if (pd->x() < minx)
             minx = pd->x();
         else if (pd->x() > maxx)
@@ -459,7 +460,6 @@ QRect QPolygon::boundingRect() const
             miny = pd->y();
         else if (pd->y() > maxy)
             maxy = pd->y();
-        ++pd;
     }
     return QRect(QPoint(minx,miny), QPoint(maxx,maxy));
 }
@@ -657,14 +657,15 @@ QPolygonF QPolygonF::translated(const QPointF &offset) const
 
 QRectF QPolygonF::boundingRect() const
 {
-    if (isEmpty())
-        return QRectF(0, 0, 0, 0);
     const QPointF *pd = constData();
+    const QPointF *pe = pd + size();
+    if (pd == pe)
+        return QRectF(0, 0, 0, 0);
     qreal minx, maxx, miny, maxy;
     minx = maxx = pd->x();
     miny = maxy = pd->y();
     ++pd;
-    for (int i = 1; i < size(); ++i) {
+    while (pd != pe) {
         if (pd->x() < minx)
             minx = pd->x();
         else if (pd->x() > maxx)
@@ -908,6 +909,8 @@ QPolygon QPolygon::united(const QPolygon &r) const
 
     Set operations on polygons will treat the polygons as
     areas. Non-closed polygons will be treated as implicitly closed.
+
+    \sa intersects()
 */
 
 QPolygon QPolygon::intersected(const QPolygon &r) const
@@ -937,6 +940,26 @@ QPolygon QPolygon::subtracted(const QPolygon &r) const
 }
 
 /*!
+    \since 5.10
+
+    Returns \c true if the current polygon intersects at any point the given polygon \a p.
+    Also returns \c true if the current polygon contains or is contained by any part of \a p.
+
+    Set operations on polygons will treat the polygons as
+    areas. Non-closed polygons will be treated as implicitly closed.
+
+    \sa intersected()
+*/
+
+bool QPolygon::intersects(const QPolygon &p) const
+{
+    QPainterPath subject; subject.addPolygon(*this);
+    QPainterPath clip; clip.addPolygon(p);
+
+    return subject.intersects(clip);
+}
+
+/*!
     \since 4.3
 
     Returns a polygon which is the union of this polygon and \a r.
@@ -963,6 +986,7 @@ QPolygonF QPolygonF::united(const QPolygonF &r) const
     Set operations on polygons will treat the polygons as
     areas. Non-closed polygons will be treated as implicitly closed.
 
+    \sa intersects()
 */
 
 QPolygonF QPolygonF::intersected(const QPolygonF &r) const
@@ -988,6 +1012,26 @@ QPolygonF QPolygonF::subtracted(const QPolygonF &r) const
     QPainterPath subject; subject.addPolygon(*this);
     QPainterPath clip; clip.addPolygon(r);
     return subject.subtracted(clip).toFillPolygon();
+}
+
+/*!
+    \since 5.10
+
+    Returns \c true if the current polygon intersects at any point the given polygon \a p.
+    Also returns \c true if the current polygon contains or is contained by any part of \a p.
+
+    Set operations on polygons will treat the polygons as
+    areas. Non-closed polygons will be treated as implicitly closed.
+
+    \sa intersected()
+*/
+
+bool QPolygonF::intersects(const QPolygonF &p) const
+{
+    QPainterPath subject; subject.addPolygon(*this);
+    QPainterPath clip; clip.addPolygon(p);
+
+    return subject.intersects(clip);
 }
 
 /*!

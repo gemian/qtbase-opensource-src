@@ -49,7 +49,7 @@
 // source and binary incompatible with future versions of Qt.
 //
 
-#include <QtCore/qglobal.h>
+#include <QtGui/qtguiglobal.h>
 #include <QtGui/QPixmap>
 
 QT_BEGIN_NAMESPACE
@@ -95,7 +95,6 @@ public:
     virtual ~QPlatformDrag();
 
     QDrag *currentDrag() const;
-    virtual QMimeData *platformDropData() = 0;
 
     virtual Qt::DropAction drag(QDrag *m_drag) = 0;
     virtual void cancelDrag();

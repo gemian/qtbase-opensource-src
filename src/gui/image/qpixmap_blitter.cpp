@@ -41,6 +41,7 @@
 
 #include <qpainter.h>
 #include <qimage.h>
+#include <qrandom.h>
 #include <qscreen.h>
 
 #include <private/qguiapplication_p.h>
@@ -113,10 +114,10 @@ int QBlittablePlatformPixmap::metric(QPaintDevice::PaintDeviceMetric metric) con
         return qRound(h * 25.4 / qt_defaultDpiY());
     case QPaintDevice::PdmDepth:
         return 32;
-    case QPaintDevice::PdmDpiX: // fall-through
+    case QPaintDevice::PdmDpiX:
     case QPaintDevice::PdmPhysicalDpiX:
         return qt_defaultDpiX();
-    case QPaintDevice::PdmDpiY: // fall-through
+    case QPaintDevice::PdmDpiY:
     case QPaintDevice::PdmPhysicalDpiY:
         return qt_defaultDpiY();
     case QPaintDevice::PdmDevicePixelRatio:
@@ -152,7 +153,7 @@ void QBlittablePlatformPixmap::fill(const QColor &color)
         uint pixel = qPremultiply(color.rgba());
         const QPixelLayout *layout = &qPixelLayouts[blittable()->lock()->format()];
         Q_ASSERT(layout->convertFromARGB32PM);
-        layout->convertFromARGB32PM(&pixel, &pixel, 1, layout, 0);
+        layout->convertFromARGB32PM(&pixel, &pixel, 1, 0, 0);
 
         //so premultiplied formats are supported and ARGB32 and RGB32
         blittable()->lock()->fill(pixel);
@@ -190,8 +191,8 @@ void QBlittablePlatformPixmap::fromImage(const QImage &image,
 
     uchar *mem = thisImg->bits();
     const uchar *bits = correctFormatPic.constBits();
-    int bytesCopied = 0;
-    while (bytesCopied < correctFormatPic.byteCount()) {
+    qsizetype bytesCopied = 0;
+    while (bytesCopied < correctFormatPic.sizeInBytes()) {
         memcpy(mem,bits,correctFormatPic.bytesPerLine());
         mem += thisImg->bytesPerLine();
         bits += correctFormatPic.bytesPerLine();
@@ -252,7 +253,7 @@ QImage *QBlittablePlatformPixmap::overlay()
         m_rasterOverlay->size() != QSize(w,h)){
         m_rasterOverlay = new QImage(w,h,QImage::Format_ARGB32_Premultiplied);
         m_rasterOverlay->fill(0x00000000);
-        uint color = (qrand() % 11)+7;
+        uint color = QRandomGenerator::global()->bounded(11)+7;
         m_overlayColor = QColor(Qt::GlobalColor(color));
         m_overlayColor.setAlpha(0x88);
 
@@ -298,10 +299,8 @@ QRectF QBlittablePlatformPixmap::clipAndTransformRect(const QRectF &rect) const
             if (clipData->hasRectClip) {
                 transformationRect &= clipData->clipRect;
             } else if (clipData->hasRegionClip) {
-                const QVector<QRect> rects = clipData->clipRegion.rects();
-                for (int i = 0; i < rects.size(); i++) {
-                    transformationRect &= rects.at(i);
-                }
+                for (const QRect &rect : clipData->clipRegion)
+                    transformationRect &= rect;
             }
         }
     }

@@ -45,6 +45,8 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_LOGGING_CATEGORY(lcDistanceField, "qt.distanceField");
+
 namespace
 {
     enum FillHDir
@@ -175,8 +177,8 @@ void drawTriangle(qint32 *bits, int width, int height, const QPoint *center,
     const int y2 = clip == Clip ? qBound(0, v2->y() >> 8, height) : v2->y() >> 8;
     const int yC = clip == Clip ? qBound(0, center->y() >> 8, height) : center->y() >> 8;
 
-    const int v1Frac = clip == Clip ? (y1 << 8) + 0xff - v1->y() : ~v2->y() & 0xff;
-    const int v2Frac = clip == Clip ? (y2 << 8) + 0xff - v2->y() : ~v1->y() & 0xff;
+    const int v1Frac = clip == Clip ? (y1 << 8) + 0xff - v1->y() : ~v1->y() & 0xff;
+    const int v2Frac = clip == Clip ? (y2 << 8) + 0xff - v2->y() : ~v2->y() & 0xff;
     const int centerFrac = clip == Clip ? (yC << 8) + 0xff - center->y() : ~center->y() & 0xff;
 
     int dx1 = 0, x1 = 0, dx2 = 0, x2 = 0;
@@ -434,8 +436,8 @@ static void drawPolygons(qint32 *bits, int width, int height, const QPoint *vert
                          const quint32 *indices, int indexCount, qint32 value)
 {
     Q_ASSERT(indexCount != 0);
-    Q_ASSERT(height <= 128);
-    QVarLengthArray<quint8, 16> scans[128];
+    typedef QVarLengthArray<quint16, 16> ScanLine;
+    QVarLengthArray<ScanLine, 128> scans(height);
     int first = 0;
     for (int i = 1; i < indexCount; ++i) {
         quint32 idx1 = indices[i - 1];
@@ -459,16 +461,16 @@ static void drawPolygons(qint32 *bits, int width, int height, const QPoint *vert
         for (int y = fromY; y < toY; ++y) {
             quint32 c = quint32(x >> 8);
             if (c < quint32(width))
-                scans[y].append(quint8(c));
+                scans[y].append(quint16(c));
             x += dx;
         }
     }
     for (int i = 0; i < height; ++i) {
-        quint8 *scanline = scans[i].data();
+        quint16 *scanline = scans[i].data();
         int size = scans[i].size();
         for (int j = 1; j < size; ++j) {
             int k = j;
-            quint8 value = scanline[k];
+            quint16 value = scanline[k];
             for (; k != 0 && value < scanline[k - 1]; --k)
                 scanline[k] = scanline[k - 1];
             scanline[k] = value;
@@ -476,7 +478,7 @@ static void drawPolygons(qint32 *bits, int width, int height, const QPoint *vert
         qint32 *line = bits + i * width;
         int j = 0;
         for (; j + 1 < size; j += 2) {
-            for (quint8 x = scanline[j]; x < scanline[j + 1]; ++x)
+            for (quint16 x = scanline[j]; x < scanline[j + 1]; ++x)
                 line[x] = value;
         }
         if (j < size) {
@@ -514,7 +516,7 @@ static void makeDistanceField(QDistanceFieldData *data, const QPainterPath &path
     for (int i = 0; i < imgWidth * imgHeight; ++i)
         bits[i] = exteriorColor;
 
-    const qreal angleStep = qreal(15 * 3.141592653589793238 / 180);
+    const qreal angleStep = qDegreesToRadians(qreal(15));
     const QPoint rotation(qRound(qCos(angleStep) * 0x4000),
                           qRound(qSin(angleStep) * 0x4000)); // 2:14 signed
 
@@ -736,8 +738,40 @@ static bool imageHasNarrowOutlines(const QImage &im)
     return minHThick == 1 || minVThick == 1;
 }
 
+static int QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE = 54;
+static int QT_DISTANCEFIELD_DEFAULT_SCALE = 16;
+static int QT_DISTANCEFIELD_DEFAULT_RADIUS = 80;
+static int QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT = 2000;
+
+static void initialDistanceFieldFactor()
+{
+    static bool initialized = false;
+    if (initialized)
+        return;
+    initialized = true;
+
+    if (qEnvironmentVariableIsSet("QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE")) {
+        QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE = qEnvironmentVariableIntValue("QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE");
+        qCDebug(lcDistanceField) << "set the QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE:" << QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE;
+    }
+
+    if (qEnvironmentVariableIsSet("QT_DISTANCEFIELD_DEFAULT_SCALE")) {
+        QT_DISTANCEFIELD_DEFAULT_SCALE = qEnvironmentVariableIntValue("QT_DISTANCEFIELD_DEFAULT_SCALE");
+        qCDebug(lcDistanceField) << "set the QT_DISTANCEFIELD_DEFAULT_SCALE:" << QT_DISTANCEFIELD_DEFAULT_SCALE;
+    }
+    if (qEnvironmentVariableIsSet("QT_DISTANCEFIELD_DEFAULT_RADIUS")) {
+        QT_DISTANCEFIELD_DEFAULT_RADIUS = qEnvironmentVariableIntValue("QT_DISTANCEFIELD_DEFAULT_RADIUS");
+        qDebug(lcDistanceField) << "set the QT_DISTANCEFIELD_DEFAULT_RADIUS:" << QT_DISTANCEFIELD_DEFAULT_RADIUS;
+    }
+    if (qEnvironmentVariableIsSet("QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT")) {
+        QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT = qEnvironmentVariableIntValue("QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT");
+        qCDebug(lcDistanceField) << "set the QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT:" << QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT;
+    }
+}
+
 bool qt_fontHasNarrowOutlines(QFontEngine *fontEngine)
 {
+    initialDistanceFieldFactor();
     QFontEngine *fe = fontEngine->cloneWithSize(QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE);
     if (!fe)
         return false;
@@ -757,6 +791,7 @@ bool qt_fontHasNarrowOutlines(QFontEngine *fontEngine)
 bool qt_fontHasNarrowOutlines(const QRawFont &f)
 {
     QRawFont font = f;
+    initialDistanceFieldFactor();
     font.setPixelSize(QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE);
     if (!font.isValid())
         return false;
@@ -769,6 +804,41 @@ bool qt_fontHasNarrowOutlines(const QRawFont &f)
                                                         QRawFont::PixelAntialiasing));
 }
 
+int QT_DISTANCEFIELD_BASEFONTSIZE(bool narrowOutlineFont)
+{
+    initialDistanceFieldFactor();
+
+    if (Q_UNLIKELY(narrowOutlineFont))
+        return QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE * 2;
+    else
+        return QT_DISTANCEFIELD_DEFAULT_BASEFONTSIZE;
+}
+
+int QT_DISTANCEFIELD_SCALE(bool narrowOutlineFont)
+{
+    initialDistanceFieldFactor();
+
+    if (Q_UNLIKELY(narrowOutlineFont))
+        return QT_DISTANCEFIELD_DEFAULT_SCALE / 2;
+    else
+        return QT_DISTANCEFIELD_DEFAULT_SCALE;
+}
+
+int QT_DISTANCEFIELD_RADIUS(bool narrowOutlineFont)
+{
+    initialDistanceFieldFactor();
+
+    if (Q_UNLIKELY(narrowOutlineFont))
+        return QT_DISTANCEFIELD_DEFAULT_RADIUS / 2;
+    else
+        return QT_DISTANCEFIELD_DEFAULT_RADIUS;
+}
+
+int QT_DISTANCEFIELD_HIGHGLYPHCOUNT()
+{
+    initialDistanceFieldFactor();
+    return QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT;
+}
 
 QDistanceFieldData::QDistanceFieldData(const QDistanceFieldData &other)
     : QSharedData(other)

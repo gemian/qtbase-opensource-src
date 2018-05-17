@@ -30,45 +30,6 @@
 #include <QtTest/QtTest>
 #include <QtCore/QtCore>
 #include "viewstotest.cpp"
-#include <stdlib.h>
-
-#if defined(Q_OS_UNIX)
-#include <time.h>
-#endif
-#if defined(Q_OS_WIN)
-#include <time.h>
-#if defined(Q_OS_WINCE)
-#include <aygshell.h>
-#endif
-#define random rand
-#define srandom srand
-
-#if defined(Q_OS_WINCE)
-#ifndef SPI_GETPLATFORMTYPE
-#define SPI_GETPLATFORMTYPE 257
-#endif
-
-bool qt_wince_is_platform(const QString &platformString) {
-    wchar_t tszPlatform[64];
-    if (SystemParametersInfo(SPI_GETPLATFORMTYPE,
-                             sizeof(tszPlatform)/sizeof(*tszPlatform),tszPlatform,0))
-      if (0 == _tcsicmp(reinterpret_cast<const wchar_t *> (platformString.utf16()), tszPlatform))
-            return true;
-    return false;
-}
-
-bool qt_wince_is_pocket_pc() {
-    return qt_wince_is_platform(QString::fromLatin1("PocketPC"));
-}
-
-bool qt_wince_is_smartphone() {
-       return qt_wince_is_platform(QString::fromLatin1("Smartphone"));
-}
-bool qt_wince_is_mobile() {
-     return (qt_wince_is_smartphone() || qt_wince_is_pocket_pc());
-}
-#endif
-#endif
 
 /*!
     See viewstotest.cpp for instructions on how to have your view tested with these tests.
@@ -305,10 +266,6 @@ void tst_QItemView::nonDestructiveBasicTest_data()
  */
 void tst_QItemView::nonDestructiveBasicTest()
 {
-#ifdef Q_OS_WINCE
-     QTest::qWait(400);
-#endif
-
     QFETCH(QString, viewType);
     QFETCH(int, vscroll);
     QFETCH(int, hscroll);
@@ -443,13 +400,15 @@ void touch(QWidget *widget, Qt::KeyboardModifier modifier, Qt::Key keyPress){
     int width = widget->width();
     int height = widget->height();
     for (int i = 0; i < 5; ++i) {
-        QTest::mouseClick(widget, Qt::LeftButton, modifier, QPoint(random() % width, random() % height));
-        QTest::mouseDClick(widget, Qt::LeftButton, modifier, QPoint(random() % width, random() % height));
-        QPoint press(random() % width, random() % height);
-        QPoint releasePoint(random() % width, random() % height);
+        QTest::mouseClick(widget, Qt::LeftButton, modifier,
+                          QPoint(QRandomGenerator::global()->bounded(width), QRandomGenerator::global()->bounded(height)));
+        QTest::mouseDClick(widget, Qt::LeftButton, modifier,
+                           QPoint(QRandomGenerator::global()->bounded(width), QRandomGenerator::global()->bounded(height)));
+        QPoint press(QRandomGenerator::global()->bounded(width), QRandomGenerator::global()->bounded(height));
+        QPoint releasePoint(QRandomGenerator::global()->bounded(width), QRandomGenerator::global()->bounded(height));
         QTest::mousePress(widget, Qt::LeftButton, modifier, press);
         QTest::mouseMove(widget, releasePoint);
-        if (random() % 1 == 0)
+        if (QRandomGenerator::global()->bounded(1) == 0)
             QTest::mouseRelease(widget, Qt::LeftButton, 0, releasePoint);
         else
             QTest::mouseRelease(widget, Qt::LeftButton, modifier, releasePoint);
@@ -476,11 +435,6 @@ void tst_QItemView::spider()
     view->setModel(treeModel);
     view->show();
     QVERIFY(QTest::qWaitForWindowActive(view));
-#if defined(Q_OS_WINCE)
-    srandom(0);
-#else
-    srandom(time(0));
-#endif
     touch(view->viewport(), Qt::NoModifier, Qt::Key_Left);
     touch(view->viewport(), Qt::ShiftModifier, Qt::Key_Enter);
     touch(view->viewport(), Qt::ControlModifier, Qt::Key_Backspace);

@@ -42,7 +42,7 @@
 #include "qcocoamenu.h"
 #include "qcocoamenubar.h"
 #include "qcocoahelpers.h"
-#include "qcocoaapplication.h"
+#include "qcocoaapplicationdelegate.h"
 #include "qcocoaintegration.h"
 #include "qcocoaeventdispatcher.h"
 
@@ -64,6 +64,8 @@
 #include "qprintengine_mac_p.h"
 #include <qpa/qplatformprintersupport.h>
 #endif
+
+#include <QtGui/private/qcoregraphics_p.h>
 
 #include <QtPlatformHeaders/qcocoawindowfunctions.h>
 
@@ -95,13 +97,13 @@ void *QCocoaNativeInterface::nativeResourceForWindow(const QByteArray &resourceS
         return 0;
 
     if (resourceString == "nsview") {
-        return static_cast<QCocoaWindow *>(window->handle())->m_contentView;
+        return static_cast<QCocoaWindow *>(window->handle())->m_view;
 #ifndef QT_NO_OPENGL
     } else if (resourceString == "nsopenglcontext") {
         return static_cast<QCocoaWindow *>(window->handle())->currentContext()->nsOpenGLContext();
 #endif
     } else if (resourceString == "nswindow") {
-        return static_cast<QCocoaWindow *>(window->handle())->m_nsWindow;
+        return static_cast<QCocoaWindow *>(window->handle())->nativeWindow();
     }
     return 0;
 }
@@ -124,8 +126,6 @@ QPlatformNativeInterface::NativeResourceForIntegrationFunction QCocoaNativeInter
         return NativeResourceForIntegrationFunction(QCocoaNativeInterface::qImageToCGImage);
     if (resource.toLower() == "cgimagetoqimage")
         return NativeResourceForIntegrationFunction(QCocoaNativeInterface::cgImageToQImage);
-    if (resource.toLower() == "setwindowcontentview")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::setWindowContentView);
     if (resource.toLower() == "registertouchwindow")
         return NativeResourceForIntegrationFunction(QCocoaNativeInterface::registerTouchWindow);
     if (resource.toLower() == "setembeddedinforeignview")
@@ -172,11 +172,12 @@ void *QCocoaNativeInterface::NSPrintInfoForPrintEngine(QPrintEngine *printEngine
 
 QPixmap QCocoaNativeInterface::defaultBackgroundPixmapForQWizard()
 {
-    QCFType<CFURLRef> url;
     const int ExpectedImageWidth = 242;
     const int ExpectedImageHeight = 414;
-    if (LSFindApplicationForInfo(kLSUnknownCreator, CFSTR("com.apple.KeyboardSetupAssistant"),
-                                 0, 0, &url) == noErr) {
+    QCFType<CFArrayRef> urls = LSCopyApplicationURLsForBundleIdentifier(
+        CFSTR("com.apple.KeyboardSetupAssistant"), nullptr);
+    if (urls && CFArrayGetCount(urls) > 0) {
+        CFURLRef url = (CFURLRef)CFArrayGetValueAtIndex(urls, 0);
         QCFType<CFBundleRef> bundle = CFBundleCreate(kCFAllocatorDefault, url);
         if (bundle) {
             url = CFBundleCopyResourceURL(bundle, CFSTR("Background"), CFSTR("png"), 0);
@@ -255,7 +256,7 @@ void QCocoaNativeInterface::setDockMenu(QPlatformMenu *platformMenu)
     QMacAutoReleasePool pool;
     QCocoaMenu *cocoaPlatformMenu = static_cast<QCocoaMenu *>(platformMenu);
     NSMenu *menu = cocoaPlatformMenu->nsMenu();
-    [NSApp QT_MANGLE_NAMESPACE(qt_setDockMenu): menu];
+    [[QCocoaApplicationDelegate sharedDelegate] setDockMenu:menu];
 }
 
 void *QCocoaNativeInterface::qMenuToNSMenu(QPlatformMenu *platformMenu)
@@ -280,12 +281,6 @@ CGImageRef QCocoaNativeInterface::qImageToCGImage(const QImage &image)
 QImage QCocoaNativeInterface::cgImageToQImage(CGImageRef image)
 {
     return qt_mac_toQImage(image);
-}
-
-void QCocoaNativeInterface::setWindowContentView(QPlatformWindow *window, void *contentView)
-{
-    QCocoaWindow *cocoaPlatformWindow = static_cast<QCocoaWindow *>(window);
-    cocoaPlatformWindow->setContentView(reinterpret_cast<NSView *>(contentView));
 }
 
 void QCocoaNativeInterface::setEmbeddedInForeignView(QPlatformWindow *window, bool embedded)

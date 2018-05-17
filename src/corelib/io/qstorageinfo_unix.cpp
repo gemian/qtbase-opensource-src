@@ -107,6 +107,13 @@
 #  endif // QT_LARGEFILE_SUPPORT
 #endif // Q_OS_BSD4
 
+#if QT_HAS_INCLUDE(<paths.h>)
+#  include <paths.h>
+#endif
+#ifndef _PATH_MOUNTED
+#  define _PATH_MOUNTED     "/etc/mnttab"
+#endif
+
 QT_BEGIN_NAMESPACE
 
 class QStorageIterator
@@ -120,6 +127,7 @@ public:
     inline QString rootPath() const;
     inline QByteArray fileSystemType() const;
     inline QByteArray device() const;
+    inline QByteArray options() const;
 private:
 #if defined(Q_OS_BSD4)
     QT_STATFSBUF *stat_buf;
@@ -133,6 +141,7 @@ private:
     QByteArray m_rootPath;
     QByteArray m_fileSystemType;
     QByteArray m_device;
+    QByteArray m_options;
 #elif defined(Q_OS_LINUX) || defined(Q_OS_HURD)
     FILE *fp;
     mntent mnt;
@@ -193,8 +202,12 @@ static bool shouldIncludeFs(const QStorageIterator &it)
 
 #if defined(Q_OS_BSD4)
 
+#ifndef MNT_NOWAIT
+#  define MNT_NOWAIT 0
+#endif
+
 inline QStorageIterator::QStorageIterator()
-    : entryCount(::getmntinfo(&stat_buf, 0)),
+    : entryCount(::getmntinfo(&stat_buf, MNT_NOWAIT)),
       currentIndex(-1)
 {
 }
@@ -228,13 +241,16 @@ inline QByteArray QStorageIterator::device() const
     return QByteArray(stat_buf[currentIndex].f_mntfromname);
 }
 
-#elif defined(Q_OS_SOLARIS)
+inline QByteArray QStorageIterator::options() const
+{
+    return QByteArray();
+}
 
-static const char pathMounted[] = "/etc/mnttab";
+#elif defined(Q_OS_SOLARIS)
 
 inline QStorageIterator::QStorageIterator()
 {
-    const int fd = qt_safe_open(pathMounted, O_RDONLY);
+    const int fd = qt_safe_open(_PATH_MOUNTED, O_RDONLY);
     fp = ::fdopen(fd, "r");
 }
 
@@ -271,11 +287,9 @@ inline QByteArray QStorageIterator::device() const
 
 #elif defined(Q_OS_ANDROID)
 
-static const QLatin1String pathMounted("/proc/mounts");
-
 inline QStorageIterator::QStorageIterator()
 {
-    file.setFileName(pathMounted);
+    file.setFileName(_PATH_MOUNTED);
     file.open(QIODevice::ReadOnly | QIODevice::Text);
 }
 
@@ -301,6 +315,7 @@ inline bool QStorageIterator::next()
     m_device = data.at(0);
     m_rootPath = data.at(1);
     m_fileSystemType = data.at(2);
+    m_options = data.at(3);
 
     return true;
 }
@@ -320,16 +335,20 @@ inline QByteArray QStorageIterator::device() const
     return m_device;
 }
 
+inline QByteArray QStorageIterator::options() const
+{
+    return m_options;
+}
+
 #elif defined(Q_OS_LINUX) || defined(Q_OS_HURD)
 
-static const char pathMounted[] = "/etc/mtab";
 static const int bufferSize = 1024; // 2 paths (mount point+device) and metainfo;
                                     // should be enough
 
 inline QStorageIterator::QStorageIterator() :
     buffer(QByteArray(bufferSize, 0))
 {
-    fp = ::setmntent(pathMounted, "r");
+    fp = ::setmntent(_PATH_MOUNTED, "r");
 }
 
 inline QStorageIterator::~QStorageIterator()
@@ -361,6 +380,11 @@ inline QByteArray QStorageIterator::fileSystemType() const
 inline QByteArray QStorageIterator::device() const
 {
     return QByteArray(mnt.mnt_fsname);
+}
+
+inline QByteArray QStorageIterator::options() const
+{
+    return QByteArray(mnt.mnt_opts);
 }
 
 #elif defined(Q_OS_HAIKU)
@@ -420,6 +444,11 @@ inline QByteArray QStorageIterator::device() const
     return m_device;
 }
 
+inline QByteArray QStorageIterator::options() const
+{
+    return QByteArray();
+}
+
 #else
 
 inline QStorageIterator::QStorageIterator()
@@ -455,7 +484,36 @@ inline QByteArray QStorageIterator::device() const
     return QByteArray();
 }
 
+inline QByteArray QStorageIterator::options() const
+{
+    return QByteArray();
+}
+
 #endif
+
+static QByteArray extractSubvolume(const QStorageIterator &it)
+{
+#ifdef Q_OS_LINUX
+    if (it.fileSystemType() == "btrfs") {
+        const QByteArrayList opts = it.options().split(',');
+        QByteArray id;
+        for (const QByteArray &opt : opts) {
+            static const char subvol[] = "subvol=";
+            static const char subvolid[] = "subvolid=";
+            if (opt.startsWith(subvol))
+                return std::move(opt).mid(strlen(subvol));
+            if (opt.startsWith(subvolid))
+                id = std::move(opt).mid(strlen(subvolid));
+        }
+
+        // if we didn't find the subvolume name, return the subvolume ID
+        return id;
+    }
+#else
+    Q_UNUSED(it);
+#endif
+    return QByteArray();
+}
 
 void QStorageInfoPrivate::initRootPath()
 {
@@ -483,9 +541,42 @@ void QStorageInfoPrivate::initRootPath()
             rootPath = mountDir;
             device = it.device();
             fileSystemType = fsName;
+            subvolume = extractSubvolume(it);
         }
     }
 }
+
+#ifdef Q_OS_LINUX
+// udev encodes the labels with ID_LABEL_FS_ENC which is done with
+// blkid_encode_string(). Within this function some 1-byte utf-8
+// characters not considered safe (e.g. '\' or ' ') are encoded as hex
+static QString decodeFsEncString(const QString &str)
+{
+    QString decoded;
+    decoded.reserve(str.size());
+
+    int i = 0;
+    while (i < str.size()) {
+        if (i <= str.size() - 4) {    // we need at least four characters \xAB
+            if (str.at(i) == QLatin1Char('\\') &&
+                str.at(i+1) == QLatin1Char('x')) {
+                bool bOk;
+                const int code = str.midRef(i+2, 2).toInt(&bOk, 16);
+                // only decode characters between 0x20 and 0x7f but not
+                // the backslash to prevent collisions
+                if (bOk && code >= 0x20 && code < 0x80 && code != '\\') {
+                    decoded += QChar(code);
+                    i += 4;
+                    continue;
+                }
+            }
+        }
+        decoded += str.at(i);
+        ++i;
+    }
+    return decoded;
+}
+#endif
 
 static inline QString retrieveLabel(const QByteArray &device)
 {
@@ -500,7 +591,7 @@ static inline QString retrieveLabel(const QByteArray &device)
         it.next();
         QFileInfo fileInfo(it.fileInfo());
         if (fileInfo.isSymLink() && fileInfo.symLinkTarget() == devicePath)
-            return fileInfo.fileName();
+            return decodeFsEncString(fileInfo.fileName());
     }
 #elif defined Q_OS_HAIKU
     fs_info fsInfo;

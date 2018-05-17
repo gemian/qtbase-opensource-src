@@ -40,9 +40,12 @@
 #ifndef QPLATFORMDEFS_WIN_H
 #define QPLATFORMDEFS_WIN_H
 
+// Since we need to include winsock2.h, we need to define WIN32_LEAN_AND_MEAN
+// somewhere above so windows.h won't include winsock.h.
 #include <winsock2.h>
 #include <mswsock.h>
 #undef interface
+#include <wincrypt.h>
 #include <winioctl.h>
 
 QT_BEGIN_NAMESPACE

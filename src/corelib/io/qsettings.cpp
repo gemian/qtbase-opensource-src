@@ -81,7 +81,6 @@
 #include <stdlib.h>
 
 #ifdef Q_OS_WIN // for homedirpath reading from registry
-#  include <private/qsystemlibrary_p.h>
 #  include <qt_windows.h>
 #  ifndef Q_OS_WINRT
 #    include <shlobj.h>
@@ -98,19 +97,11 @@ using namespace ABI::Windows::Foundation;
 using namespace ABI::Windows::Storage;
 #endif
 
-#ifndef CSIDL_COMMON_APPDATA
-#define CSIDL_COMMON_APPDATA    0x0023  // All Users\Application Data
-#endif
-
-#ifndef CSIDL_APPDATA
-#define CSIDL_APPDATA           0x001a  // <username>\Application Data
-#endif
-
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MAC) && !defined(Q_OS_ANDROID)
 #define Q_XDG_PLATFORM
 #endif
 
-#if !defined(QT_NO_STANDARDPATHS) && (defined(Q_XDG_PLATFORM) || defined(Q_OS_IOS))
+#if !defined(QT_NO_STANDARDPATHS) && (defined(Q_XDG_PLATFORM) || defined(QT_PLATFORM_UIKIT))
 #define QSETTINGS_USE_QSTANDARDPATHS
 #endif
 
@@ -829,7 +820,7 @@ StNormal:
                 ++i;
                 goto StSkipSpaces;
             }
-            // fallthrough
+            Q_FALLTHROUGH();
         default: {
             int j = i + 1;
             while (j < to) {
@@ -971,40 +962,34 @@ void QConfFileSettingsPrivate::initAccess()
 }
 
 #if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
-static QString windowsConfigPath(int type)
+static QString windowsConfigPath(const KNOWNFOLDERID &type)
 {
     QString result;
 
-    wchar_t path[MAX_PATH];
-    if (SHGetSpecialFolderPath(0, path, type, false))
+    PWSTR path = nullptr;
+    if (SHGetKnownFolderPath(type, KF_FLAG_DONT_VERIFY, NULL, &path) == S_OK) {
         result = QString::fromWCharArray(path);
+        CoTaskMemFree(path);
+    }
 
     if (result.isEmpty()) {
-        switch (type) {
-#ifndef Q_OS_WINCE
-        case CSIDL_COMMON_APPDATA:
+        if (type == FOLDERID_ProgramData) {
             result = QLatin1String("C:\\temp\\qt-common");
-            break;
-        case CSIDL_APPDATA:
+        } else if (type == FOLDERID_RoamingAppData) {
             result = QLatin1String("C:\\temp\\qt-user");
-            break;
-#else
-        case CSIDL_COMMON_APPDATA:
-            result = QLatin1String("\\Temp\\qt-common");
-            break;
-        case CSIDL_APPDATA:
-            result = QLatin1String("\\Temp\\qt-user");
-            break;
-#endif
-        default:
-            ;
         }
     }
 
     return result;
 }
 #elif defined(Q_OS_WINRT) // Q_OS_WIN && !Q_OS_WINRT
-static QString windowsConfigPath(int type)
+
+enum ConfigPathType {
+    ConfigPath_CommonAppData,
+    ConfigPath_UserAppData
+};
+
+static QString windowsConfigPath(ConfigPathType type)
 {
     static QString result;
     while (result.isEmpty()) {
@@ -1027,12 +1012,10 @@ static QString windowsConfigPath(int type)
     }
 
     switch (type) {
-    case CSIDL_COMMON_APPDATA:
+    case ConfigPath_CommonAppData:
         return result + QLatin1String("\\qt-common");
-    case CSIDL_APPDATA:
+    case ConfigPath_UserAppData:
         return result + QLatin1String("\\qt-user");
-    default:
-        break;
     }
     return result;
 }
@@ -1089,10 +1072,18 @@ static void initDefaultPaths(QMutexLocker *locker)
            Windows registry and the Mac CFPreferences.)
        */
 #ifdef Q_OS_WIN
+
+#  ifdef Q_OS_WINRT
+        const QString roamingAppDataFolder = windowsConfigPath(ConfigPath_UserAppData);
+        const QString programDataFolder = windowsConfigPath(ConfigPath_CommonAppData);
+#  else
+        const QString roamingAppDataFolder = windowsConfigPath(FOLDERID_RoamingAppData);
+        const QString programDataFolder = windowsConfigPath(FOLDERID_ProgramData);
+#  endif
         pathHash->insert(pathHashKey(QSettings::IniFormat, QSettings::UserScope),
-                         Path(windowsConfigPath(CSIDL_APPDATA) + QDir::separator(), false));
+                         Path(roamingAppDataFolder + QDir::separator(), false));
         pathHash->insert(pathHashKey(QSettings::IniFormat, QSettings::SystemScope),
-                         Path(windowsConfigPath(CSIDL_COMMON_APPDATA) + QDir::separator(), false));
+                         Path(programDataFolder + QDir::separator(), false));
 #else
         const QString userPath = make_user_path();
         pathHash->insert(pathHashKey(QSettings::IniFormat, QSettings::UserScope), Path(userPath, false));
@@ -1403,7 +1394,6 @@ bool QConfFileSettingsPrivate::isWritable() const
 void QConfFileSettingsPrivate::syncConfFile(QConfFile *confFile)
 {
     bool readOnly = confFile->addedKeys.isEmpty() && confFile->removedKeys.isEmpty();
-    bool ok;
 
     /*
         We can often optimize the read-only case, if the file on disk
@@ -1415,6 +1405,11 @@ void QConfFileSettingsPrivate::syncConfFile(QConfFile *confFile)
             return;
     }
 
+    if (!readOnly && !confFile->isWritable()) {
+        setStatus(QSettings::AccessError);
+        return;
+    }
+
 #ifndef QT_BOOTSTRAPPED
     /*
         Use a lockfile in order to protect us against other QSettings instances
@@ -1424,17 +1419,11 @@ void QConfFileSettingsPrivate::syncConfFile(QConfFile *confFile)
         Concurrent read and write are not a problem because the writing operation is atomic.
     */
     QLockFile lockFile(confFile->name + QLatin1String(".lock"));
-#endif
-    if (!readOnly) {
-        if (!confFile->isWritable()
-#ifndef QT_BOOTSTRAPPED
-            || !lockFile.lock()
-#endif
-            ) {
-            setStatus(QSettings::AccessError);
-            return;
-        }
+    if (!readOnly && !lockFile.lock() && atomicSyncOnly) {
+        setStatus(QSettings::AccessError);
+        return;
     }
+#endif
 
     /*
         We hold the lock. Let's reread the file if it has changed
@@ -1462,32 +1451,27 @@ void QConfFileSettingsPrivate::syncConfFile(QConfFile *confFile)
             Files that we can't read (because of permissions or
             because they don't exist) are treated as empty files.
         */
-        if (file.isReadable() && fileInfo.size() != 0) {
+        if (file.isReadable() && file.size() != 0) {
+            bool ok = false;
 #ifdef Q_OS_MAC
             if (format == QSettings::NativeFormat) {
-                ok = readPlistFile(confFile->name, &confFile->originalKeys);
+                QByteArray data = file.readAll();
+                ok = readPlistFile(data, &confFile->originalKeys);
             } else
 #endif
-            {
-                if (format <= QSettings::IniFormat) {
-                    QByteArray data = file.readAll();
-                    ok = readIniFile(data, &confFile->unparsedIniSections);
-                } else {
-                    if (readFunc) {
-                        QSettings::SettingsMap tempNewKeys;
-                        ok = readFunc(file, tempNewKeys);
+            if (format <= QSettings::IniFormat) {
+                QByteArray data = file.readAll();
+                ok = readIniFile(data, &confFile->unparsedIniSections);
+            } else if (readFunc) {
+                QSettings::SettingsMap tempNewKeys;
+                ok = readFunc(file, tempNewKeys);
 
-                        if (ok) {
-                            QSettings::SettingsMap::const_iterator i = tempNewKeys.constBegin();
-                            while (i != tempNewKeys.constEnd()) {
-                                confFile->originalKeys.insert(QSettingsKey(i.key(),
-                                                                           caseSensitivity),
-                                                              i.value());
-                                ++i;
-                            }
-                        }
-                    } else {
-                        ok = false;
+                if (ok) {
+                    QSettings::SettingsMap::const_iterator i = tempNewKeys.constBegin();
+                    while (i != tempNewKeys.constEnd()) {
+                        confFile->originalKeys.insert(QSettingsKey(i.key(), caseSensitivity),
+                                                      i.value());
+                        ++i;
                     }
                 }
             }
@@ -1505,44 +1489,43 @@ void QConfFileSettingsPrivate::syncConfFile(QConfFile *confFile)
         so everything is under control.
     */
     if (!readOnly) {
+        bool ok = false;
         ensureAllSectionsParsed(confFile);
         ParsedSettingsMap mergedKeys = confFile->mergedKeyMap();
 
+#if !defined(QT_BOOTSTRAPPED) && QT_CONFIG(temporaryfile)
+        QSaveFile sf(confFile->name);
+        sf.setDirectWriteFallback(!atomicSyncOnly);
+#else
+        QFile sf(confFile->name);
+#endif
+        if (!sf.open(QIODevice::WriteOnly)) {
+            setStatus(QSettings::AccessError);
+            return;
+        }
+
 #ifdef Q_OS_MAC
         if (format == QSettings::NativeFormat) {
-            ok = writePlistFile(confFile->name, mergedKeys);
+            ok = writePlistFile(sf, mergedKeys);
         } else
 #endif
-        {
-#ifndef QT_BOOTSTRAPPED
-            QSaveFile sf(confFile->name);
-#else
-            QFile sf(confFile->name);
-#endif
-            if (!sf.open(QIODevice::WriteOnly)) {
-                setStatus(QSettings::AccessError);
-                ok = false;
-            } else if (format <= QSettings::IniFormat) {
-                ok = writeIniFile(sf, mergedKeys);
-            } else {
-                if (writeFunc) {
-                    QSettings::SettingsMap tempOriginalKeys;
+        if (format <= QSettings::IniFormat) {
+            ok = writeIniFile(sf, mergedKeys);
+        } else if (writeFunc) {
+            QSettings::SettingsMap tempOriginalKeys;
 
-                    ParsedSettingsMap::const_iterator i = mergedKeys.constBegin();
-                    while (i != mergedKeys.constEnd()) {
-                        tempOriginalKeys.insert(i.key(), i.value());
-                        ++i;
-                    }
-                    ok = writeFunc(sf, tempOriginalKeys);
-                } else {
-                    ok = false;
-                }
+            ParsedSettingsMap::const_iterator i = mergedKeys.constBegin();
+            while (i != mergedKeys.constEnd()) {
+                tempOriginalKeys.insert(i.key(), i.value());
+                ++i;
             }
-#ifndef QT_BOOTSTRAPPED
-            if (ok)
-                ok = sf.commit();
-#endif
+            ok = writeFunc(sf, tempOriginalKeys);
         }
+
+#if !defined(QT_BOOTSTRAPPED) && QT_CONFIG(temporaryfile)
+        if (ok)
+            ok = sf.commit();
+#endif
 
         if (ok) {
             confFile->unparsedIniSections.clear();
@@ -1818,6 +1801,8 @@ struct QSettingsIniSection
 
     inline QSettingsIniSection() : position(-1) {}
 };
+
+Q_DECLARE_TYPEINFO(QSettingsIniSection, Q_MOVABLE_TYPE);
 
 typedef QMap<QString, QSettingsIniSection> IniMap;
 
@@ -2216,10 +2201,16 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     QSettings can safely be used from different processes (which can
     be different instances of your application running at the same
     time or different applications altogether) to read and write to
-    the same system locations. It uses advisory file locking and a
-    smart merging algorithm to ensure data integrity. Note that sync()
-    imports changes made by other processes (in addition to writing
-    the changes from this QSettings).
+    the same system locations, provided certain conditions are met. For
+    QSettings::IniFormat, it uses advisory file locking and a smart merging
+    algorithm to ensure data integrity. The condition for that to work is that
+    the writeable configuration file must be a regular file and must reside in
+    a directory that the current user can create new, temporary files in. If
+    that is not the case, then one must use setAtomicSyncRequired() to turn the
+    safety off.
+
+    Note that sync() imports changes made by other processes (in addition to
+    writing the changes from this QSettings).
 
     \section1 Platform-Specific Notes
 
@@ -2285,20 +2276,20 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
     On Windows, the following files are used:
 
     \list 1
-    \li \c{CSIDL_APPDATA\MySoft\Star Runner.ini}
-    \li \c{CSIDL_APPDATA\MySoft.ini}
-    \li \c{CSIDL_COMMON_APPDATA\MySoft\Star Runner.ini}
-    \li \c{CSIDL_COMMON_APPDATA\MySoft.ini}
+    \li \c{FOLDERID_RoamingAppData\MySoft\Star Runner.ini}
+    \li \c{FOLDERID_RoamingAppData\MySoft.ini}
+    \li \c{FOLDERID_ProgramData\MySoft\Star Runner.ini}
+    \li \c{FOLDERID_ProgramData\MySoft.ini}
     \endlist
 
-    The identifiers prefixed by \c{CSIDL_} are special item ID lists to be passed
-    to the Win32 API function \c{SHGetSpecialFolderPath()} to obtain the
+    The identifiers prefixed by \c{FOLDERID_} are special item ID lists to be passed
+    to the Win32 API function \c{SHGetKnownFolderPath()} to obtain the
     corresponding path.
 
-    \c{CSIDL_APPDATA} usually points to \tt{C:\\Users\\\e{User Name}\\AppData\\Roaming},
+    \c{FOLDERID_RoamingAppData} usually points to \tt{C:\\Users\\\e{User Name}\\AppData\\Roaming},
     also shown by the environment variable \c{%APPDATA%}.
 
-    \c{CSIDL_COMMON_APPDATA} usually points to \tt{C:\\ProgramData}.
+    \c{FOLDERID_ProgramData} usually points to \tt{C:\\ProgramData}.
 
     If the file format is IniFormat, this is "Settings/MySoft/Star Runner.ini"
     in the application's home directory.
@@ -2374,6 +2365,11 @@ void QConfFileSettingsPrivate::ensureSectionParsed(QConfFile *confFile,
         not exceed 65,535 characters. One way to work around these
         limitations is to store the settings using the IniFormat
         instead of the NativeFormat.
+
+    \li  On Windows, when the Windows system registry is used, QSettings
+         does not preserve the original type of the value. Therefore,
+         the type of the value might change when a new value is set. For
+         example, a value with type \c REG_EXPAND_SZ will change to \c REG_SZ.
 
     \li  On \macos and iOS, allKeys() will return some extra keys for global
         settings that apply to all applications. These keys can be
@@ -2758,6 +2754,7 @@ void QSettings::sync()
 {
     Q_D(QSettings);
     d->sync();
+    d->pendingChanges = false;
 }
 
 /*!
@@ -2896,6 +2893,50 @@ QSettings::Status QSettings::status() const
 {
     Q_D(const QSettings);
     return d->status;
+}
+
+/*!
+    \since 5.10
+
+    Returns \c true if QSettings is only allowed to perform atomic saving and
+    reloading (synchronization) of the settings. Returns \c false if it is
+    allowed to save the settings contents directly to the configuration file.
+
+    The default is \c true.
+
+    \sa setAtomicSyncRequired(), QSaveFile
+*/
+bool QSettings::isAtomicSyncRequired() const
+{
+    Q_D(const QSettings);
+    return d->atomicSyncOnly;
+}
+
+/*!
+    \since 5.10
+
+    Configures whether QSettings is required to perform atomic saving and
+    reloading (synchronization) of the settings. If the \a enable argument is
+    \c true (the default), sync() will only perform synchronization operations
+    that are atomic. If this is not possible, sync() will fail and status()
+    will be an error condition.
+
+    Setting this property to \c false will allow QSettings to write directly to
+    the configuration file and ignore any errors trying to lock it against
+    other processes trying to write at the same time. Because of the potential
+    for corruption, this option should be used with care, but is required in
+    certain conditions, like a QSettings::IniFormat configuration file that
+    exists in an otherwise non-writeable directory or NTFS Alternate Data
+    Streams.
+
+    See \l QSaveFile for more information on the feature.
+
+    \sa isAtomicSyncRequired(), QSaveFile
+*/
+void QSettings::setAtomicSyncRequired(bool enable)
+{
+    Q_D(QSettings);
+    d->atomicSyncOnly = enable;
 }
 
 /*!
@@ -3402,8 +3443,8 @@ void QSettings::setUserIniPath(const QString &dir)
 
     \table
     \header \li Platform         \li Format                       \li Scope       \li Path
-    \row    \li{1,2} Windows     \li{1,2} IniFormat               \li UserScope   \li \c CSIDL_APPDATA
-    \row                                                        \li SystemScope \li \c CSIDL_COMMON_APPDATA
+    \row    \li{1,2} Windows     \li{1,2} IniFormat               \li UserScope   \li \c FOLDERID_RoamingAppData
+    \row                                                        \li SystemScope \li \c FOLDERID_ProgramData
     \row    \li{1,2} Unix        \li{1,2} NativeFormat, IniFormat \li UserScope   \li \c $HOME/.config
     \row                                                        \li SystemScope \li \c /etc/xdg
     \row    \li{1,2} Qt for Embedded Linux \li{1,2} NativeFormat, IniFormat \li UserScope   \li \c $HOME/Settings
@@ -3528,5 +3569,9 @@ QSettings::Format QSettings::registerFormat(const QString &extension, ReadFunc r
 }
 
 QT_END_NAMESPACE
+
+#ifndef QT_BOOTSTRAPPED
+#include "moc_qsettings.cpp"
+#endif
 
 #endif // QT_NO_SETTINGS

@@ -28,6 +28,7 @@
 #include <QDebug>
 #include <QDirIterator>
 #include <QString>
+#include <qplatformdefs.h>
 
 #ifdef Q_OS_WIN
 #   include <qt_windows.h>
@@ -59,10 +60,6 @@ private slots:
 
 void tst_qdiriterator::data()
 {
-#if defined(Q_OS_WINCE)
-    QByteArray qtdir = qPrintable(QCoreApplication::applicationDirPath());
-    qtdir += "/depot";
-#else
 #if defined(Q_OS_WIN)
     const char *qtdir = "C:\\depot\\qt\\main";
 #else
@@ -72,7 +69,6 @@ void tst_qdiriterator::data()
         fprintf(stderr, "QTDIR not set\n");
         exit(1);
     }
-#endif
 
     QTest::addColumn<QByteArray>("dirpath");
     QByteArray ba = QByteArray(qtdir) + "/src/corelib";
@@ -147,8 +143,8 @@ static int posix_helper(const char *dirpath)
         QByteArray ba = dirpath;
         ba += '/';
         ba += entry->d_name;
-        struct stat st;
-        lstat(ba.constData(), &st);
+        QT_STATBUF st;
+        QT_LSTAT(ba.constData(), &st);
         if (S_ISDIR(st.st_mode))
             count += posix_helper(ba.constData());
     }

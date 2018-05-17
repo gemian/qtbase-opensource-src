@@ -38,9 +38,6 @@
 ****************************************************************************/
 
 #include "qstatemachine.h"
-
-#ifndef QT_NO_STATEMACHINE
-
 #include "qstate.h"
 #include "qstate_p.h"
 #include "qstatemachine_p.h"
@@ -57,7 +54,7 @@
 #include "private/qobject_p.h"
 #include "private/qthread_p.h"
 
-#ifndef QT_NO_STATEMACHINE_EVENTFILTER
+#if QT_CONFIG(qeventtransition)
 #include "qeventtransition.h"
 #include "qeventtransition_p.h"
 #endif
@@ -414,7 +411,7 @@ QStateMachinePrivate::~QStateMachinePrivate()
     qDeleteAll(internalEventQueue);
     qDeleteAll(externalEventQueue);
 
-    for (QHash<int, DelayedEvent>::const_iterator it = delayedEvents.begin(), eit = delayedEvents.end(); it != eit; ++it) {
+    for (QHash<int, DelayedEvent>::const_iterator it = delayedEvents.cbegin(), eit = delayedEvents.cend(); it != eit; ++it) {
         delete it.value().event;
     }
 }
@@ -2027,7 +2024,9 @@ void QStateMachinePrivate::processEvents(EventProcessingMode processingMode)
         if (QThread::currentThread() == q->thread()) {
             _q_process();
             break;
-        } // fallthrough -- processing must be done in the machine thread
+        }
+        // processing must be done in the machine thread, so:
+        Q_FALLTHROUGH();
     case QueuedProcessing:
         processingScheduled = true;
         QMetaObject::invokeMethod(q, "_q_process", Qt::QueuedConnection);
@@ -2196,7 +2195,7 @@ void QStateMachinePrivate::maybeRegisterTransition(QAbstractTransition *transiti
     if (QSignalTransition *st = qobject_cast<QSignalTransition*>(transition)) {
         maybeRegisterSignalTransition(st);
     }
-#ifndef QT_NO_STATEMACHINE_EVENTFILTER
+#if QT_CONFIG(qeventtransition)
     else if (QEventTransition *et = qobject_cast<QEventTransition*>(transition)) {
         maybeRegisterEventTransition(et);
     }
@@ -2208,7 +2207,7 @@ void QStateMachinePrivate::registerTransition(QAbstractTransition *transition)
     if (QSignalTransition *st = qobject_cast<QSignalTransition*>(transition)) {
         registerSignalTransition(st);
     }
-#ifndef QT_NO_STATEMACHINE_EVENTFILTER
+#if QT_CONFIG(qeventtransition)
     else if (QEventTransition *oet = qobject_cast<QEventTransition*>(transition)) {
         registerEventTransition(oet);
     }
@@ -2220,7 +2219,7 @@ void QStateMachinePrivate::unregisterTransition(QAbstractTransition *transition)
     if (QSignalTransition *st = qobject_cast<QSignalTransition*>(transition)) {
         unregisterSignalTransition(st);
     }
-#ifndef QT_NO_STATEMACHINE_EVENTFILTER
+#if QT_CONFIG(qeventtransition)
     else if (QEventTransition *oet = qobject_cast<QEventTransition*>(transition)) {
         unregisterEventTransition(oet);
     }
@@ -2332,6 +2331,7 @@ void QStateMachinePrivate::unregisterAllTransitions()
                 unregisterSignalTransition(t);
         }
     }
+#if QT_CONFIG(qeventtransition)
     {
         QList<QEventTransition*> transitions = rootState()->findChildren<QEventTransition*>();
         for (int i = 0; i < transitions.size(); ++i) {
@@ -2340,9 +2340,10 @@ void QStateMachinePrivate::unregisterAllTransitions()
                 unregisterEventTransition(t);
         }
     }
+#endif
 }
 
-#ifndef QT_NO_STATEMACHINE_EVENTFILTER
+#if QT_CONFIG(qeventtransition)
 void QStateMachinePrivate::maybeRegisterEventTransition(QEventTransition *transition)
 {
     if ((state == Running) && configuration.contains(transition->sourceState()))
@@ -2872,7 +2873,7 @@ bool QStateMachine::event(QEvent *e)
     return QState::event(e);
 }
 
-#ifndef QT_NO_STATEMACHINE_EVENTFILTER
+#if QT_CONFIG(qeventtransition)
 /*!
   \reimp
 */
@@ -3095,10 +3096,12 @@ int QSignalEventGenerator::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
 
 void QSignalEventGenerator::execute(void **_a)
 {
+    auto machinePrivate = QStateMachinePrivate::get(qobject_cast<QStateMachine*>(parent()));
+    if (machinePrivate->state != QStateMachinePrivate::Running)
+        return;
     int signalIndex = senderSignalIndex();
     Q_ASSERT(signalIndex != -1);
-    QStateMachine *machine = qobject_cast<QStateMachine*>(parent());
-    QStateMachinePrivate::get(machine)->handleTransitionSignal(sender(), signalIndex, _a);
+    machinePrivate->handleTransitionSignal(sender(), signalIndex, _a);
 }
 
 QSignalEventGenerator::QSignalEventGenerator(QStateMachine *parent)
@@ -3235,5 +3238,3 @@ QT_END_NAMESPACE
 
 #include "qstatemachine.moc"
 #include "moc_qstatemachine.cpp"
-
-#endif //QT_NO_STATEMACHINE

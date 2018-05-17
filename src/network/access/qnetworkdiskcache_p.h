@@ -51,13 +51,14 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include "private/qabstractnetworkcache_p.h"
 
 #include <qbuffer.h>
 #include <qhash.h>
 #include <qtemporaryfile.h>
 
-#ifndef QT_NO_NETWORKDISKCACHE
+QT_REQUIRE_CONFIG(networkdiskcache);
 
 QT_BEGIN_NAMESPACE
 
@@ -121,7 +122,5 @@ public:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_NETWORKDISKCACHE
 
 #endif // QNETWORKDISKCACHE_P_H

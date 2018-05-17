@@ -40,12 +40,12 @@
 #ifndef QGRAPHICSITEMANIMATION_H
 #define QGRAPHICSITEMANIMATION_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qobject.h>
 
-#if !defined(QT_NO_GRAPHICSVIEW)
+QT_REQUIRE_CONFIG(graphicsview);
 
 QT_BEGIN_NAMESPACE
-
 
 class QGraphicsItem;
 class QMatrix;
@@ -109,5 +109,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QT_NO_GRAPHICSVIEW
 #endif

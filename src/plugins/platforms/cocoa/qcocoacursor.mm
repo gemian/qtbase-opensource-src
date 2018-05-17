@@ -40,6 +40,7 @@
 #include "qcocoacursor.h"
 #include "qcocoawindow.h"
 #include "qcocoahelpers.h"
+#include <QtGui/private/qcoregraphics_p.h>
 
 #include <QtGui/QBitmap>
 
@@ -61,7 +62,7 @@ QCocoaCursor::~QCocoaCursor()
 
 void QCocoaCursor::changeCursor(QCursor *cursor, QWindow *window)
 {
-    NSCursor * cocoaCursor = convertCursor(cursor);
+    NSCursor *cocoaCursor = convertCursor(cursor);
 
     if (QPlatformWindow * platformWindow = window->handle())
         static_cast<QCocoaWindow *>(platformWindow)->setWindowCursor(cocoaCursor);
@@ -83,15 +84,21 @@ void QCocoaCursor::setPos(const QPoint &position)
     CFRelease(e);
 }
 
-NSCursor *QCocoaCursor::convertCursor(QCursor * cursor)
+NSCursor *QCocoaCursor::convertCursor(QCursor *cursor)
 {
-    const Qt::CursorShape newShape = cursor ? cursor->shape() : Qt::ArrowCursor;
+    if (cursor == Q_NULLPTR)
+        return 0;
+
+    const Qt::CursorShape newShape = cursor->shape();
     NSCursor *cocoaCursor;
 
     // Check for a suitable built-in NSCursor first:
     switch (newShape) {
     case Qt::ArrowCursor:
         cocoaCursor= [NSCursor arrowCursor];
+        break;
+    case Qt::ForbiddenCursor:
+        cocoaCursor = [NSCursor operationNotAllowedCursor];
         break;
     case Qt::CrossCursor:
         cocoaCursor = [NSCursor crosshairCursor];
@@ -119,7 +126,7 @@ NSCursor *QCocoaCursor::convertCursor(QCursor * cursor)
         cocoaCursor = [NSCursor crosshairCursor];
         break;
     case Qt::DragCopyCursor:
-        cocoaCursor = [NSCursor crosshairCursor];
+        cocoaCursor = [NSCursor dragCopyCursor];
         break;
     case Qt::DragLinkCursor:
         cocoaCursor = [NSCursor dragLinkCursor];
@@ -229,10 +236,6 @@ NSCursor *QCocoaCursor::createCursorData(QCursor *cursor)
         break; }
     case Qt::BusyCursor: {
         QPixmap pixmap = QPixmap(QLatin1String(":/qt-project.org/mac/cursors/images/waitcursor.png"));
-        return createCursorFromPixmap(pixmap, hotspot);
-        break; }
-    case Qt::ForbiddenCursor: {
-        QPixmap pixmap = QPixmap(QLatin1String(":/qt-project.org/mac/cursors/images/forbiddencursor.png"));
         return createCursorFromPixmap(pixmap, hotspot);
         break; }
 #define QT_USE_APPROXIMATE_CURSORS

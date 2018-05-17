@@ -40,10 +40,8 @@
 #include <pthread.h>
 #endif
 #ifdef Q_OS_WIN
-#ifndef Q_OS_WINCE
-#include <process.h>
-#endif
-#include <windows.h>
+#  include <process.h>
+#  include <qt_windows.h>
 #endif
 
 class tst_QThreadStorage : public QObject
@@ -78,7 +76,7 @@ int Pointer::count = 0;
 
 void tst_QThreadStorage::initTestCase()
 {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     const QString crashOnExitDir = QFINDTESTDATA("crashonexit");
     QVERIFY2(!crashOnExitDir.isEmpty(),
              qPrintable(QString::fromLatin1("Could not find 'crashonexit' starting from '%1'")
@@ -202,6 +200,13 @@ void testAdoptedThreadStorageWin(void *p)
     }
     QObject::connect(QThread::currentThread(), SIGNAL(finished()), &QTestEventLoop::instance(), SLOT(exitLoop()));
 }
+#ifdef Q_OS_WINRT
+unsigned __stdcall testAdoptedThreadStorageWinRT(void *p)
+{
+    testAdoptedThreadStorageWin(p);
+    return 0;
+}
+#endif
 void *testAdoptedThreadStorageUnix(void *pointers)
 {
     testAdoptedThreadStorageWin(pointers);
@@ -219,13 +224,14 @@ void tst_QThreadStorage::adoptedThreads()
         const int state = pthread_create(&thread, 0, testAdoptedThreadStorageUnix, &pointers);
         QCOMPARE(state, 0);
         pthread_join(thread, 0);
-#elif defined Q_OS_WIN && !defined(Q_OS_WINRT)
+#elif defined Q_OS_WINRT
         HANDLE thread;
-#if defined(Q_OS_WINCE)
-        thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)testAdoptedThreadStorageWin, &pointers, 0, NULL);
-#else
+        thread = (HANDLE) _beginthreadex(NULL, 0, testAdoptedThreadStorageWinRT, &pointers, 0, 0);
+        QVERIFY(thread);
+        WaitForSingleObjectEx(thread, INFINITE, FALSE);
+#elif defined Q_OS_WIN
+        HANDLE thread;
         thread = (HANDLE)_beginthread(testAdoptedThreadStorageWin, 0, &pointers);
-#endif
         QVERIFY(thread);
         WaitForSingleObject(thread, INFINITE);
 #endif
@@ -294,7 +300,7 @@ void tst_QThreadStorage::ensureCleanupOrder()
     QVERIFY(First::order < Second::order);
 }
 
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
 static inline bool runCrashOnExit(const QString &binary, QString *errorMessage)
 {
     const int timeout = 60000;
@@ -319,7 +325,7 @@ static inline bool runCrashOnExit(const QString &binary, QString *errorMessage)
 
 void tst_QThreadStorage::crashOnExit()
 {
-#ifdef QT_NO_PROCESS
+#if !QT_CONFIG(process)
     QSKIP("No qprocess support", SkipAll);
 #else
     QString errorMessage;

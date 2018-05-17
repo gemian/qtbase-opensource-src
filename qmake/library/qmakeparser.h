@@ -78,7 +78,7 @@ public:
     enum ParseFlag {
         ParseDefault = 0,
         ParseUseCache = 1,
-        ParseReportMissing = 2
+        ParseReportMissing = 4
     };
     Q_DECLARE_FLAGS(ParseFlags, ParseFlag)
 
@@ -87,8 +87,10 @@ public:
     enum SubGrammar { FullGrammar, TestGrammar, ValueGrammar };
     // fileName is expected to be absolute and cleanPath()ed.
     ProFile *parsedProFile(const QString &fileName, ParseFlags flags = ParseDefault);
-    ProFile *parsedProBlock(const QString &contents, const QString &name, int line = 0,
+    ProFile *parsedProBlock(const QStringRef &contents, const QString &name, int line = 0,
                             SubGrammar grammar = FullGrammar);
+
+    int idForFileName(const QString &fileName);
 
     void discardFileFromCache(const QString &fileName);
 
@@ -130,7 +132,7 @@ private:
     };
 
     bool read(ProFile *pro, ParseFlags flags);
-    void read(ProFile *pro, const QString &content, int line, SubGrammar grammar);
+    void read(ProFile *pro, const QStringRef &content, int line, SubGrammar grammar);
 
     ALWAYS_INLINE void putTok(ushort *&tokPtr, ushort tok);
     ALWAYS_INLINE void putBlockLen(ushort *&tokPtr, uint len);
@@ -141,7 +143,7 @@ private:
     ALWAYS_INLINE bool resolveVariable(ushort *xprPtr, int tlen, int needSep, ushort **ptr,
                                        ushort **buf, QString *xprBuff,
                                        ushort **tokPtr, QString *tokBuff,
-                                       const ushort *cur, const QString &in);
+                                       const ushort *cur, const QStringRef &in);
     void finalizeCond(ushort *&tokPtr, ushort *uc, ushort *ptr, int wordCount);
     void finalizeCall(ushort *&tokPtr, ushort *uc, ushort *ptr, int argc);
     void warnOperator(const char *msg);
@@ -179,6 +181,12 @@ private:
     enum { NoOperator, AndOperator, OrOperator } m_operator; // Pending conditional is ORed/ANDed
 
     QString m_tmp; // Temporary for efficient toQString
+
+    QHash<QString, int> fileIdMap;
+#ifdef PROEVALUATOR_THREAD_SAFE
+    QMutex fileIdMutex;
+#endif
+    int fileIdCounter = 0;
 
     ProFileCache *m_cache;
     QMakeParserHandler *m_handler;

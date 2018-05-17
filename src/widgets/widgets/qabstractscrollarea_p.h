@@ -51,12 +51,13 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qframe_p.h"
 #include "qabstractscrollarea.h"
 
 QT_BEGIN_NAMESPACE
 
-#ifndef QT_NO_SCROLLAREA
+#if QT_CONFIG(scrollarea)
 
 class QScrollBar;
 class QAbstractScrollAreaScrollBarContainer;
@@ -84,7 +85,7 @@ public:
     QWidget *viewport;
     QWidget *cornerWidget;
     QRect cornerPaintingRect;
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     QRect reverseCornerPaintingRect;
 #endif
     int left, top, right, bottom; // viewport margin
@@ -94,6 +95,7 @@ public:
 
     void init();
     void layoutChildren();
+    void layoutChildren_helper(bool *needHorizontalScrollbar, bool *needVerticalScrollbar);
     // ### Fix for 4.4, talk to Bjoern E or Girish.
     virtual void scrollBarPolicyChanged(Qt::Orientation, Qt::ScrollBarPolicy) {}
     bool canStartScrollingAt( const QPoint &startPos );
@@ -111,7 +113,7 @@ public:
     { return q_func()->viewportEvent(event); }
     QScopedPointer<QObject> viewportFilter;
 
-#ifdef Q_DEAD_CODE_FROM_QT4_WIN
+#if 0 // Used to be included in Qt4 for Q_WS_WIN
     bool singleFingerPanEnabled;
     void setSingleFingerPanEnabled(bool on = true);
 #endif
@@ -148,7 +150,7 @@ private:
     Qt::Orientation orientation;
 };
 
-#endif // QT_NO_SCROLLAREA
+#endif // QT_CONFIG(scrollarea)
 
 QT_END_NAMESPACE
 

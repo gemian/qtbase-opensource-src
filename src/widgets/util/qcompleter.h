@@ -40,16 +40,16 @@
 #ifndef QCOMPLETER_H
 #define QCOMPLETER_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qabstractitemmodel.h>
 #include <QtCore/qrect.h>
 
+QT_REQUIRE_CONFIG(completer);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_COMPLETER
 
 class QCompleterPrivate;
 class QAbstractItemView;
@@ -160,8 +160,6 @@ private:
     Q_PRIVATE_SLOT(d_func(), void _q_autoResizePopup())
     Q_PRIVATE_SLOT(d_func(), void _q_fileSystemModelDirectoryLoaded(const QString&))
 };
-
-#endif // QT_NO_COMPLETER
 
 QT_END_NAMESPACE
 

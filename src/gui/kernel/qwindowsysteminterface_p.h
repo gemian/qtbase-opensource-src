@@ -50,6 +50,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include "qwindowsysteminterface.h"
 
 #include <QElapsedTimer>
@@ -97,7 +98,8 @@ public:
 #endif
         ApplicationStateChanged = 0x19,
         FlushEvents = 0x20,
-        WindowScreenChanged = 0x21
+        WindowScreenChanged = 0x21,
+        SafeAreaMarginsChanged = 0x22
     };
 
     class WindowSystemEvent {
@@ -130,12 +132,10 @@ public:
 
     class GeometryChangeEvent : public WindowSystemEvent {
     public:
-        GeometryChangeEvent(QWindow *tlw, const QRect &newGeometry, const QRect &oldGeometry)
-            : WindowSystemEvent(GeometryChange), tlw(tlw), newGeometry(newGeometry), oldGeometry(oldGeometry)
-        { }
-        QPointer<QWindow> tlw;
+        GeometryChangeEvent(QWindow *window, const QRect &newGeometry);
+        QPointer<QWindow> window;
+        QRect requestedGeometry;
         QRect newGeometry;
-        QRect oldGeometry;
     };
 
     class EnterEvent : public WindowSystemEvent {
@@ -167,12 +167,13 @@ public:
 
     class WindowStateChangedEvent : public WindowSystemEvent {
     public:
-        WindowStateChangedEvent(QWindow *_window, Qt::WindowState _newState)
-            : WindowSystemEvent(WindowStateChanged), window(_window), newState(_newState)
+        WindowStateChangedEvent(QWindow *_window, Qt::WindowStates _newState, Qt::WindowStates _oldState)
+            : WindowSystemEvent(WindowStateChanged), window(_window), newState(_newState), oldState(_oldState)
         { }
 
         QPointer<QWindow> window;
-        Qt::WindowState newState;
+        Qt::WindowStates newState;
+        Qt::WindowStates oldState;
     };
 
     class WindowScreenChangedEvent : public WindowSystemEvent {
@@ -183,6 +184,15 @@ public:
 
         QPointer<QWindow> window;
         QPointer<QScreen> screen;
+    };
+
+    class SafeAreaMarginsChangedEvent : public WindowSystemEvent {
+    public:
+        SafeAreaMarginsChangedEvent(QWindow *w)
+            : WindowSystemEvent(SafeAreaMarginsChanged), window(w)
+        { }
+
+        QPointer<QWindow> window;
     };
 
     class ApplicationStateChangedEvent : public WindowSystemEvent {
@@ -225,11 +235,11 @@ public:
 
     class MouseEvent : public InputEvent {
     public:
-        MouseEvent(QWindow * w, ulong time, const QPointF & local, const QPointF & global,
+        MouseEvent(QWindow * w, ulong time, const QPointF &local, const QPointF &global,
                    Qt::MouseButtons b, Qt::KeyboardModifiers mods,
                    Qt::MouseEventSource src = Qt::MouseEventNotSynthesized)
             : InputEvent(w, time, Mouse, mods), localPos(local), globalPos(global), buttons(b), source(src) { }
-        MouseEvent(QWindow * w, ulong time, EventType t, const QPointF & local, const QPointF & global,
+        MouseEvent(QWindow * w, ulong time, EventType t, const QPointF &local, const QPointF &global,
                    Qt::MouseButtons b, Qt::KeyboardModifiers mods,
                    Qt::MouseEventSource src = Qt::MouseEventNotSynthesized)
             : InputEvent(w, time, t, mods), localPos(local), globalPos(global), buttons(b), source(src) { }
@@ -241,7 +251,7 @@ public:
 
     class WheelEvent : public InputEvent {
     public:
-        WheelEvent(QWindow *w, ulong time, const QPointF & local, const QPointF & global, QPoint pixelD, QPoint angleD, int qt4D, Qt::Orientation qt4O,
+        WheelEvent(QWindow *w, ulong time, const QPointF &local, const QPointF &global, QPoint pixelD, QPoint angleD, int qt4D, Qt::Orientation qt4O,
                    Qt::KeyboardModifiers mods, Qt::ScrollPhase phase = Qt::NoScrollPhase, Qt::MouseEventSource src = Qt::MouseEventNotSynthesized, bool inverted = false);
         QPoint pixelDelta;
         QPoint angleDelta;
@@ -329,8 +339,8 @@ public:
 
     class ExposeEvent : public WindowSystemEvent {
     public:
-        ExposeEvent(QWindow *exposed, const QRegion &region);
-        QPointer<QWindow> exposed;
+        ExposeEvent(QWindow *window, const QRegion &region);
+        QPointer<QWindow> window;
         bool isExposed;
         QRegion region;
     };
@@ -421,9 +431,9 @@ public:
 #ifndef QT_NO_GESTURES
     class GestureEvent : public InputEvent {
     public:
-        GestureEvent(QWindow *window, ulong time, Qt::NativeGestureType type, QPointF pos, QPointF globalPos)
+        GestureEvent(QWindow *window, ulong time, Qt::NativeGestureType type, QTouchDevice *dev, QPointF pos, QPointF globalPos)
             : InputEvent(window, time, Gesture, Qt::NoModifier), type(type), pos(pos), globalPos(globalPos),
-              realValue(0), sequenceId(0), intValue(0) { }
+              realValue(0), sequenceId(0), intValue(0), device(dev) { }
         Qt::NativeGestureType type;
         QPointF pos;
         QPointF globalPos;
@@ -432,6 +442,7 @@ public:
         // Windows
         ulong sequenceId;
         quint64 intValue;
+        QTouchDevice *device;
     };
 #endif
 
@@ -455,6 +466,14 @@ public:
                 if (!(impl.at(i)->type & QWindowSystemInterfacePrivate::UserInputEvent))
                     return impl.takeAt(i);
             return 0;
+        }
+        bool nonUserInputEventsQueued()
+        {
+            const QMutexLocker locker(&mutex);
+            for (int i = 0; i < impl.size(); ++i)
+                if (!(impl.at(i)->type & QWindowSystemInterfacePrivate::UserInputEvent))
+                    return true;
+            return false;
         }
         void append(WindowSystemEvent *e)
         { const QMutexLocker locker(&mutex); impl.append(e); }
@@ -486,13 +505,15 @@ public:
     static WindowSystemEventList windowSystemEventQueue;
 
     static int windowSystemEventsQueued();
+    static bool nonUserInputEventsQueued();
     static WindowSystemEvent *getWindowSystemEvent();
     static WindowSystemEvent *getNonUserInputWindowSystemEvent();
     static WindowSystemEvent *peekWindowSystemEvent(EventType t);
     static void removeWindowSystemEvent(WindowSystemEvent *event);
-    static void postWindowSystemEvent(WindowSystemEvent *ev);
+    template<typename Delivery = QWindowSystemInterface::DefaultDelivery>
     static bool handleWindowSystemEvent(WindowSystemEvent *ev);
 
+public:
     static QElapsedTimer eventTime;
     static bool synchronousWindowSystemEvents;
 
@@ -502,7 +523,7 @@ public:
 
     static QList<QTouchEvent::TouchPoint>
         fromNativeTouchPoints(const QList<QWindowSystemInterface::TouchPoint> &points,
-                              const QWindow *window, QEvent::Type *type = Q_NULLPTR);
+                              const QWindow *window, quint8 deviceId, QEvent::Type *type = Q_NULLPTR);
     static QList<QWindowSystemInterface::TouchPoint>
         toNativeTouchPoints(const QList<QTouchEvent::TouchPoint>& pointList,
                             const QWindow *window);

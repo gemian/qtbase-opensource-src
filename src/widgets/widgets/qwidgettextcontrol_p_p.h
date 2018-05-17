@@ -51,15 +51,19 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtGui/qtextdocumentfragment.h"
-#include "QtWidgets/qscrollbar.h"
 #include "QtGui/qtextcursor.h"
 #include "QtGui/qtextformat.h"
+#if QT_CONFIG(menu)
 #include "QtWidgets/qmenu.h"
+#endif
 #include "QtGui/qabstracttextdocumentlayout.h"
 #include "QtCore/qbasictimer.h"
 #include "QtCore/qpointer.h"
 #include "private/qobject_p.h"
+
+QT_REQUIRE_CONFIG(widgettextcontrol);
 
 QT_BEGIN_NAMESPACE
 

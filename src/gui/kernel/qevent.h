@@ -40,6 +40,7 @@
 #ifndef QEVENT_H
 #define QEVENT_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtGui/qwindowdefs.h>
 #include <QtGui/qregion.h>
 #include <QtCore/qnamespace.h>
@@ -51,7 +52,7 @@
 #include <QtCore/qvector.h>
 #include <QtCore/qset.h> // ### Qt 6: Remove
 #include <QtCore/qurl.h>
-#include <QtCore/qfile.h> // ### Qt 6: Replace by <qiodevice.h> and forward declare QFile
+#include <QtCore/qfile.h> // ### Qt 6: Replace by <QtCore/qiodevice.h> and forward declare QFile
 #include <QtGui/qvector2d.h>
 #include <QtGui/qtouchdevice.h> // ### Qt 6: Replace by forward declaration
 
@@ -131,6 +132,8 @@ public:
     inline Qt::MouseButton button() const { return b; }
     inline Qt::MouseButtons buttons() const { return mouseState; }
 
+    inline void setLocalPos(const QPointF &localPosition) { l = localPosition; }
+
 #if QT_DEPRECATED_SINCE(5, 0)
     QT_DEPRECATED inline QPointF posF() const { return l; }
 #endif
@@ -166,7 +169,7 @@ protected:
     QPointF p, op;
 };
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 class Q_GUI_EXPORT QWheelEvent : public QInputEvent
 {
 public:
@@ -202,10 +205,10 @@ public:
 #ifndef QT_NO_INTEGER_EVENT_COORDINATES
     inline QPoint pos() const { return p.toPoint(); }
     inline QPoint globalPos()   const { return g.toPoint(); }
-    inline int x() const { return p.x(); }
-    inline int y() const { return p.y(); }
-    inline int globalX() const { return g.x(); }
-    inline int globalY() const { return g.y(); }
+    inline int x() const { return int(p.x()); }
+    inline int y() const { return int(p.y()); }
+    inline int globalX() const { return int(g.x()); }
+    inline int globalY() const { return int(g.y()); }
 #endif
     inline const QPointF &posF() const { return p; }
     inline const QPointF &globalPosF()   const { return g; }
@@ -234,7 +237,7 @@ protected:
 };
 #endif
 
-#ifndef QT_NO_TABLETEVENT
+#if QT_CONFIG(tabletevent)
 class Q_GUI_EXPORT QTabletEvent : public QInputEvent
 {
     Q_GADGET
@@ -292,14 +295,19 @@ protected:
     // ### Qt 6: QPointingEvent will have Buttons, QTabletEvent will inherit
     void *mExtra;
 };
-#endif // QT_NO_TABLETEVENT
+#endif // QT_CONFIG(tabletevent)
 
 #ifndef QT_NO_GESTURES
 class Q_GUI_EXPORT QNativeGestureEvent : public QInputEvent
 {
 public:
-    QNativeGestureEvent(Qt::NativeGestureType type, const QPointF &localPos, const QPointF &windowPos,
+#if QT_DEPRECATED_SINCE(5, 10)
+    QT_DEPRECATED QNativeGestureEvent(Qt::NativeGestureType type, const QPointF &localPos, const QPointF &windowPos,
                         const QPointF &screenPos, qreal value, ulong sequenceId, quint64 intArgument);
+#endif
+    QNativeGestureEvent(Qt::NativeGestureType type, const QTouchDevice *dev, const QPointF &localPos, const QPointF &windowPos,
+                        const QPointF &screenPos, qreal value, ulong sequenceId, quint64 intArgument);
+    ~QNativeGestureEvent();
     Qt::NativeGestureType gestureType() const { return mGestureType; }
     qreal value() const { return mRealValue; }
 
@@ -310,6 +318,8 @@ public:
     const QPointF &localPos() const { return mLocalPos; }
     const QPointF &windowPos() const { return mWindowPos; }
     const QPointF &screenPos() const { return mScreenPos; }
+
+    const QTouchDevice *device() const;
 
 protected:
     Qt::NativeGestureType mGestureType;
@@ -535,8 +545,9 @@ public:
     class Attribute {
     public:
         Attribute(AttributeType typ, int s, int l, QVariant val) : type(typ), start(s), length(l), value(qMove(val)) {}
-        AttributeType type;
+        Attribute(AttributeType typ, int s, int l) : type(typ), start(s), length(l), value() {}
 
+        AttributeType type;
         int start;
         int length;
         QVariant value;
@@ -695,7 +706,7 @@ private:
 };
 #endif
 
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
 class Q_GUI_EXPORT QWhatsThisClickedEvent : public QEvent
 {
 public:
@@ -789,6 +800,37 @@ inline bool operator==(QKeyEvent *e, QKeySequence::StandardKey key){return (e ? 
 inline bool operator==(QKeySequence::StandardKey key, QKeyEvent *e){return (e ? e->matches(key) : false);}
 #endif // QT_NO_SHORTCUT
 
+class Q_GUI_EXPORT QPointingDeviceUniqueId
+{
+    Q_GADGET
+    Q_PROPERTY(qint64 numericId READ numericId CONSTANT)
+public:
+    Q_ALWAYS_INLINE
+    Q_DECL_CONSTEXPR QPointingDeviceUniqueId() Q_DECL_NOTHROW : m_numericId(-1) {}
+    // compiler-generated copy/move ctor/assignment operators are ok!
+    // compiler-generated dtor is ok!
+
+    static QPointingDeviceUniqueId fromNumericId(qint64 id);
+
+    Q_ALWAYS_INLINE Q_DECL_CONSTEXPR bool isValid() const Q_DECL_NOTHROW { return m_numericId != -1; }
+    qint64 numericId() const Q_DECL_NOTHROW;
+
+private:
+    // TODO: for TUIO 2, or any other type of complex token ID, an internal
+    // array (or hash) can be added to hold additional properties.
+    // In this case, m_numericId will then turn into an index into that array (or hash).
+    qint64 m_numericId;
+};
+Q_DECLARE_TYPEINFO(QPointingDeviceUniqueId, Q_MOVABLE_TYPE);
+template <> class QList<QPointingDeviceUniqueId> {}; // to prevent instantiation: use QVector instead
+
+Q_GUI_EXPORT bool operator==(QPointingDeviceUniqueId lhs, QPointingDeviceUniqueId rhs) Q_DECL_NOTHROW;
+inline bool operator!=(QPointingDeviceUniqueId lhs, QPointingDeviceUniqueId rhs) Q_DECL_NOTHROW
+{ return !operator==(lhs, rhs); }
+Q_GUI_EXPORT uint qHash(QPointingDeviceUniqueId key, uint seed = 0) Q_DECL_NOTHROW;
+
+
+
 class QTouchEventTouchPointPrivate;
 class Q_GUI_EXPORT QTouchEvent : public QInputEvent
 {
@@ -797,7 +839,8 @@ public:
     {
     public:
         enum InfoFlag {
-            Pen  = 0x0001
+            Pen  = 0x0001,
+            Token = 0x0002
         };
 #ifndef Q_MOC_RUN
         // otherwise moc gives
@@ -823,6 +866,7 @@ public:
         { qSwap(d, other.d); }
 
         int id() const;
+        QPointingDeviceUniqueId uniqueId() const;
 
         Qt::TouchPointState state() const;
 
@@ -847,12 +891,16 @@ public:
         QRectF screenRect() const;
 
         qreal pressure() const;
+        qreal rotation() const;
+        QSizeF ellipseDiameters() const;
+
         QVector2D velocity() const;
         InfoFlags flags() const;
         QVector<QPointF> rawScreenPositions() const;
 
         // internal
         void setId(int id);
+        void setUniqueId(qint64 uid);
         void setState(Qt::TouchPointStates state);
         void setPos(const QPointF &pos);
         void setScenePos(const QPointF &scenePos);
@@ -866,10 +914,12 @@ public:
         void setLastScenePos(const QPointF &lastScenePos);
         void setLastScreenPos(const QPointF &lastScreenPos);
         void setLastNormalizedPos(const QPointF &lastNormalizedPos);
-        void setRect(const QRectF &rect);
-        void setSceneRect(const QRectF &sceneRect);
-        void setScreenRect(const QRectF &screenRect);
+        void setRect(const QRectF &rect); // deprecated
+        void setSceneRect(const QRectF &sceneRect); // deprecated
+        void setScreenRect(const QRectF &screenRect); // deprecated
         void setPressure(qreal pressure);
+        void setRotation(qreal angle);
+        void setEllipseDiameters(const QSizeF &dia);
         void setVelocity(const QVector2D &v);
         void setFlags(InfoFlags flags);
         void setRawScreenPositions(const QVector<QPointF> &positions);

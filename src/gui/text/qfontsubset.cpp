@@ -136,7 +136,7 @@ QByteArray QFontSubset::widthArray() const
 
     QByteArray width;
     QPdf::ByteStream s(&width);
-    QFixed scale = QFixed(1000)/emSquare;
+    const qreal scale = 1000.0/emSquare.toInt();
 
     QFixed defWidth = widths[0];
     //qDebug("defWidth=%d, scale=%f", defWidth.toInt(), scale.toReal());
@@ -145,7 +145,7 @@ QByteArray QFontSubset::widthArray() const
             defWidth = 0;
     }
     if (defWidth > 0) {
-        s << "/DW " << (defWidth*scale).toInt();
+        s << "/DW " << qRound(defWidth.toInt() * scale);
     } else {
         s << "/W [";
         for (int g = 0; g < nGlyphs();) {
@@ -174,11 +174,11 @@ QByteArray QFontSubset::widthArray() const
             if (endnonlinear > start) {
                 s << start << '[';
                 for (int i = start; i < endnonlinear; ++i)
-                    s << (widths[i]*scale).toInt();
+                    s << qRound(widths[i].toInt() * scale);
                 s << "]\n";
             }
             if (startLinear)
-                s << startLinear << g - 1 << (widths[startLinear]*scale).toInt() << '\n';
+                s << startLinear << g - 1 << qRound(widths[startLinear].toInt() * scale) << '\n';
         }
         s << "]\n";
     }
@@ -740,7 +740,7 @@ static void convertPath(const QPainterPath &path, QVector<TTF_POINT> *points, QV
                     points->takeLast();
                 endPoints->append(points->size() - 1);
             }
-            // fall through
+            Q_FALLTHROUGH();
         case QPainterPath::LineToElement:
             p.flags = OnCurve;
             break;
@@ -966,7 +966,7 @@ static QTtfGlyph generateGlyph(int index, const QPainterPath &path, qreal advanc
     glyph.advanceWidth = qRound(advance * 2048. / ppem);
     glyph.lsb = qRound(lsb * 2048. / ppem);
 
-    if (!path.elementCount()) {
+    if (path.isEmpty()) {
         //qDebug("glyph %d is empty", index);
         lsb = 0;
         glyph.xMin = glyph.xMax = glyph.yMin = glyph.yMax = 0;

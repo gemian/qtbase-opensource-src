@@ -68,12 +68,11 @@ class Producer : public QThread
 //! [1] //! [2]
 {
 public:
-    void run() Q_DECL_OVERRIDE
+    void run() override
     {
-        qsrand(QTime(0,0,0).secsTo(QTime::currentTime()));
         for (int i = 0; i < DataSize; ++i) {
             freeBytes.acquire();
-            buffer[i % BufferSize] = "ACGT"[(int)qrand() % 4];
+            buffer[i % BufferSize] = "ACGT"[QRandomGenerator::global()->bounded(4)];
             usedBytes.release();
         }
     }
@@ -86,7 +85,7 @@ class Consumer : public QThread
 {
     Q_OBJECT
 public:
-    void run() Q_DECL_OVERRIDE
+    void run() override
     {
         for (int i = 0; i < DataSize; ++i) {
             usedBytes.acquire();

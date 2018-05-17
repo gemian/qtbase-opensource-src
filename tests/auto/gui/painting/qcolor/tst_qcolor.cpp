@@ -33,6 +33,7 @@
 
 #include <qcolor.h>
 #include <qdebug.h>
+#include <private/qcolorprofile_p.h>
 #include <private/qdrawingprimitive_sse2_p.h>
 #include <qrgba64.h>
 
@@ -52,6 +53,7 @@ private slots:
     void name();
     void namehex_data();
     void namehex();
+    void setNamedColor_data();
     void setNamedColor();
 
     void constructNamedColorWithSpace();
@@ -106,7 +108,10 @@ private slots:
     void qrgba64Premultiply();
     void qrgba64Equivalence();
 
-#ifdef Q_DEAD_CODE_FROM_QT4_X11
+    void qcolorprofile_data();
+    void qcolorprofile();
+
+#if 0 // Used to be included in Qt4 for Q_WS_X11
     void setallowX11ColorNames();
 #endif
 };
@@ -525,25 +530,61 @@ static const int rgbTblSize = sizeof(rgbTbl) / sizeof(RGBData);
 
 #undef rgb
 
-void tst_QColor::setNamedColor()
+void tst_QColor::setNamedColor_data()
 {
-    for (int i = 0; i < rgbTblSize; ++i) {
+    QTest::addColumn<QColor>("byCtor");
+    QTest::addColumn<QColor>("bySetNamedColor");
+    QTest::addColumn<QColor>("expected");
+
+    for (const auto e : rgbTbl) {
         QColor expected;
-        expected.setRgba(rgbTbl[i].value);
+        expected.setRgba(e.value);
 
-        QColor color;
-        color.setNamedColor(QLatin1String(rgbTbl[i].name));
-        QCOMPARE(color, expected);
+#define ROW(expr)                                \
+        do {                                     \
+            QColor bySetNamedColor;              \
+            bySetNamedColor.setNamedColor(expr); \
+            auto byCtor = QColor(expr);          \
+            QTest::addRow("%s: %s", e.name, #expr) \
+                << byCtor << bySetNamedColor << expected;    \
+        } while (0)                              \
+        /*end*/
 
+        const auto l1 = QLatin1String(e.name);
+        const auto l1UpperBA = QByteArray(e.name).toUpper();
+        const auto l1Upper = QLatin1String(l1UpperBA);
+        const auto l1SpaceBA = QByteArray(e.name).insert(1, ' ');
+        const auto l1Space = QLatin1String(l1SpaceBA);
+
+        const auto u16  = QString(l1);
+        const auto u16Upper = u16.toUpper();
+        const auto u16Space = QString(u16).insert(1, ' ');
+
+        ROW(l1);
+        ROW(u16);
+        ROW(QStringView(u16));
         // name should be case insensitive
-        color.setNamedColor(QString(rgbTbl[i].name).toUpper());
-        QCOMPARE(color, expected);
-
+        ROW(l1Upper);
+        ROW(u16Upper);
+        ROW(QStringView(u16Upper));
         // spaces should be ignored
-        color.setNamedColor(QString(rgbTbl[i].name).insert(1, ' '));
-        QCOMPARE(color, expected);
+        ROW(l1Space);
+        ROW(u16Space);
+        ROW(QStringView(u16Space));
+#undef ROW
     }
 }
+
+void tst_QColor::setNamedColor()
+{
+    QFETCH(QColor, byCtor);
+    QFETCH(QColor, bySetNamedColor);
+    QFETCH(QColor, expected);
+
+    QCOMPARE(byCtor, expected);
+    QCOMPARE(bySetNamedColor, expected);
+}
+
 
 void tst_QColor::constructNamedColorWithSpace()
 {
@@ -556,7 +597,7 @@ void tst_QColor::colorNames()
     QStringList all = QColor::colorNames();
     QCOMPARE(all.size(), rgbTblSize);
     for (int i = 0; i < all.size(); ++i)
-        QCOMPARE(all.at(i), QString::fromLatin1(rgbTbl[i].name));
+        QCOMPARE(all.at(i), QLatin1String(rgbTbl[i].name));
 }
 
 void tst_QColor::spec()
@@ -1379,7 +1420,7 @@ void tst_QColor::achromaticHslHue()
     QCOMPARE(hsl.hslHue(), -1);
 }
 
-#ifdef Q_DEAD_CODE_FROM_QT4_X11
+#if 0 // Used to be included in Qt4 for Q_WS_X11
 void tst_QColor::setallowX11ColorNames()
 {
 #if defined(Q_OS_IRIX)
@@ -1561,6 +1602,37 @@ void tst_QColor::qrgba64Equivalence()
             QCOMPARE(pu64.toArgb32(), pu);
         }
     }
+}
+
+void tst_QColor::qcolorprofile_data()
+{
+    QTest::addColumn<qreal>("gammaC");
+    QTest::addColumn<int>("tolerance");
+
+    QTest::newRow("gamma=1.0") << qreal(1.0) << 0;
+    QTest::newRow("gamma=1.5") << qreal(1.5) << 1;
+    QTest::newRow("gamma=1.7") << qreal(1.7) << 2;
+    QTest::newRow("gamma=2.0") << qreal(2.0) << 8;
+    QTest::newRow("gamma=2.31") << qreal(2.31) << 33;
+    QTest::newRow("SRgb") << qreal(0.0) << 7;
+}
+
+void tst_QColor::qcolorprofile()
+{
+    QFETCH(qreal, gammaC);
+    QFETCH(int, tolerance);
+    QColorProfile *cp = (gammaC == 0) ? QColorProfile::fromSRgb(): QColorProfile::fromGamma(gammaC);
+
+    // Test we are accurate for most values after converting through gamma-correction.
+    int error = 0;
+    for (uint i = 0; i < 256; i++) {
+        QRgb cin = qRgb(i, i, i);
+        QRgba64 tmp = cp->toLinear64(cin);
+        QRgb cout = cp->fromLinear64(tmp);
+        error += qAbs(qRed(cin) - qRed(cout));
+    }
+    QVERIFY(error <= tolerance);
+    delete cp;
 }
 
 QTEST_MAIN(tst_QColor)

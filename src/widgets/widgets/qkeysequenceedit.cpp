@@ -43,10 +43,9 @@
 
 #include "qboxlayout.h"
 #include "qlineedit.h"
+#include <private/qkeymapper_p.h>
 
 QT_BEGIN_NAMESPACE
-
-#ifndef QT_NO_KEYSEQUENCEEDIT
 
 Q_STATIC_ASSERT(QKeySequencePrivate::MaxKeyCount == 4); // assumed by the code around here
 
@@ -80,15 +79,8 @@ void QKeySequenceEditPrivate::init()
 
 int QKeySequenceEditPrivate::translateModifiers(Qt::KeyboardModifiers state, const QString &text)
 {
+    Q_UNUSED(text);
     int result = 0;
-    // The shift modifier only counts when it is not used to type a symbol
-    // that is only reachable using the shift key anyway
-    if ((state & Qt::ShiftModifier) && (text.isEmpty() ||
-                                        !text.at(0).isPrint() ||
-                                        text.at(0).isLetterOrNumber() ||
-                                        text.at(0).isSpace()))
-        result |= Qt::SHIFT;
-
     if (state & Qt::ControlModifier)
         result |= Qt::CTRL;
     if (state & Qt::MetaModifier)
@@ -138,21 +130,17 @@ void QKeySequenceEditPrivate::finishEditing()
 /*!
     Constructs a QKeySequenceEdit widget with the given \a parent.
 */
-QKeySequenceEdit::QKeySequenceEdit(QWidget *parent) :
-    QWidget(*new QKeySequenceEditPrivate, parent, 0)
+QKeySequenceEdit::QKeySequenceEdit(QWidget *parent)
+    : QKeySequenceEdit(*new QKeySequenceEditPrivate, parent, 0)
 {
-    Q_D(QKeySequenceEdit);
-    d->init();
 }
 
 /*!
     Constructs a QKeySequenceEdit widget with the given \a keySequence and \a parent.
 */
-QKeySequenceEdit::QKeySequenceEdit(const QKeySequence &keySequence, QWidget *parent) :
-    QWidget(*new QKeySequenceEditPrivate, parent, 0)
+QKeySequenceEdit::QKeySequenceEdit(const QKeySequence &keySequence, QWidget *parent)
+    : QKeySequenceEdit(parent)
 {
-    Q_D(QKeySequenceEdit);
-    d->init();
     setKeySequence(keySequence);
 }
 
@@ -261,7 +249,8 @@ void QKeySequenceEdit::keyPressEvent(QKeyEvent *e)
     if (nextKey == Qt::Key_Control
             || nextKey == Qt::Key_Shift
             || nextKey == Qt::Key_Meta
-            || nextKey == Qt::Key_Alt) {
+            || nextKey == Qt::Key_Alt
+            || nextKey == Qt::Key_unknown) {
         return;
     }
 
@@ -275,7 +264,27 @@ void QKeySequenceEdit::keyPressEvent(QKeyEvent *e)
     if (d->keyNum >= QKeySequencePrivate::MaxKeyCount)
         return;
 
-    nextKey |= d->translateModifiers(e->modifiers(), e->text());
+    if (e->modifiers() & Qt::ShiftModifier) {
+        QList<int> possibleKeys = QKeyMapper::possibleKeys(e);
+        int pkTotal = possibleKeys.count();
+        if (!pkTotal)
+            return;
+        bool found = false;
+        for (int i = 0; i < possibleKeys.size(); ++i) {
+            if (possibleKeys.at(i) - nextKey == int(e->modifiers())
+                || (possibleKeys.at(i) == nextKey && e->modifiers() == Qt::ShiftModifier)) {
+                nextKey = possibleKeys.at(i);
+                found = true;
+                break;
+            }
+        }
+        // Use as fallback
+        if (!found)
+            nextKey = possibleKeys.first();
+    } else {
+        nextKey |= d->translateModifiers(e->modifiers(), e->text());
+    }
+
 
     d->key[d->keyNum] = nextKey;
     d->keyNum++;
@@ -320,8 +329,6 @@ void QKeySequenceEdit::timerEvent(QTimerEvent *e)
 
     QWidget::timerEvent(e);
 }
-
-#endif // QT_NO_KEYSEQUENCEEDIT
 
 QT_END_NAMESPACE
 

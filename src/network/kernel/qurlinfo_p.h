@@ -51,14 +51,14 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include <QtCore/qdatetime.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qiodevice.h>
 
+QT_REQUIRE_CONFIG(ftp);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_FTP
 
 class QUrl;
 class QUrlInfoPrivate;
@@ -127,8 +127,6 @@ public:
 private:
     QUrlInfoPrivate *d;
 };
-
-#endif // QT_NO_FTP
 
 QT_END_NAMESPACE
 

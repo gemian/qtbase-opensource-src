@@ -40,12 +40,12 @@
 #ifndef QBUTTONGROUP_H
 #define QBUTTONGROUP_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qobject.h>
 
+QT_REQUIRE_CONFIG(buttongroup);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_BUTTONGROUP
 
 class QAbstractButton;
 class QAbstractButtonPrivate;
@@ -92,8 +92,6 @@ private:
     friend class QAbstractButton;
     friend class QAbstractButtonPrivate;
 };
-
-#endif // QT_NO_BUTTONGROUP
 
 QT_END_NAMESPACE
 

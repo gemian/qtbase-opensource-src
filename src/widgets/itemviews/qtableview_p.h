@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtCore/QList>
 #include <QtCore/QLinkedList>
 #include <QtCore/QMap>
@@ -58,7 +59,7 @@
 #include <QtCore/QDebug>
 #include "private/qabstractitemview_p.h"
 
-#ifndef QT_NO_TABLEVIEW
+QT_REQUIRE_CONFIG(tableview);
 
 QT_BEGIN_NAMESPACE
 
@@ -191,7 +192,9 @@ public:
     QVector<int> rowsToUpdate;
     QHeaderView *horizontalHeader;
     QHeaderView *verticalHeader;
+#if QT_CONFIG(abstractbutton)
     QWidget *cornerWidget;
+#endif
     bool sortingEnabled;
     bool geometryRecursionBlock;
     QPoint visualCursor;  // (Row,column) cell coordinates to track through span navigation.
@@ -257,7 +260,5 @@ public:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_TABLEVIEW
 
 #endif // QTABLEVIEW_P_H

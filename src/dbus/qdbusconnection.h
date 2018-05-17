@@ -41,11 +41,15 @@
 #ifndef QDBUSCONNECTION_H
 #define QDBUSCONNECTION_H
 
-#include <QtDBus/qdbusmacros.h>
+#include <QtDBus/qtdbusglobal.h>
 #include <QtCore/qobjectdefs.h>
 #include <QtCore/qstring.h>
 
 #ifndef QT_NO_DBUS
+
+#ifdef interface
+#  undef interface
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -73,10 +77,9 @@ class QDBusConnectionPrivate;
 class Q_DBUS_EXPORT QDBusConnection
 {
     Q_GADGET
-    Q_ENUMS(BusType UnregisterMode)
-    Q_FLAGS(RegisterOptions)
 public:
     enum BusType { SessionBus, SystemBus, ActivationBus };
+    Q_ENUM(BusType)
     enum RegisterOption {
         ExportAdaptors = 0x01,
 
@@ -106,11 +109,13 @@ public:
         // Reserved = 0xff000000
     };
     Q_DECLARE_FLAGS(RegisterOptions, RegisterOption)
+    Q_FLAG(RegisterOptions)
 
     enum UnregisterMode {
         UnregisterNode,
         UnregisterTree
     };
+    Q_ENUM(UnregisterMode)
 
     enum VirtualObjectRegisterOption {
         SingleNode = 0x0,

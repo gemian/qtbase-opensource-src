@@ -69,7 +69,7 @@ static inline QString moduleHeader(const QString &module, const QString &header)
 namespace CPP {
 
 WriteIncludes::WriteIncludes(Uic *uic)
-    : m_uic(uic), m_output(uic->output()), m_scriptsActivated(false), m_laidOut(false)
+    : m_uic(uic), m_output(uic->output()), m_laidOut(false)
 {
     // When possible (no namespace) use the "QtModule/QClass" convention
     // and create a re-mapping of the old header "qclass.h" to it. Do not do this
@@ -92,7 +92,6 @@ WriteIncludes::WriteIncludes(Uic *uic)
 
 void WriteIncludes::acceptUI(DomUI *node)
 {
-    m_scriptsActivated = false;
     m_laidOut = false;
     m_localIncludes.clear();
     m_globalIncludes.clear();
@@ -114,8 +113,9 @@ void WriteIncludes::acceptUI(DomUI *node)
 
     TreeWalker::acceptUI(node);
 
-    if (!m_uic->option().includeFile.isEmpty())
-        m_globalIncludes.insert(m_uic->option().includeFile, true);
+    const auto includeFile = m_uic->option().includeFile;
+    if (!includeFile.isEmpty())
+        m_globalIncludes.insert(includeFile);
 
     writeHeaders(m_globalIncludes, true);
     writeHeaders(m_localIncludes, false);
@@ -230,10 +230,6 @@ void WriteIncludes::acceptCustomWidget(DomCustomWidget *node)
     if (className.isEmpty())
         return;
 
-    if (const DomScript *domScript = node->elementScript())
-        if (!domScript->text().isEmpty())
-            activateScripts();
-
     if (!node->elementHeader() || node->elementHeader()->text().isEmpty()) {
         add(className, false); // no header specified
     } else {
@@ -272,10 +268,11 @@ void WriteIncludes::insertInclude(const QString &header, bool global)
         fprintf(stderr, "%s %s %d\n", Q_FUNC_INFO, qPrintable(header), global);
 
     OrderedSet &includes = global ?  m_globalIncludes : m_localIncludes;
-    if (includes.contains(header))
+    // Insert (if not already done).
+    const bool isNewHeader = includes.insert(header).second;
+    if (!isNewHeader)
         return;
-    // Insert. Also remember base name for quick check of suspicious custom plugins
-    includes.insert(header, false);
+    // Also remember base name for quick check of suspicious custom plugins
     const QString lowerBaseName = QFileInfo(header).completeBaseName ().toLower();
     m_includeBaseNames.insert(lowerBaseName);
 }
@@ -286,31 +283,14 @@ void WriteIncludes::writeHeaders(const OrderedSet &headers, bool global)
     const QChar closingQuote = global ? QLatin1Char('>') : QLatin1Char('"');
 
     // Check for the old headers 'qslider.h' and replace by 'QtGui/QSlider'
-    const OrderedSet::const_iterator cend = headers.constEnd();
-    for (OrderedSet::const_iterator sit = headers.constBegin(); sit != cend; ++sit) {
-        const StringMap::const_iterator hit = m_oldHeaderToNewHeader.constFind(sit.key());
-        const bool mapped =  hit != m_oldHeaderToNewHeader.constEnd();
-        const  QString header =  mapped ? hit.value() : sit.key();
-        if (!QStringRef(&header).trimmed().isEmpty())
-            m_output << "#include " << openingQuote << header << closingQuote << QLatin1Char('\n');
+    for (const QString &header : headers) {
+        const QString value = m_oldHeaderToNewHeader.value(header, header);
+        const auto trimmed = QStringRef(&value).trimmed();
+        if (!trimmed.isEmpty())
+            m_output << "#include " << openingQuote << trimmed << closingQuote << QLatin1Char('\n');
     }
 }
 
-void WriteIncludes::acceptWidgetScripts(const DomScripts &scripts, DomWidget *, const  DomWidgets &)
-{
-    if (!scripts.empty()) {
-        activateScripts();
-    }
-}
-
-void WriteIncludes::activateScripts()
-{
-    if (!m_scriptsActivated) {
-        add(QLatin1String("QScriptEngine"));
-        add(QLatin1String("QDebug"));
-        m_scriptsActivated = true;
-    }
-}
 } // namespace CPP
 
 QT_END_NAMESPACE

@@ -77,6 +77,8 @@ public:
         , m_keyboardInputInterval(-1)
         , m_cursorFlashTime(-1)
         , m_tabFocusBehavior(-1)
+        , m_uiEffects(-1)
+        , m_wheelScrollLines(-1)
         {}
 
     int m_mouseDoubleClickInterval;
@@ -86,6 +88,8 @@ public:
     int m_keyboardInputInterval;
     int m_cursorFlashTime;
     int m_tabFocusBehavior;
+    int m_uiEffects;
+    int m_wheelScrollLines;
 };
 
 /*!
@@ -327,7 +331,9 @@ int QStyleHints::cursorFlashTime() const
 
 /*!
     \property QStyleHints::showIsFullScreen
-    \brief \c true if the platform defaults to windows being fullscreen,
+    \brief whether the platform defaults to fullscreen windows.
+
+    This property is \c true if the platform defaults to windows being fullscreen,
     otherwise \c false.
 
     \note The platform may still choose to show certain windows non-fullscreen,
@@ -342,7 +348,9 @@ bool QStyleHints::showIsFullScreen() const
 
 /*!
     \property QStyleHints::showIsMaximized
-    \brief \c true if the platform defaults to windows being maximized,
+    \brief whether the platform defaults to maximized windows.
+
+    This property is \c true if the platform defaults to windows being maximized,
     otherwise \c false.
 
     \note The platform may still choose to show certain windows non-maximized,
@@ -354,6 +362,17 @@ bool QStyleHints::showIsFullScreen() const
 bool QStyleHints::showIsMaximized() const
 {
     return hint(QPlatformIntegration::ShowIsMaximized).toBool();
+}
+
+/*!
+    \property QStyleHints::showShortcutsInContextMenus
+    \since 5.10
+    \brief \c true if the platform normally shows shortcut key sequences in
+    context menus, otherwise \c false.
+*/
+bool QStyleHints::showShortcutsInContextMenus() const
+{
+    return themeableHint(QPlatformTheme::ShowShortcutsInContextMenus, QPlatformIntegration::ShowShortcutsInContextMenus).toBool();
 }
 
 /*!
@@ -387,7 +406,9 @@ qreal QStyleHints::fontSmoothingGamma() const
 
 /*!
     \property QStyleHints::useRtlExtensions
-    \brief \c true if right-to-left writing direction is enabled,
+    \brief the writing direction.
+
+    This property is \c true if right-to-left writing direction is enabled,
     otherwise \c false.
 */
 bool QStyleHints::useRtlExtensions() const
@@ -397,7 +418,9 @@ bool QStyleHints::useRtlExtensions() const
 
 /*!
     \property QStyleHints::setFocusOnTouchRelease
-    \brief \c true if focus objects (line edits etc) should receive
+    \brief the event that should set input focus on focus objects.
+
+    This property is \c true if focus objects (line edits etc) should receive
     input focus after a touch/mouse release. This is normal behavior on
     touch platforms. On desktop platforms, the standard is to set
     focus already on touch/mouse press.
@@ -441,7 +464,9 @@ void QStyleHints::setTabFocusBehavior(Qt::TabFocusBehavior tabFocusBehavior)
 
 /*!
     \property QStyleHints::singleClickActivation
-    \brief \c true if items should be activated by single click, \b false
+    \brief whether items are activated by single or double click.
+
+    This property is \c true if items should be activated by single click, \c false
     if they should be activated by double click instead.
 
     \since 5.5
@@ -449,6 +474,67 @@ void QStyleHints::setTabFocusBehavior(Qt::TabFocusBehavior tabFocusBehavior)
 bool QStyleHints::singleClickActivation() const
 {
     return themeableHint(QPlatformTheme::ItemViewActivateItemOnSingleClick, QPlatformIntegration::ItemViewActivateItemOnSingleClick).toBool();
+}
+
+/*!
+    \property QStyleHints::useHoverEffects
+    \brief whether UI elements use hover effects.
+
+    This property is \c true if UI elements should use hover effects. This is the
+    standard behavior on desktop platforms with a mouse pointer, whereas
+    on touch platforms the overhead of hover event delivery can be avoided.
+
+    \since 5.8
+*/
+bool QStyleHints::useHoverEffects() const
+{
+    Q_D(const QStyleHints);
+    return (d->m_uiEffects >= 0 ?
+            d->m_uiEffects :
+            themeableHint(QPlatformTheme::UiEffects, QPlatformIntegration::UiEffects).toInt()) & QPlatformTheme::HoverEffect;
+}
+
+void QStyleHints::setUseHoverEffects(bool useHoverEffects)
+{
+    Q_D(QStyleHints);
+    if (d->m_uiEffects >= 0 && useHoverEffects == bool(d->m_uiEffects & QPlatformTheme::HoverEffect))
+        return;
+    if (d->m_uiEffects == -1)
+        d->m_uiEffects = 0;
+    if (useHoverEffects)
+        d->m_uiEffects |= QPlatformTheme::HoverEffect;
+    else
+        d->m_uiEffects &= ~QPlatformTheme::HoverEffect;
+    emit useHoverEffectsChanged(useHoverEffects);
+}
+
+/*!
+    \property QStyleHints::wheelScrollLines
+    \brief Number of lines to scroll by default for each wheel click.
+
+    \since 5.9
+*/
+int QStyleHints::wheelScrollLines() const
+{
+    Q_D(const QStyleHints);
+    if (d->m_wheelScrollLines > 0)
+        return d->m_wheelScrollLines;
+    return themeableHint(QPlatformTheme::WheelScrollLines, QPlatformIntegration::WheelScrollLines).toInt();
+}
+
+/*!
+    Sets the \a wheelScrollLines.
+    \internal
+    \sa wheelScrollLines()
+    \since 5.9
+*/
+void QStyleHints::setWheelScrollLines(int scrollLines)
+{
+    Q_D(QStyleHints);
+    if (d->m_wheelScrollLines == scrollLines)
+        return;
+    d->m_wheelScrollLines = scrollLines;
+    emit wheelScrollLinesChanged(scrollLines);
 }
 
 QT_END_NAMESPACE

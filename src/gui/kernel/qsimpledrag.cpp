@@ -53,6 +53,8 @@
 #include "qdir.h"
 #include "qimagereader.h"
 #include "qimagewriter.h"
+#include "qplatformscreen.h"
+#include "qplatformwindow.h"
 
 #include <QtCore/QEventLoop>
 #include <QtCore/QDebug>
@@ -115,9 +117,9 @@ void QBasicDrag::disableEventFilter()
 }
 
 
-static inline QPoint getNativeMousePos(QEvent *e, QObject *o)
+static inline QPoint getNativeMousePos(QEvent *e, QWindow *window)
 {
-    return QHighDpi::toNativePixels(static_cast<QMouseEvent *>(e)->globalPos(), qobject_cast<QWindow*>(o));
+    return QHighDpi::toNativePixels(static_cast<QMouseEvent *>(e)->globalPos(), window);
 }
 
 bool QBasicDrag::eventFilter(QObject *o, QEvent *e)
@@ -154,14 +156,14 @@ bool QBasicDrag::eventFilter(QObject *o, QEvent *e)
 
         case QEvent::MouseMove:
         {
-            QPoint nativePosition = getNativeMousePos(e, o);
+            QPoint nativePosition = getNativeMousePos(e, m_drag_icon_window);
             move(nativePosition);
             return true; // Eat all mouse move events
         }
         case QEvent::MouseButtonRelease:
             disableEventFilter();
             if (canDrop()) {
-                QPoint nativePosition = getNativeMousePos(e, o);
+                QPoint nativePosition = getNativeMousePos(e, m_drag_icon_window);
                 drop(nativePosition);
             } else {
                 cancel();
@@ -316,6 +318,25 @@ void QBasicDrag::updateCursor(Qt::DropAction action)
     updateAction(action);
 }
 
+
+static inline QPoint fromNativeGlobalPixels(const QPoint &point)
+{
+#ifndef QT_NO_HIGHDPISCALING
+    QPoint res = point;
+    if (QHighDpiScaling::isActive()) {
+        for (const QScreen *s : qAsConst(QGuiApplicationPrivate::screen_list)) {
+            if (s->handle()->geometry().contains(point)) {
+                res = QHighDpi::fromNativePixels(point, s);
+                break;
+            }
+        }
+    }
+    return res;
+#else
+    return point;
+#endif
+}
+
 /*!
     \class QSimpleDrag
     \brief QSimpleDrag implements QBasicDrag for Drag and Drop operations within the Qt Application itself.
@@ -332,19 +353,12 @@ QSimpleDrag::QSimpleDrag() : m_current_window(0)
 {
 }
 
-QMimeData *QSimpleDrag::platformDropData()
-{
-    if (drag())
-        return drag()->mimeData();
-    return 0;
-}
-
 void QSimpleDrag::startDrag()
 {
     QBasicDrag::startDrag();
     m_current_window = topLevelAt(QCursor::pos());
     if (m_current_window) {
-        QPlatformDragQtResponse response = QWindowSystemInterface::handleDrag(m_current_window, drag()->mimeData(), QCursor::pos(), drag()->supportedActions());
+        QPlatformDragQtResponse response = QWindowSystemInterface::handleDrag(m_current_window, drag()->mimeData(), QHighDpi::toNativePixels(QCursor::pos(), m_current_window), drag()->supportedActions());
         setCanDrop(response.isAccepted());
         updateCursor(response.acceptedAction());
     } else {
@@ -363,15 +377,15 @@ void QSimpleDrag::cancel()
     }
 }
 
-void QSimpleDrag::move(const QPoint &globalPos)
+void QSimpleDrag::move(const QPoint &nativeGlobalPos)
 {
-    //### not high-DPI aware
+    QPoint globalPos = fromNativeGlobalPixels(nativeGlobalPos);
     moveShapedPixmapWindow(globalPos);
     QWindow *window = topLevelAt(globalPos);
     if (!window)
         return;
 
-    const QPoint pos = globalPos - window->geometry().topLeft();
+    const QPoint pos = nativeGlobalPos - window->handle()->geometry().topLeft();
     const QPlatformDragQtResponse qt_response =
         QWindowSystemInterface::handleDrag(window, drag()->mimeData(), pos, drag()->supportedActions());
 
@@ -379,16 +393,16 @@ void QSimpleDrag::move(const QPoint &globalPos)
     setCanDrop(qt_response.isAccepted());
 }
 
-void QSimpleDrag::drop(const QPoint &globalPos)
+void QSimpleDrag::drop(const QPoint &nativeGlobalPos)
 {
-    //### not high-DPI aware
+    QPoint globalPos = fromNativeGlobalPixels(nativeGlobalPos);
 
-    QBasicDrag::drop(globalPos);
+    QBasicDrag::drop(nativeGlobalPos);
     QWindow *window = topLevelAt(globalPos);
     if (!window)
         return;
 
-    const QPoint pos = globalPos - window->geometry().topLeft();
+    const QPoint pos = nativeGlobalPos - window->handle()->geometry().topLeft();
     const QPlatformDropQtResponse response =
             QWindowSystemInterface::handleDrop(window, drag()->mimeData(),pos, drag()->supportedActions());
     if (response.isAccepted()) {

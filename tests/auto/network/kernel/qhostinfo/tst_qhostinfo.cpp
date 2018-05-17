@@ -54,7 +54,6 @@
 #endif
 
 #include <time.h>
-#include <qlibrary.h>
 #if defined(Q_OS_WIN)
 #include <windows.h>
 #else
@@ -65,23 +64,15 @@
 #include <qhostinfo.h>
 #include "private/qhostinfo_p.h"
 
-#if !defined(QT_NO_GETADDRINFO)
-# if !defined(Q_OS_WINCE)
-#  include <sys/types.h>
-# else
-#  include <types.h>
-# endif
-# if defined(Q_OS_UNIX)
+#include <sys/types.h>
+#if defined(Q_OS_UNIX)
 #  include <sys/socket.h>
-# endif
-# if !defined(Q_OS_WIN)
 #  include <netdb.h>
-# endif
 #endif
 
 #include "../../../network-settings.h"
 
-#define TEST_DOMAIN ".test.macieira.org"
+#define TEST_DOMAIN ".test.qt-project.org"
 
 
 class tst_QHostInfo : public QObject
@@ -91,12 +82,18 @@ class tst_QHostInfo : public QObject
 private slots:
     void init();
     void initTestCase();
+    void swapFunction();
+    void moveOperator();
     void getSetCheck();
     void staticInformation();
     void lookupIPv4_data();
     void lookupIPv4();
     void lookupIPv6_data();
     void lookupIPv6();
+    void lookupConnectToFunctionPointer_data();
+    void lookupConnectToFunctionPointer();
+    void lookupConnectToLambda_data();
+    void lookupConnectToLambda();
     void reverseLookup_data();
     void reverseLookup();
 
@@ -129,6 +126,29 @@ private:
     QScopedPointer<QNetworkSession> networkSession;
 #endif
 };
+
+void tst_QHostInfo::swapFunction()
+{
+    QHostInfo obj1, obj2;
+    obj1.setError(QHostInfo::HostInfoError(0));
+    obj2.setError(QHostInfo::HostInfoError(1));
+    obj1.swap(obj2);
+    QCOMPARE(QHostInfo::HostInfoError(0), obj2.error());
+    QCOMPARE(QHostInfo::HostInfoError(1), obj1.error());
+}
+
+void tst_QHostInfo::moveOperator()
+{
+    QHostInfo obj1, obj2, obj3(1);
+    obj1.setError(QHostInfo::HostInfoError(0));
+    obj2.setError(QHostInfo::HostInfoError(1));
+    obj1 = std::move(obj2);
+    obj2 = obj3;
+    QCOMPARE(QHostInfo::HostInfoError(1), obj1.error());
+    QCOMPARE(obj3.lookupId(), obj2.lookupId());
+}
+
+
 
 // Testing get/set functions
 void tst_QHostInfo::getSetCheck()
@@ -167,7 +187,7 @@ void tst_QHostInfo::initTestCase()
     networkSession.reset(new QNetworkSession(networkConfiguration));
     if (!networkSession->isOpen()) {
         networkSession->open();
-        QVERIFY(networkSession->waitForOpened(30000));
+        networkSession->waitForOpened(30000);
     }
 #endif
 
@@ -180,15 +200,13 @@ void tst_QHostInfo::initTestCase()
         ipv6Available = true;
     }
 
-// HP-UX 11i does not support IPv6 reverse lookups.
-#if !defined(QT_NO_GETADDRINFO) && !(defined(Q_OS_HPUX) && defined(__ia64))
     // check if the system getaddrinfo can do IPv6 lookups
     struct addrinfo hint, *result = 0;
     memset(&hint, 0, sizeof hint);
     hint.ai_family = AF_UNSPEC;
-# ifdef AI_ADDRCONFIG
+#ifdef AI_ADDRCONFIG
     hint.ai_flags = AI_ADDRCONFIG;
-# endif
+#endif
 
     int res = getaddrinfo("::1", "80", &hint, &result);
     if (res == 0) {
@@ -200,7 +218,6 @@ void tst_QHostInfo::initTestCase()
             ipv6LookupsAvailable = true;
         }
     }
-#endif
 
     // run each testcase with and without test enabled
     QTest::addColumn<bool>("cache");
@@ -311,6 +328,74 @@ void tst_QHostInfo::lookupIPv6()
     QCOMPARE(tmp.join(' ').toLower(), expected.join(' ').toLower());
 }
 
+void tst_QHostInfo::lookupConnectToFunctionPointer_data()
+{
+    lookupIPv4_data();
+}
+
+void tst_QHostInfo::lookupConnectToFunctionPointer()
+{
+    QFETCH(QString, hostname);
+    QFETCH(int, err);
+    QFETCH(QString, addresses);
+
+    lookupDone = false;
+    QHostInfo::lookupHost(hostname, this, &tst_QHostInfo::resultsReady);
+
+    QTestEventLoop::instance().enterLoop(10);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+    QVERIFY(lookupDone);
+
+    if (int(lookupResults.error()) != int(err))
+        qWarning() << hostname << "=>" << lookupResults.errorString();
+    QCOMPARE(int(lookupResults.error()), int(err));
+
+    QStringList tmp;
+    for (const auto &result : lookupResults.addresses())
+        tmp.append(result.toString());
+    tmp.sort();
+
+    QStringList expected = addresses.split(' ');
+    expected.sort();
+
+    QCOMPARE(tmp.join(' '), expected.join(' '));
+}
+
+void tst_QHostInfo::lookupConnectToLambda_data()
+{
+    lookupIPv4_data();
+}
+
+void tst_QHostInfo::lookupConnectToLambda()
+{
+    QFETCH(QString, hostname);
+    QFETCH(int, err);
+    QFETCH(QString, addresses);
+
+    lookupDone = false;
+    QHostInfo::lookupHost(hostname, [=](const QHostInfo &hostInfo) {
+        resultsReady(hostInfo);
+    });
+
+    QTestEventLoop::instance().enterLoop(10);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+    QVERIFY(lookupDone);
+
+    if (int(lookupResults.error()) != int(err))
+        qWarning() << hostname << "=>" << lookupResults.errorString();
+    QCOMPARE(int(lookupResults.error()), int(err));
+
+    QStringList tmp;
+    for (int i = 0; i < lookupResults.addresses().count(); ++i)
+        tmp.append(lookupResults.addresses().at(i).toString());
+    tmp.sort();
+
+    QStringList expected = addresses.split(' ');
+    expected.sort();
+
+    QCOMPARE(tmp.join(' '), expected.join(' '));
+}
+
 void tst_QHostInfo::reverseLookup_data()
 {
     QTest::addColumn<QString>("address");
@@ -399,11 +484,7 @@ protected:
 void tst_QHostInfo::threadSafety()
 {
     const int nattempts = 5;
-#if defined(Q_OS_WINCE)
-    const int runs = 10;
-#else
     const int runs = 100;
-#endif
     LookupThread thr[nattempts];
     for (int j = 0; j < runs; ++j) {
         for (int i = 0; i < nattempts; ++i)

@@ -40,12 +40,13 @@
 #ifndef QSLIDER_H
 #define QSLIDER_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
+
 #include <QtWidgets/qabstractslider.h>
 
+QT_REQUIRE_CONFIG(slider);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_SLIDER
 
 class QSliderPrivate;
 class QStyleOptionSlider;
@@ -97,8 +98,6 @@ private:
     Q_DISABLE_COPY(QSlider)
     Q_DECLARE_PRIVATE(QSlider)
 };
-
-#endif // QT_NO_SLIDER
 
 QT_END_NAMESPACE
 

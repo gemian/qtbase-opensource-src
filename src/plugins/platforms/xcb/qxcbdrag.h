@@ -74,14 +74,13 @@ public:
     QXcbDrag(QXcbConnection *c);
     ~QXcbDrag();
 
-    virtual QMimeData *platformDropData() Q_DECL_OVERRIDE;
-    bool eventFilter(QObject *o, QEvent *e) Q_DECL_OVERRIDE;
+    bool eventFilter(QObject *o, QEvent *e) override;
 
-    void startDrag() Q_DECL_OVERRIDE;
-    void cancel() Q_DECL_OVERRIDE;
-    void move(const QPoint &globalPos) Q_DECL_OVERRIDE;
-    void drop(const QPoint &globalPos) Q_DECL_OVERRIDE;
-    void endDrag() Q_DECL_OVERRIDE;
+    void startDrag() override;
+    void cancel() override;
+    void move(const QPoint &globalPos) override;
+    void drop(const QPoint &globalPos) override;
+    void endDrag() override;
 
     void handleEnter(QPlatformWindow *window, const xcb_client_message_event_t *event, xcb_window_t proxy = 0);
     void handlePosition(QPlatformWindow *w, const xcb_client_message_event_t *event);
@@ -93,13 +92,13 @@ public:
     void handleFinished(const xcb_client_message_event_t *event);
 
     bool dndEnable(QXcbWindow *win, bool on);
-    bool ownsDragObject() const Q_DECL_OVERRIDE;
+    bool ownsDragObject() const override;
 
     void updatePixmap();
     xcb_timestamp_t targetTime() { return target_time; }
 
 protected:
-    void timerEvent(QTimerEvent* e) Q_DECL_OVERRIDE;
+    void timerEvent(QTimerEvent* e) override;
 
 private:
     friend class QXcbDropData;
@@ -117,7 +116,7 @@ private:
     QPointer<QWindow> currentWindow;
     QPoint currentPosition;
 
-    QXcbDropData *dropData;
+    QXcbDropData *m_dropData;
     Qt::DropAction accepted_drop_action;
 
     QWindow *desktop_proxy;
@@ -135,6 +134,10 @@ private:
     // rectangle in which the answer will be the same
     QRect source_sameanswer;
     bool waiting_for_status;
+
+    // helpers for setting executed drop action outside application
+    bool dropped;
+    bool canceled;
 
     // top-level window we sent position to last.
     xcb_window_t current_target;
@@ -159,6 +162,7 @@ private:
         QPointer<QDrag> drag;
         QTime time;
     };
+    friend class QTypeInfo<Transaction>;
     QVector<Transaction> transactions;
 
     int transaction_expiry_timer;
@@ -167,6 +171,7 @@ private:
     int findTransactionByTime(xcb_timestamp_t timestamp);
     xcb_window_t findRealWindow(const QPoint & pos, xcb_window_t w, int md, bool ignoreNonXdndAwareWindows);
 };
+Q_DECLARE_TYPEINFO(QXcbDrag::Transaction, Q_MOVABLE_TYPE);
 
 #endif // QT_NO_DRAGANDDROP
 

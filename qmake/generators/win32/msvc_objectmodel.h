@@ -34,7 +34,6 @@
 
 #include <proitems.h>
 
-#include <qatomic.h>
 #include <qlist.h>
 #include <qstring.h>
 #include <qstringlist.h>
@@ -52,8 +51,11 @@ enum DotNET {
     NET2010 = 0xa0,
     NET2012 = 0xb0,
     NET2013 = 0xc0,
-    NET2015 = 0xd0
+    NET2015 = 0xd0,
+    NET2017 = 0xe0
 };
+
+DotNET vsVersionFromString(const ProString &versionString);
 
 /*
     This Object model is of course VERY simplyfied,
@@ -276,6 +278,10 @@ enum inlineExpansionOption {
     expandOnlyInline,
     expandAnySuitable,
     expandDefault // Not useful number, but stops the output
+};
+enum linkerDebugOption {
+    linkerDebugOptionNone,
+    linkerDebugOptionFastLink
 };
 enum linkIncrementalType {
     linkIncrementalDefault,
@@ -590,6 +596,7 @@ public:
     QStringList             ForceSymbolReferences;
     QString                 FunctionOrder;
     triState                GenerateDebugInformation;
+    linkerDebugOption       DebugInfoOption;
     triState                GenerateMapFile;
     qlonglong               HeapCommitSize;
     qlonglong               HeapReserveSize;
@@ -860,11 +867,10 @@ class VCConfiguration
 public:
     // Functions
     VCConfiguration();
-    ~VCConfiguration(){}
 
     bool                    suppressUnknownOptionWarnings;
     DotNET                  CompilerVersion;
-    bool                    WinRT, WinPhone;
+    bool                    WinRT;
 
     // Variables
     triState                ATLMinimizesCRunTimeLibraryUsage;
@@ -891,7 +897,6 @@ public:
     VCLinkerTool            linker;
     VCLibrarianTool         librarian;
     VCManifestTool          manifestTool;
-    VCCustomBuildTool       custom;
     VCMIDLTool              idl;
     VCPostBuildEventTool    postBuild;
     VCPreBuildEventTool     preBuild;
@@ -907,24 +912,15 @@ struct VCFilterFile
     { excludeFromBuild = false; }
     VCFilterFile(const QString &filename, bool exclude = false )
     { file = filename; excludeFromBuild = exclude; }
-    VCFilterFile(const QString &filename, const QString &additional, bool exclude = false )
-    { file = filename; excludeFromBuild = exclude; additionalFile = additional; }
-    bool operator==(const VCFilterFile &other){
-        return file == other.file
-               && additionalFile == other.additionalFile
-               && excludeFromBuild == other.excludeFromBuild;
-    }
 
     bool                    excludeFromBuild;
     QString                 file;
-    QString                 additionalFile; // For tools like MOC
 };
 
 #ifndef QT_NO_DEBUG_OUTPUT
 inline QDebug operator<<(QDebug dbg, const VCFilterFile &p)
 {
     dbg.nospace() << "VCFilterFile(file(" << p.file
-                  << ") additionalFile(" << p.additionalFile
                   << ") excludeFromBuild(" << p.excludeFromBuild << "))" << endl;
     return dbg.space();
 }
@@ -936,7 +932,6 @@ class VCFilter
 public:
     // Functions
     VCFilter();
-    ~VCFilter(){}
 
     void addFile(const QString& filename);
     void addFile(const VCFilterFile& fileInfo);
@@ -962,7 +957,7 @@ public:
     VCCLCompilerTool        CompilerTool;
 };
 
-typedef QList<VCFilter> VCFilterList;
+typedef QVector<VCFilter> VCFilterList;
 class VCProjectSingleConfig
 {
 public:
@@ -976,9 +971,6 @@ public:
         Resources,
         Extras
     };
-    // Functions
-    VCProjectSingleConfig(){}
-    ~VCProjectSingleConfig(){}
 
     // Variables
     QString                 Name;
@@ -1009,6 +1001,7 @@ public:
     const VCFilter &filterByName(const QString &name) const;
     const VCFilter &filterForExtraCompiler(const QString &compilerName) const;
 };
+Q_DECLARE_TYPEINFO(VCProjectSingleConfig, Q_MOVABLE_TYPE);
 
 // Tree & Flat view of files --------------------------------------------------
 class VCFilter;

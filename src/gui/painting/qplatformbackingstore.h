@@ -49,6 +49,7 @@
 // source and binary incompatible with future versions of Qt.
 //
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qrect.h>
 #include <QtCore/qobject.h>
 
@@ -77,7 +78,8 @@ class Q_GUI_EXPORT QPlatformTextureList : public QObject
     Q_DECLARE_PRIVATE(QPlatformTextureList)
 public:
     enum Flag {
-        StacksOnTop = 0x01
+        StacksOnTop = 0x01,
+        TextureIsSrgb = 0x02
     };
     Q_DECLARE_FLAGS(Flags, Flag)
 
@@ -111,17 +113,18 @@ public:
     virtual ~QPlatformBackingStore();
 
     QWindow *window() const;
+    QBackingStore *backingStore() const;
 
     virtual QPaintDevice *paintDevice() = 0;
 
-    // 'window' can be a child window, in which case 'region' is in child window coordinates and
-    // offset is the (child) window's offset in relation to the window surface.
     virtual void flush(QWindow *window, const QRegion &region, const QPoint &offset) = 0;
 #ifndef QT_NO_OPENGL
     virtual void composeAndFlush(QWindow *window, const QRegion &region, const QPoint &offset,
-                                 QPlatformTextureList *textures, QOpenGLContext *context,
+                                 QPlatformTextureList *textures,
                                  bool translucentBackground);
+#endif
     virtual QImage toImage() const;
+#ifndef QT_NO_OPENGL
     enum TextureFlag {
         TextureSwizzle = 0x01,
         TextureFlip = 0x02,
@@ -142,6 +145,9 @@ public:
 
 private:
     QPlatformBackingStorePrivate *d_ptr;
+
+    void setBackingStore(QBackingStore *);
+    friend class QBackingStore;
 };
 
 #ifndef QT_NO_OPENGL

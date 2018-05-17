@@ -30,6 +30,7 @@
 #include <QDebug>
 #include <qtest.h>
 #include <QtTest/QtTest>
+#include <QtCore/qrandom.h>
 #include <QtNetwork/qnetworkreply.h>
 #include <QtNetwork/qnetworkrequest.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
@@ -525,7 +526,7 @@ void tst_qnetworkreply::echoPerformance()
     data.resize(1024*1024*10); // 10 MB
     // init with garbage. needed so ssl cannot compress it in an efficient way.
     for (size_t i = 0; i < data.size() / sizeof(int); i++) {
-        int r = qrand();
+        char r = char(QRandomGenerator::global()->generate());
         data.data()[i*sizeof(int)] = r;
     }
 
@@ -668,12 +669,8 @@ void tst_qnetworkreply::uploadPerformance()
 
 void tst_qnetworkreply::httpUploadPerformance()
 {
-#if defined(Q_OS_WINCE_WM)
-      // Show some mercy for non-desktop platform/s
-      enum {UploadSize = 4*1024*1024}; // 4 MB
-#else
       enum {UploadSize = 128*1024*1024}; // 128 MB
-#endif
+
       ThreadedDataReaderHttpServer reader;
       FixedSizeDataGenerator generator(UploadSize);
 
@@ -739,12 +736,9 @@ void tst_qnetworkreply::httpDownloadPerformance()
 {
     QFETCH(bool, serverSendsContentLength);
     QFETCH(bool, chunkedEncoding);
-#if defined(Q_OS_WINCE_WM)
-    // Show some mercy to non-desktop platform/s
-    enum {UploadSize = 4*1024*1024}; // 4 MB
-#else
+
     enum {UploadSize = 128*1024*1024}; // 128 MB
-#endif
+
     HttpDownloadPerformanceServer server(UploadSize, serverSendsContentLength, chunkedEncoding);
 
     QNetworkRequest request(QUrl("http://127.0.0.1:" + QString::number(server.serverPort()) + "/?bare=1"));
@@ -823,12 +817,7 @@ void tst_qnetworkreply::httpDownloadPerformanceDownloadBuffer()
     QFETCH(HttpDownloadPerformanceDownloadBufferTestType, testType);
 
     // On my Linux Desktop the results are already visible with 128 kB, however we use this to have good results.
-#if defined(Q_OS_WINCE_WM)
-    // Show some mercy to non-desktop platform/s
-    enum {UploadSize = 4*1024*1024}; // 4 MB
-#else
     enum {UploadSize = 32*1024*1024}; // 32 MB
-#endif
 
     HttpDownloadPerformanceServer server(UploadSize, true, false);
 

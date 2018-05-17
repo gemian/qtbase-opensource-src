@@ -60,14 +60,14 @@ class ImageItem : public QObject, public QGraphicsPixmapItem
     Q_OBJECT
 
 public:
-    ImageItem(int id, const QPixmap &pixmap, QGraphicsItem *parent = 0);
+    ImageItem(int id, const QPixmap &pixmap, QGraphicsItem *parent = nullptr);
 
     void adjust();
-    int id();
+    int id() const;
 
 protected:
-    void hoverEnterEvent(QGraphicsSceneHoverEvent *event) Q_DECL_OVERRIDE;
-    void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) Q_DECL_OVERRIDE;
+    void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override;
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override;
 
 private slots:
     void setFrame(int frame);

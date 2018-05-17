@@ -231,9 +231,7 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
 #include "qnumeric.h"
 #include "qvarlengtharray.h"
 
-#ifndef Q_OS_WINCE
 #include <locale.h>
-#endif
 #include "private/qlocale_p.h"
 
 #include <stdlib.h>
@@ -956,8 +954,7 @@ QTextStreamPrivate::PaddingResult QTextStreamPrivate::padding(int len) const
         right = padSize - padSize/2;
         break;
     }
-    const PaddingResult result = { left, right };
-    return result;
+    return { left, right };
 }
 
 /*!
@@ -2549,6 +2546,7 @@ QTextStream &QTextStream::operator<<(double f)
     }
 
     uint flags = 0;
+    const QLocale::NumberOptions numberOptions = locale().numberOptions();
     if (numberFlags() & ShowBase)
         flags |= QLocaleData::ShowBase;
     if (numberFlags() & ForceSign)
@@ -2557,12 +2555,18 @@ QTextStream &QTextStream::operator<<(double f)
         flags |= QLocaleData::UppercaseBase;
     if (numberFlags() & UppercaseDigits)
         flags |= QLocaleData::CapitalEorX;
-    if (numberFlags() & ForcePoint)
-        flags |= QLocaleData::Alternate;
-    if (locale() != QLocale::c() && !(locale().numberOptions() & QLocale::OmitGroupSeparator))
+    if (numberFlags() & ForcePoint) {
+        flags |= QLocaleData::ForcePoint;
+
+        // Only for backwards compatibility
+        flags |= QLocaleData::AddTrailingZeroes | QLocaleData::ShowBase;
+    }
+    if (locale() != QLocale::c() && !(numberOptions & QLocale::OmitGroupSeparator))
         flags |= QLocaleData::ThousandsGroup;
-    if (!(locale().numberOptions() & QLocale::OmitLeadingZeroInExponent))
+    if (!(numberOptions & QLocale::OmitLeadingZeroInExponent))
         flags |= QLocaleData::ZeroPadExponent;
+    if (numberOptions & QLocale::IncludeTrailingZeroesAfterDot)
+        flags |= QLocaleData::AddTrailingZeroes;
 
     const QLocaleData *dd = d->locale.d->m_data;
     QString num = dd->doubleToString(f, d->params.realNumberPrecision, form, -1, flags);
@@ -2646,6 +2650,7 @@ QTextStream &QTextStream::operator<<(const char *string)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
+    // ### Qt6: consider changing to UTF-8
     d->putString(QLatin1String(string));
     return *this;
 }
@@ -3182,3 +3187,6 @@ QLocale QTextStream::locale() const
 
 QT_END_NAMESPACE
 
+#ifndef QT_NO_QOBJECT
+#include "moc_qtextstream_p.cpp"
+#endif

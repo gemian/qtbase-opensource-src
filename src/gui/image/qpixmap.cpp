@@ -125,12 +125,8 @@ QPixmap::QPixmap()
 */
 
 QPixmap::QPixmap(int w, int h)
-    : QPaintDevice()
+    : QPixmap(QSize(w, h))
 {
-    if (!qt_pixmap_thread_test())
-        doInit(0, 0, QPlatformPixmap::PixmapType);
-    else
-        doInit(w, h, QPlatformPixmap::PixmapType);
 }
 
 /*!
@@ -144,12 +140,8 @@ QPixmap::QPixmap(int w, int h)
 */
 
 QPixmap::QPixmap(const QSize &size)
-    : QPaintDevice()
+    : QPixmap(size, QPlatformPixmap::PixmapType)
 {
-    if (!qt_pixmap_thread_test())
-        doInit(0, 0, QPlatformPixmap::PixmapType);
-    else
-        doInit(size.width(), size.height(), QPlatformPixmap::PixmapType);
 }
 
 /*!
@@ -604,44 +596,7 @@ void QPixmap::setMask(const QBitmap &mask)
        return;
 
     detach();
-
-    QImage image = data->toImage();
-    if (mask.size().isEmpty()) {
-        if (image.depth() != 1) { // hw: ????
-            image = image.convertToFormat(QImage::Format_RGB32);
-        }
-    } else {
-        const int w = image.width();
-        const int h = image.height();
-
-        switch (image.depth()) {
-        case 1: {
-            const QImage imageMask = mask.toImage().convertToFormat(image.format());
-            for (int y = 0; y < h; ++y) {
-                const uchar *mscan = imageMask.scanLine(y);
-                uchar *tscan = image.scanLine(y);
-                int bytesPerLine = image.bytesPerLine();
-                for (int i = 0; i < bytesPerLine; ++i)
-                    tscan[i] &= mscan[i];
-            }
-            break;
-        }
-        default: {
-            const QImage imageMask = mask.toImage().convertToFormat(QImage::Format_MonoLSB);
-            image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-            for (int y = 0; y < h; ++y) {
-                const uchar *mscan = imageMask.scanLine(y);
-                QRgb *tscan = (QRgb *)image.scanLine(y);
-                for (int x = 0; x < w; ++x) {
-                    if (!(mscan[x>>3] & (1 << (x&7))))
-                        tscan[x] = 0;
-                }
-            }
-            break;
-        }
-        }
-    }
-    data->fromImage(image, Qt::AutoColor);
+    data->setMask(mask);
 }
 
 /*!
@@ -768,39 +723,37 @@ QBitmap QPixmap::createMaskFromColor(const QColor &maskColor, Qt::MaskMode mode)
 
 bool QPixmap::load(const QString &fileName, const char *format, Qt::ImageConversionFlags flags)
 {
-    if (fileName.isEmpty()) {
-        data.reset();
-        return false;
+    if (!fileName.isEmpty()) {
+
+        QFileInfo info(fileName);
+        // Note: If no extension is provided, we try to match the
+        // file against known plugin extensions
+        if (info.completeSuffix().isEmpty() || info.exists()) {
+
+            QString key = QLatin1String("qt_pixmap")
+                    % info.absoluteFilePath()
+                    % HexString<uint>(info.lastModified().toSecsSinceEpoch())
+                    % HexString<quint64>(info.size())
+                    % HexString<uint>(data ? data->pixelType() : QPlatformPixmap::PixmapType);
+
+            if (QPixmapCache::find(key, this))
+                return true;
+
+            data = QPlatformPixmap::create(0, 0, data ? data->pixelType() : QPlatformPixmap::PixmapType);
+
+            if (data->fromFile(fileName, format, flags)) {
+                QPixmapCache::insert(key, *this);
+                return true;
+            }
+        }
     }
 
-    detach();
-
-    QFileInfo info(fileName);
-    QString key = QLatin1String("qt_pixmap")
-                  % info.absoluteFilePath()
-                  % HexString<uint>(info.lastModified().toTime_t())
-                  % HexString<quint64>(info.size())
-                  % HexString<uint>(data ? data->pixelType() : QPlatformPixmap::PixmapType);
-
-    // Note: If no extension is provided, we try to match the
-    // file against known plugin extensions
-    if (!info.completeSuffix().isEmpty() && !info.exists()) {
-        data.reset();
-        return false;
+    if (!isNull()) {
+        if (isQBitmap())
+            *this = QBitmap();
+        else
+            data.reset();
     }
-
-    if (QPixmapCache::find(key, this))
-        return true;
-
-    if (!data)
-        data = QPlatformPixmap::create(0, 0, QPlatformPixmap::PixmapType);
-
-    if (data->fromFile(fileName, format, flags)) {
-        QPixmapCache::insert(key, *this);
-        return true;
-    }
-
-    data.reset();
     return false;
 }
 
@@ -1506,37 +1459,7 @@ QPaintEngine *QPixmap::paintEngine() const
 */
 QBitmap QPixmap::mask() const
 {
-    if (!data || !hasAlphaChannel())
-        return QBitmap();
-
-    const QImage img = toImage();
-    bool shouldConvert = (img.format() != QImage::Format_ARGB32 && img.format() != QImage::Format_ARGB32_Premultiplied);
-    const QImage image = (shouldConvert ? img.convertToFormat(QImage::Format_ARGB32_Premultiplied) : img);
-    const int w = image.width();
-    const int h = image.height();
-
-    QImage mask(w, h, QImage::Format_MonoLSB);
-    if (mask.isNull()) // allocation failed
-        return QBitmap();
-
-    mask.setColorCount(2);
-    mask.setColor(0, QColor(Qt::color0).rgba());
-    mask.setColor(1, QColor(Qt::color1).rgba());
-
-    const int bpl = mask.bytesPerLine();
-
-    for (int y = 0; y < h; ++y) {
-        const QRgb *src = reinterpret_cast<const QRgb*>(image.scanLine(y));
-        uchar *dest = mask.scanLine(y);
-        memset(dest, 0, bpl);
-        for (int x = 0; x < w; ++x) {
-            if (qAlpha(*src) > 0)
-                dest[x >> 3] |= (1 << (x & 7));
-            ++src;
-        }
-    }
-
-    return QBitmap::fromImage(mask);
+    return data ? data->mask() : QBitmap();
 }
 
 /*!

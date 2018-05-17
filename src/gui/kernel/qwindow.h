@@ -40,6 +40,7 @@
 #ifndef QWINDOW_H
 #define QWINDOW_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/QObject>
 #include <QtCore/QEvent>
 #include <QtCore/QMargins>
@@ -70,11 +71,11 @@ class QShowEvent;
 class QHideEvent;
 class QKeyEvent;
 class QMouseEvent;
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 class QWheelEvent;
 #endif
 class QTouchEvent;
-#ifndef QT_NO_TABLETEVENT
+#if QT_CONFIG(tabletevent)
 class QTabletEvent;
 #endif
 
@@ -86,6 +87,9 @@ class QAccessibleInterface;
 class QWindowContainer;
 #ifndef QT_NO_DEBUG_STREAM
 class QDebug;
+#endif
+#if QT_CONFIG(vulkan)
+class QVulkanInstance;
 #endif
 
 class Q_GUI_EXPORT QWindow : public QObject, public QSurface
@@ -131,6 +135,12 @@ public:
     };
     Q_ENUM(Visibility)
 
+    enum AncestorMode {
+        ExcludeTransients,
+        IncludeTransients
+    };
+    Q_ENUM(AncestorMode)
+
     explicit QWindow(QScreen *screen = Q_NULLPTR);
     explicit QWindow(QWindow *parent);
     virtual ~QWindow();
@@ -147,7 +157,8 @@ public:
 
     WId winId() const;
 
-    QWindow *parent() const;
+    QWindow *parent(AncestorMode mode) const;
+    QWindow *parent() const; // ### Qt6: Merge with above
     void setParent(QWindow *parent);
 
     bool isTopLevel() const;
@@ -162,6 +173,7 @@ public:
 
     void setFlags(Qt::WindowFlags flags);
     Qt::WindowFlags flags() const;
+    void setFlag(Qt::WindowType, bool on = true);
     Qt::WindowType type() const;
 
     QString title() const;
@@ -180,15 +192,12 @@ public:
     qreal devicePixelRatio() const;
 
     Qt::WindowState windowState() const;
+    Qt::WindowStates windowStates() const;
     void setWindowState(Qt::WindowState state);
+    void setWindowStates(Qt::WindowStates states);
 
     void setTransientParent(QWindow *parent);
     QWindow *transientParent() const;
-
-    enum AncestorMode {
-        ExcludeTransients,
-        IncludeTransients
-    };
 
     bool isAncestorOf(const QWindow *child, AncestorMode mode = IncludeTransients) const;
 
@@ -209,8 +218,6 @@ public:
     void setBaseSize(const QSize &size);
     void setSizeIncrement(const QSize &size);
 
-    void setGeometry(int posx, int posy, int w, int h);
-    void setGeometry(const QRect &rect);
     QRect geometry() const;
 
     QMargins frameMargins() const;
@@ -263,6 +270,11 @@ public:
 
     static QWindow *fromWinId(WId id);
 
+#if QT_CONFIG(vulkan)
+    void setVulkanInstance(QVulkanInstance *instance);
+    QVulkanInstance *vulkanInstance() const;
+#endif
+
 public Q_SLOTS:
     Q_REVISION(1) void requestActivate();
 
@@ -286,6 +298,8 @@ public Q_SLOTS:
     void setY(int arg);
     void setWidth(int arg);
     void setHeight(int arg);
+    void setGeometry(int posx, int posy, int w, int h);
+    void setGeometry(const QRect &rect);
 
     void setMinimumWidth(int w);
     void setMinimumHeight(int h);
@@ -340,11 +354,11 @@ protected:
     virtual void mouseReleaseEvent(QMouseEvent *);
     virtual void mouseDoubleClickEvent(QMouseEvent *);
     virtual void mouseMoveEvent(QMouseEvent *);
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     virtual void wheelEvent(QWheelEvent *);
 #endif
     virtual void touchEvent(QTouchEvent *);
-#ifndef QT_NO_TABLETEVENT
+#if QT_CONFIG(tabletevent)
     virtual void tabletEvent(QTabletEvent *);
 #endif
     virtual bool nativeEvent(const QByteArray &eventType, void *message, long *result);

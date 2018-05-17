@@ -1128,7 +1128,7 @@ void QMatrix4x4::rotate(float angle, float x, float y, float z)
         s = 0.0f;
         c = -1.0f;
     } else {
-        float a = angle * M_PI / 180.0f;
+        float a = qDegreesToRadians(angle);
         c = std::cos(a);
         s = std::sin(a);
     }
@@ -1237,7 +1237,7 @@ void QMatrix4x4::projectedRotate(float angle, float x, float y, float z)
         s = 0.0f;
         c = -1.0f;
     } else {
-        float a = angle * M_PI / 180.0f;
+        float a = qDegreesToRadians(angle);
         c = std::cos(a);
         s = std::sin(a);
     }
@@ -1496,7 +1496,7 @@ void QMatrix4x4::perspective(float verticalAngle, float aspectRatio, float nearP
 
     // Construct the projection.
     QMatrix4x4 m(1);
-    float radians = (verticalAngle / 2.0f) * M_PI / 180.0f;
+    float radians = qDegreesToRadians(verticalAngle / 2.0f);
     float sine = std::sin(radians);
     if (sine == 0.0f)
         return;
@@ -1940,7 +1940,7 @@ QMatrix4x4 QMatrix4x4::orthonormalInverse() const
 
     Normally the QMatrix4x4 class keeps track of this special type internally
     as operations are performed.  However, if the matrix is modified
-    directly with operator()() or data(), then QMatrix4x4 will lose track of
+    directly with {QLoggingCategory::operator()}{operator()()} or data(), then QMatrix4x4 will lose track of
     the special type and will revert to the safest but least efficient
     operations thereafter.
 
@@ -1948,7 +1948,7 @@ QMatrix4x4 QMatrix4x4::orthonormalInverse() const
     the programmer can force QMatrix4x4 to recover the special type if
     the elements appear to conform to one of the known optimized types.
 
-    \sa operator()(), data(), translate()
+    \sa {QLoggingCategory::operator()}{operator()()}, data(), translate()
 */
 void QMatrix4x4::optimize()
 {

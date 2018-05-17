@@ -40,12 +40,13 @@
 #ifndef QPRINTDIALOG_H
 #define QPRINTDIALOG_H
 
+#include <QtPrintSupport/qtprintsupportglobal.h>
+
 #include <QtPrintSupport/qabstractprintdialog.h>
 
+QT_REQUIRE_CONFIG(printdialog);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_PRINTDIALOG
 
 class QPrintDialogPrivate;
 class QPushButton;
@@ -55,12 +56,11 @@ class Q_PRINTSUPPORT_EXPORT QPrintDialog : public QAbstractPrintDialog
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QPrintDialog)
-    Q_ENUMS(PrintDialogOption)
     Q_PROPERTY(PrintDialogOptions options READ options WRITE setOptions)
 
 public:
-    explicit QPrintDialog(QPrinter *printer, QWidget *parent = Q_NULLPTR);
-    explicit QPrintDialog(QWidget *parent = Q_NULLPTR);
+    explicit QPrintDialog(QPrinter *printer, QWidget *parent = nullptr);
+    explicit QPrintDialog(QWidget *parent = nullptr);
     ~QPrintDialog();
 
     int exec() Q_DECL_OVERRIDE;
@@ -94,14 +94,12 @@ private:
 #if defined (Q_OS_UNIX) && !defined(Q_OS_MAC)
     Q_PRIVATE_SLOT(d_func(), void _q_togglePageSetCombo(bool))
     Q_PRIVATE_SLOT(d_func(), void _q_collapseOrExpandDialog())
-# if !defined(QT_NO_MESSAGEBOX)
+#if QT_CONFIG(messagebox)
     Q_PRIVATE_SLOT(d_func(), void _q_checkFields())
-# endif // QT_NO_MESSAGEBOX
+#endif // QT_CONFIG(messagebox)
     friend class QUnixPrintWidget;
 # endif // Q_OS_UNIX
 };
-
-#endif // QT_NO_PRINTDIALOG
 
 QT_END_NAMESPACE
 

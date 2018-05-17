@@ -189,7 +189,7 @@ void tst_QLibrary::load_data()
     QTest::newRow("ok (libmylib ver. 1)") << appDir + "/libmylib" <<true;
 #endif
 
-# if defined(Q_OS_WIN32) || defined(Q_OS_WINCE)
+# if defined(Q_OS_WIN32)
     QTest::newRow( "ok01 (with suffix)" ) << appDir + "/mylib.dll" << true;
     QTest::newRow( "ok02 (with non-standard suffix)" ) << appDir + "/mylib.dl2" << true;
     QTest::newRow( "ok03 (with many dots)" ) << appDir + "/system.qt.test.mylib.dll" << true;
@@ -223,10 +223,6 @@ void tst_QLibrary::unload_data()
     QString appDir = QCoreApplication::applicationDirPath();
 
     QTest::newRow( "mylib" ) << appDir + "/mylib" << true;
-#ifdef Q_OS_MAC
-    if (QSysInfo::MacintoshVersion <= QSysInfo::MV_10_3)
-        QEXPECT_FAIL("mylib", "dlcompat cannot unload libraries", Continue);
-#endif
     QTest::newRow( "ok01" ) << appDir + "/nolib" << false;
 }
 
@@ -306,15 +302,10 @@ void tst_QLibrary::isLibrary_data()
     QTest::newRow(".sl") << QString("mylib.sl") << sl_VALID;
     QTest::newRow(".so") << QString("mylib.so") << so_VALID;
     QTest::newRow(".so+version") << QString("mylib.so.0") << so_VALID;
-
-    // special tests:
-#ifndef Q_OS_MAC
     QTest::newRow("version+.so") << QString("libc-2.7.so") << so_VALID;
     QTest::newRow("version+.so+version") << QString("liboil-0.3.so.0.1.0") << so_VALID;
-#else
-    QTest::newRow("version+.so") << QString("libc-2.7.so") << false;
-    QTest::newRow("version+.so+version") << QString("liboil-0.3.so.0.1.0") << false;
-#endif
+
+    // special tests:
 #ifdef Q_OS_MAC
     QTest::newRow("good (libmylib.1.0.0.dylib)") << QString("libmylib.1.0.0.dylib") << true;
     QTest::newRow("good (libmylib.dylib)") << QString("libmylib.dylib") << true;
@@ -346,11 +337,7 @@ void tst_QLibrary::errorString_data()
 
     QTest::newRow("bad load()") << (int)Load << QString("nosuchlib") << false << QString("Cannot load library nosuchlib: .*");
     QTest::newRow("call errorString() on QLibrary with no d-pointer (crashtest)") << (int)(Load | DontSetFileName) << QString() << false << QString("Unknown error");
-#ifdef Q_OS_WINCE
-    QTest::newRow("bad resolve") << (int)Resolve << appDir + "/mylib" << false << QString("Cannot resolve symbol \"nosuchsymbol\" in .*: .*");
-#else
     QTest::newRow("bad resolve") << (int)Resolve << appDir + "/mylib" << false << QString("Cannot resolve symbol \"nosuchsymbol\" in \\S+: .*");
-#endif
     QTest::newRow("good resolve") << (int)Resolve << appDir + "/mylib" << true << QString("Unknown error");
 
 #ifdef Q_OS_WIN
@@ -414,7 +401,7 @@ void tst_QLibrary::loadHints_data()
     QString appDir = QCoreApplication::applicationDirPath();
 
     lh |= QLibrary::ResolveAllSymbolsHint;
-# if defined(Q_OS_WIN32) || defined(Q_OS_WINCE) || defined(Q_OS_WINRT)
+# if defined(Q_OS_WIN32) || defined(Q_OS_WINRT)
     QTest::newRow( "ok01 (with suffix)" ) << appDir + "/mylib.dll" << int(lh) << true;
     QTest::newRow( "ok02 (with non-standard suffix)" ) << appDir + "/mylib.dl2" << int(lh) << true;
     QTest::newRow( "ok03 (with many dots)" ) << appDir + "/system.qt.test.mylib.dll" << int(lh) << true;
@@ -467,13 +454,8 @@ void tst_QLibrary::fileName_data()
     QTest::newRow( "ok02" ) << sys_qualifiedLibraryName(QLatin1String("mylib"))
                             << sys_qualifiedLibraryName(QLatin1String("mylib"));
 #if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
-#ifndef Q_OS_WINCE
     QTest::newRow( "ok03" ) << "user32"
                             << "USER32.dll";
-#else
-    QTest::newRow( "ok03" ) << "coredll"
-                            << "coredll.dll";
-#endif
 #endif
 }
 

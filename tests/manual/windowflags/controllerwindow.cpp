@@ -26,141 +26,173 @@
 **
 ****************************************************************************/
 
-#include <QMainWindow>
-#include <QLabel>
-#include <QPushButton>
-#include <QRadioButton>
-#include <QCheckBox>
-#include <QGroupBox>
-#include <QApplication>
-#include <QHBoxLayout>
-
 #include "controllerwindow.h"
 #include "controls.h"
 
-//! [0]
-ControllerWindow::ControllerWindow() : previewWidget(0)
+#include <QAction>
+#include <QApplication>
+#include <QCheckBox>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QMainWindow>
+#include <QMenu>
+#include <QPushButton>
+#include <QRadioButton>
+#include <QTabWidget>
+
+#include <QMoveEvent>
+
+#if QT_VERSION >= 0x050000
+#  include <QWindow>
+#  include <qlogging.h>
+#  include <QLibraryInfo>
+#endif
+#include <QDebug>
+
+ControllerWidget::ControllerWidget(QWidget *parent)
+    : QWidget(parent)
+    , previewWidget(0)
 {
     parentWindow = new QMainWindow;
     parentWindow->setWindowTitle(tr("Preview parent window"));
     QLabel *label = new QLabel(tr("Parent window"));
     parentWindow->setCentralWidget(label);
 
-    previewWindow = new PreviewWindow;
+    previewWindow = new QWindow;
     previewWindow->installEventFilter(this);
+    previewWidget = new PreviewWidget;
+    previewWidget->installEventFilter(this);
     previewDialog = new PreviewDialog;
     previewDialog->installEventFilter(this);
 
     createTypeGroupBox();
 
-    quitButton = new QPushButton(tr("&Quit"));
-    connect(quitButton, SIGNAL(clicked()), qApp, SLOT(quit()));
-
-    QHBoxLayout *bottomLayout = new QHBoxLayout;
-    bottomLayout->addStretch();
-
-    QPushButton *updateControlsButton = new QPushButton(tr("&Update"));
-    connect(updateControlsButton, SIGNAL(clicked()), this, SLOT(updateStateControl()));
-
-    bottomLayout->addWidget(updateControlsButton);
-    bottomLayout->addWidget(quitButton);
-
     hintsControl = new HintControl;
-    hintsControl->setHints(previewWindow->windowFlags());
+    hintsControl->setHints(previewWidget->windowFlags());
     connect(hintsControl, SIGNAL(changed(Qt::WindowFlags)), this, SLOT(updatePreview()));
 
-    statesControl = new WindowStatesControl(WindowStatesControl::WantVisibleCheckBox|WindowStatesControl::WantActiveCheckBox);
-    statesControl->setStates(previewWindow->windowState());
+    statesControl = new WindowStatesControl;
+    statesControl->setStates(previewWidget->windowState());
     statesControl->setVisibleValue(true);
     connect(statesControl, SIGNAL(changed()), this, SLOT(updatePreview()));
 
     typeControl = new TypeControl;
-    typeControl->setType(previewWindow->windowFlags());
+    typeControl->setType(previewWidget->windowFlags());
     connect(typeControl, SIGNAL(changed(Qt::WindowFlags)), this, SLOT(updatePreview()));
 
-    QVBoxLayout *mainLayout = new QVBoxLayout;
+    QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->addWidget(widgetTypeGroupBox);
     mainLayout->addWidget(additionalOptionsGroupBox);
     mainLayout->addWidget(typeControl);
     mainLayout->addWidget(hintsControl);
     mainLayout->addWidget(statesControl);
-    mainLayout->addLayout(bottomLayout);
-    setLayout(mainLayout);
 
-    setWindowTitle(tr("Window Flags (Qt version %1, %2)")
-                   .arg(QLatin1String(qVersion()),
-#if QT_VERSION >= 0x050000
-                        qApp->platformName()));
-#else
-                        QLatin1String("<unknown>")));
-#endif
     updatePreview();
 }
 
-bool ControllerWindow::eventFilter(QObject *, QEvent *e)
+bool ControllerWidget::eventFilter(QObject *, QEvent *e)
 {
     if (e->type() == QEvent::WindowStateChange)
         updateStateControl();
     return false;
 }
 
-void ControllerWindow::updateStateControl()
+void ControllerWidget::updateStateControl()
 {
-    if (previewWidget)
-        statesControl->setStates(previewWidget->windowState());
+    if (activePreview)
+        statesControl->setStates(activePreview->windowStates());
 }
 
-void ControllerWindow::updatePreview()
+void ControllerWidget::updatePreview(QWindow *preview)
 {
+    activePreview = preview;
+
     const Qt::WindowFlags flags = typeControl->type() | hintsControl->hints();
-
-    previewWindow->hide();
-    previewDialog->hide();
-
-    if (previewWidgetButton->isChecked())
-        previewWidget = previewWindow;
-    else
-        previewWidget = previewDialog;
 
     if (modalWindowCheckBox->isChecked()) {
         parentWindow->show();
-        previewWidget->setWindowModality(Qt::WindowModal);
-        previewWidget->setParent(parentWindow);
+        preview->setModality(Qt::WindowModal);
+        preview->setParent(parentWindow->windowHandle());
     } else {
-        previewWidget->setWindowModality(Qt::NonModal);
-        previewWidget->setParent(0);
+        preview->setModality(Qt::NonModal);
+        preview->setParent(0);
         parentWindow->hide();
     }
 
-    if (previewWidgetButton->isChecked())
-        previewWindow->setWindowFlags(flags);
-    else
-        previewDialog->setWindowFlags(flags);
+    preview->setFlags(flags);
 
     if (fixedSizeWindowCheckBox->isChecked()) {
-        previewWidget->setFixedSize(300, 300);
+        preview->setMinimumSize(QSize(300, 300));
+        preview->setMaximumSize(QSize(300, 300));
     } else {
-        previewWidget->setFixedSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+        preview->setMinimumSize(QSize(0, 0));
+        preview->setMaximumSize(QSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX));
     }
 
-    QPoint pos = previewWidget->pos();
+    preview->setWindowStates(statesControl->states());
+    preview->setVisible(statesControl->visibleValue());
+}
+
+void ControllerWidget::updatePreview(QWidget *preview)
+{
+    activePreview = preview->windowHandle();
+
+    const Qt::WindowFlags flags = typeControl->type() | hintsControl->hints();
+
+    if (modalWindowCheckBox->isChecked()) {
+        parentWindow->show();
+        preview->setWindowModality(Qt::WindowModal);
+        preview->setParent(parentWindow);
+    } else {
+        preview->setWindowModality(Qt::NonModal);
+        preview->setParent(0);
+        parentWindow->hide();
+    }
+
+    preview->setWindowFlags(flags);
+
+    QSize fixedSize = fixedSizeWindowCheckBox->isChecked() ?
+        QSize(300, 300) : QSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+    preview->setFixedSize(fixedSize);
+
+    QPoint pos = preview->pos();
     if (pos.x() < 0)
         pos.setX(0);
     if (pos.y() < 0)
         pos.setY(0);
-    previewWidget->move(pos);
+    preview->move(pos);
 
-    previewWidget->setWindowState(statesControl->states());
-    previewWidget->setVisible(statesControl->visibleValue());
+    preview->setWindowState(statesControl->states());
+    preview->setVisible(statesControl->visibleValue());
 }
 
-void ControllerWindow::createTypeGroupBox()
+void ControllerWidget::updatePreview()
 {
-    widgetTypeGroupBox = new QGroupBox(tr("Widget Type"));
+    if (previewWindowButton->isChecked()) {
+        previewDialog->hide();
+        previewWidget->close();
+        updatePreview(previewWindow);
+    } else if (previewWidgetButton->isChecked()) {
+        previewWindow->hide();
+        previewDialog->hide();
+        updatePreview(previewWidget);
+    } else {
+        previewWindow->hide();
+        previewWidget->close();
+        updatePreview(previewDialog);
+    }
+}
+
+void ControllerWidget::createTypeGroupBox()
+{
+    widgetTypeGroupBox = new QGroupBox(tr("Window Type"));
+    previewWindowButton = createRadioButton(tr("QWindow"));
     previewWidgetButton = createRadioButton(tr("QWidget"));
-    previewWidgetButton->setChecked(true);
     previewDialogButton = createRadioButton(tr("QDialog"));
+    previewWindowButton->setChecked(true);
     QHBoxLayout *l = new QHBoxLayout;
+    l->addWidget(previewWindowButton);
     l->addWidget(previewWidgetButton);
     l->addWidget(previewDialogButton);
     widgetTypeGroupBox->setLayout(l);
@@ -173,24 +205,181 @@ void ControllerWindow::createTypeGroupBox()
     l->addWidget(fixedSizeWindowCheckBox);
     additionalOptionsGroupBox->setLayout(l);
 }
-//! [5]
 
-//! [6]
-
-//! [7]
-QCheckBox *ControllerWindow::createCheckBox(const QString &text)
+QCheckBox *ControllerWidget::createCheckBox(const QString &text)
 {
     QCheckBox *checkBox = new QCheckBox(text);
     connect(checkBox, SIGNAL(clicked()), this, SLOT(updatePreview()));
     return checkBox;
 }
-//! [7]
 
-//! [8]
-QRadioButton *ControllerWindow::createRadioButton(const QString &text)
+QRadioButton *ControllerWidget::createRadioButton(const QString &text)
 {
     QRadioButton *button = new QRadioButton(text);
     connect(button, SIGNAL(clicked()), this, SLOT(updatePreview()));
     return button;
 }
-//! [8]
+
+static bool isTopLevel(const QObject *o)
+{
+    if (o->isWidgetType())
+        return static_cast<const QWidget *>(o)->isWindow();
+#if QT_VERSION >= 0x050000
+    if (o->isWindowType())
+        return static_cast<const QWindow *>(o)->isTopLevel();
+#endif
+    return false;
+}
+
+static Qt::WindowStates windowState(const QObject *o)
+{
+    if (o->isWidgetType()) {
+        Qt::WindowStates states = static_cast<const QWidget *>(o)->windowState();
+        states &= ~Qt::WindowActive;
+        return states;
+    }
+#if QT_VERSION >= 0x050000
+    if (o->isWindowType())
+        return static_cast<const QWindow *>(o)->windowState();
+#endif
+    return Qt::WindowNoState;
+}
+
+class EventFilter : public QObject {
+public:
+    explicit EventFilter(QObject *parent = 0) : QObject(parent) {}
+
+    bool eventFilter(QObject *o, QEvent *e)
+    {
+        switch (e->type()) {
+        case QEvent::Move:
+        case QEvent::Resize:
+        case QEvent::WindowStateChange:
+        case QEvent::ApplicationActivate:
+        case QEvent::ApplicationDeactivate:
+#if QT_VERSION >= 0x050000
+        case QEvent::ApplicationStateChange:
+#endif
+            if (isTopLevel(o))
+                formatEvent(o, e);
+            break;
+        default:
+            break;
+        }
+        return QObject::eventFilter(o ,e);
+    }
+
+private:
+    void formatEvent(QObject *o, QEvent *e)
+    {
+        static int n = 0;
+        QDebug debug = qDebug().nospace();
+#if QT_VERSION >= 0x050000
+        debug.noquote();
+#endif
+        debug << '#' << n++ << ' ' << o->metaObject()->className();
+        const QString name = o->objectName();
+        if (!name.isEmpty())
+            debug << "/\"" << name << '"';
+        debug << ' ' << e;
+        if (e->type() == QEvent::WindowStateChange)
+            debug << ' ' << windowState(o);
+    }
+};
+
+LogWidget *LogWidget::m_instance = 0;
+
+#if QT_VERSION >= 0x050000
+static void qt5MessageHandler(QtMsgType, const QMessageLogContext &, const QString &text)
+{
+    if (LogWidget *lw = LogWidget::instance())
+        lw->appendText(text);
+}
+#else // Qt 5
+static void qt4MessageHandler(QtMsgType, const char *text)
+{
+    if (LogWidget *lw = LogWidget::instance())
+        lw->appendText(QString::fromLocal8Bit(text));
+}
+#endif // Qt 4
+
+LogWidget::LogWidget(QWidget *parent)
+    : QPlainTextEdit(parent)
+{
+    LogWidget::m_instance = this;
+    setReadOnly(true);
+    appendText(startupMessage());
+}
+
+LogWidget::~LogWidget()
+{
+    LogWidget::m_instance = 0;
+}
+
+void LogWidget::install()
+{
+#if QT_VERSION >= 0x050000
+    qInstallMessageHandler(qt5MessageHandler);
+#else
+    qInstallMsgHandler(qt4MessageHandler);
+#endif
+}
+
+QString LogWidget::startupMessage()
+{
+    QString result;
+#if QT_VERSION >= 0x050300
+    result += QLatin1String(QLibraryInfo::build());
+#else
+    result += QLatin1String("Qt ") + QLatin1String(QT_VERSION_STR);
+#endif
+#if QT_VERSION >= 0x050000
+    result += QLatin1Char(' ');
+    result += QGuiApplication::platformName();
+#endif
+    return result;
+}
+
+void LogWidget::appendText(const QString &message)
+{
+    appendPlainText(message);
+    ensureCursorVisible();
+}
+
+ControllerWindow::ControllerWindow()
+{
+    setWindowTitle(tr("Window Flags (Qt version %1, %2)")
+                   .arg(QLatin1String(qVersion()),
+#if QT_VERSION >= 0x050000
+                        qApp->platformName()));
+#else
+                        QLatin1String("<unknown>")));
+#endif
+
+    QVBoxLayout *layout = new QVBoxLayout(this);
+    QTabWidget *tabWidget = new QTabWidget(this);
+    ControllerWidget *controllerWidget = new ControllerWidget(tabWidget);
+    tabWidget->addTab(controllerWidget, tr("Control"));
+    LogWidget *logWidget = new LogWidget(tabWidget);
+    tabWidget->addTab(logWidget, tr("Event log"));
+    layout->addWidget(tabWidget);
+
+    QHBoxLayout *bottomLayout = new QHBoxLayout;
+    layout->addLayout(bottomLayout);
+    bottomLayout->addStretch();
+    QPushButton *updateControlsButton = new QPushButton(tr("&Update"));
+    connect(updateControlsButton, SIGNAL(clicked()), controllerWidget, SLOT(updateStateControl()));
+    bottomLayout->addWidget(updateControlsButton);
+    QPushButton *clearLogButton = new QPushButton(tr("Clear &Log"));
+    connect(clearLogButton, SIGNAL(clicked()), logWidget, SLOT(clear()));
+    bottomLayout->addWidget(clearLogButton);
+    QPushButton *quitButton = new QPushButton(tr("&Quit"));
+    connect(quitButton, SIGNAL(clicked()), qApp, SLOT(quit()));
+    quitButton->setShortcut(Qt::CTRL + Qt::Key_Q);
+    bottomLayout->addWidget(quitButton);
+}
+
+void ControllerWindow::registerEventFilter()
+{
+    qApp->installEventFilter(new EventFilter(qApp));
+}

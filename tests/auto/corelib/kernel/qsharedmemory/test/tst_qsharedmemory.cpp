@@ -28,7 +28,9 @@
 
 #include <QDebug>
 #include <QFile>
-#include <QProcess>
+#if QT_CONFIG(process)
+# include <QProcess>
+#endif
 #include <QSharedMemory>
 #include <QTest>
 #include <QThread>
@@ -90,7 +92,7 @@ private slots:
 
     // extreme cases
     void useTooMuchMemory();
-#if !defined(Q_OS_HPUX) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_HPUX)
     void attachTooMuch();
 #endif
 
@@ -133,7 +135,7 @@ tst_QSharedMemory::~tst_QSharedMemory()
 
 void tst_QSharedMemory::initTestCase()
 {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     QVERIFY2(!m_helperBinary.isEmpty(), "Could not find helper binary");
 #endif
 }
@@ -455,8 +457,10 @@ void tst_QSharedMemory::emptyMemory()
 #if !defined(Q_OS_WIN)
 void tst_QSharedMemory::readOnly()
 {
-#ifdef QT_NO_PROCESS
+#if !QT_CONFIG(process)
     QSKIP("No qprocess support", SkipAll);
+#elif defined(Q_OS_MACOS)
+    QSKIP("QTBUG-59936: Times out on macOS", SkipAll);
 #else
     rememberKey("readonly_segfault");
     // ### on windows disable the popup somehow
@@ -516,8 +520,7 @@ void tst_QSharedMemory::useTooMuchMemory()
     attach before the system runs out of resources.
  */
 // HPUX doesn't allow for multiple attaches per process.
-// For WinCE, this test nearly kills the system, so skip it.
-#if !defined(Q_OS_HPUX) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_HPUX)
 void tst_QSharedMemory::attachTooMuch()
 {
     QSKIP("disabled");
@@ -576,9 +579,7 @@ void tst_QSharedMemory::simpleProducerConsumer()
     char *get = (char*)consumer.data();
     // On Windows CE you always have ReadWrite access. Thus
     // ViewMapOfFile returns the same pointer
-#if !defined(Q_OS_WINCE)
     QVERIFY(put != get);
-#endif
     for (int i = 0; i < size; ++i) {
         put[i] = 'Q';
         QCOMPARE(get[i], 'Q');
@@ -739,7 +740,7 @@ void tst_QSharedMemory::simpleThreadedProducerConsumer()
 
 void tst_QSharedMemory::simpleProcessProducerConsumer_data()
 {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     QTest::addColumn<int>("processes");
     int tries = 5;
     for (int i = 0; i < tries; ++i) {
@@ -754,7 +755,7 @@ void tst_QSharedMemory::simpleProcessProducerConsumer_data()
  */
 void tst_QSharedMemory::simpleProcessProducerConsumer()
 {
-#ifdef QT_NO_PROCESS
+#if !QT_CONFIG(process)
     QSKIP("No qprocess support", SkipAll);
 #else
     QFETCH(int, processes);

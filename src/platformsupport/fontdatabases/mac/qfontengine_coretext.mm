@@ -51,7 +51,7 @@
 #import <AppKit/AppKit.h>
 #endif
 
-#if defined(Q_OS_IOS) && !QT_IOS_DEPLOYMENT_TARGET_BELOW(__IPHONE_8_2)
+#if defined(QT_PLATFORM_UIKIT) && !QT_IOS_DEPLOYMENT_TARGET_BELOW(__IPHONE_8_2)
 #import <UIKit/UIKit.h>
 #endif
 
@@ -78,7 +78,7 @@
 #define kCTFontWeightBold NSFontWeightBold
 #define kCTFontWeightHeavy NSFontWeightHeavy
 #define kCTFontWeightBlack NSFontWeightBlack
-#elif defined(Q_OS_IOS)
+#elif defined(QT_PLATFORM_UIKIT)
 #define kCTFontWeightUltraLight UIFontWeightUltraLight
 #define kCTFontWeightThin UIFontWeightThin
 #define kCTFontWeightLight UIFontWeightLight
@@ -112,25 +112,32 @@ bool QCoreTextFontEngine::ct_getSfntTable(void *user_data, uint tag, uchar *buff
 
 QFont::Weight QCoreTextFontEngine::qtWeightFromCFWeight(float value)
 {
-    if (value >= kCTFontWeightBlack)
-        return QFont::Black;
-    if (value >= kCTFontWeightHeavy)
-        return QFont::ExtraBold;
-    if (value >= kCTFontWeightBold)
-        return QFont::Bold;
-    if (value >= kCTFontWeightSemibold)
-        return QFont::DemiBold;
-    if (value >= kCTFontWeightMedium)
-        return QFont::Medium;
-    if (value == kCTFontWeightRegular)
-        return QFont::Normal;
-    if (value <= kCTFontWeightUltraLight)
-        return QFont::Thin;
-    if (value <= kCTFontWeightThin)
-        return QFont::ExtraLight;
-    if (value <= kCTFontWeightLight)
-        return QFont::Light;
-    return QFont::Normal;
+#define COMPARE_WEIGHT_DISTANCE(ct_weight, qt_weight) \
+    { \
+        float d; \
+        if ((d = qAbs(value - ct_weight)) < distance) { \
+            distance = d; \
+            ret = qt_weight; \
+        } \
+    }
+
+    float distance = qAbs(value - kCTFontWeightBlack);
+    QFont::Weight ret = QFont::Black;
+
+    // Compare distance to system weight to find the closest match.
+    // (Note: Must go from high to low, so that midpoints are rounded up)
+    COMPARE_WEIGHT_DISTANCE(kCTFontWeightHeavy, QFont::ExtraBold);
+    COMPARE_WEIGHT_DISTANCE(kCTFontWeightBold, QFont::Bold);
+    COMPARE_WEIGHT_DISTANCE(kCTFontWeightSemibold, QFont::DemiBold);
+    COMPARE_WEIGHT_DISTANCE(kCTFontWeightMedium, QFont::Medium);
+    COMPARE_WEIGHT_DISTANCE(kCTFontWeightRegular, QFont::Normal);
+    COMPARE_WEIGHT_DISTANCE(kCTFontWeightLight, QFont::Light);
+    COMPARE_WEIGHT_DISTANCE(kCTFontWeightThin, QFont::ExtraLight);
+    COMPARE_WEIGHT_DISTANCE(kCTFontWeightUltraLight, QFont::Thin);
+
+#undef COMPARE_WEIGHT_DISTANCE
+
+    return ret;
 }
 
 static void loadAdvancesForGlyphs(CTFontRef ctfont,
@@ -141,7 +148,7 @@ static void loadAdvancesForGlyphs(CTFontRef ctfont,
 {
     Q_UNUSED(flags);
     QVarLengthArray<CGSize> advances(len);
-    CTFontGetAdvancesForGlyphs(ctfont, kCTFontHorizontalOrientation, cgGlyphs.data(), advances.data(), len);
+    CTFontGetAdvancesForGlyphs(ctfont, kCTFontOrientationHorizontal, cgGlyphs.data(), advances.data(), len);
 
     for (int i = 0; i < len; ++i) {
         if (glyphs->glyphs[i] & 0xff000000)
@@ -172,9 +179,46 @@ QFontEngine::GlyphFormat QCoreTextFontEngine::defaultGlyphFormat = QFontEngine::
 CGAffineTransform qt_transform_from_fontdef(const QFontDef &fontDef)
 {
     CGAffineTransform transform = CGAffineTransformIdentity;
-    if (fontDef.stretch != 100)
+    if (fontDef.stretch && fontDef.stretch != 100)
         transform = CGAffineTransformMakeScale(float(fontDef.stretch) / float(100), 1);
     return transform;
+}
+
+// Keeps font data alive until engine is disposed
+class QCoreTextRawFontEngine : public QCoreTextFontEngine
+{
+public:
+    QCoreTextRawFontEngine(CGFontRef font, const QFontDef &def, const QByteArray &fontData)
+        : QCoreTextFontEngine(font, def)
+        , m_fontData(fontData)
+    {}
+    QByteArray m_fontData;
+};
+
+QCoreTextFontEngine *QCoreTextFontEngine::create(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference)
+{
+    Q_UNUSED(hintingPreference);
+
+    QCFType<CFDataRef> fontDataReference = fontData.toRawCFData();
+    QCFType<CGDataProviderRef> dataProvider = CGDataProviderCreateWithCFData(fontDataReference);
+
+    // Note: CTFontCreateWithGraphicsFont (which we call from the  QCoreTextFontEngine
+    // constructor) has a bug causing it to retain the CGFontRef but never release it.
+    // The result is that we are leaking the CGFont, CGDataProvider, and CGData, but
+    // as the CGData is created from the raw QByteArray data, which we deref in the
+    // subclass above during destruction, we're at least not leaking the font data,
+    // (unless CoreText copies it internally). http://stackoverflow.com/questions/40805382/
+    QCFType<CGFontRef> cgFont = CGFontCreateWithDataProvider(dataProvider);
+
+    if (!cgFont) {
+        qWarning("QCoreTextFontEngine::create: CGFontCreateWithDataProvider failed");
+        return nullptr;
+    }
+
+    QFontDef def;
+    def.pixelSize = pixelSize;
+    def.pointSize = pixelSize * 72.0 / qt_defaultDpi();
+    return new QCoreTextRawFontEngine(cgFont, def, fontData);
 }
 
 QCoreTextFontEngine::QCoreTextFontEngine(CTFontRef font, const QFontDef &def)
@@ -213,7 +257,7 @@ void QCoreTextFontEngine::init()
 
     face_id.index = 0;
     QCFString name = CTFontCopyName(ctfont, kCTFontUniqueNameKey);
-    face_id.filename = QCFString::toQString(name).toUtf8();
+    face_id.filename = QString::fromCFString(name).toUtf8();
 
     QCFString family = CTFontCopyFamilyName(ctfont);
     fontDef.family = family;
@@ -255,6 +299,9 @@ void QCoreTextFontEngine::init()
         avgCharWidth = QFixed::fromReal(width * fontDef.pixelSize / emSize);
     } else
         avgCharWidth = QFontEngine::averageCharWidth();
+
+    underlineThickness = QFixed::fromReal(CTFontGetUnderlineThickness(ctfont));
+    underlinePos = -QFixed::fromReal(CTFontGetUnderlinePosition(ctfont));
 
     cache_cost = (CTFontGetAscent(ctfont) + CTFontGetDescent(ctfont)) * avgCharWidth.toInt() * 2000;
 
@@ -317,7 +364,7 @@ bool QCoreTextFontEngine::stringToCMap(const QChar *str, int len, QGlyphLayout *
         return true;
 
     QVarLengthArray<CGSize> advances(glyph_pos);
-    CTFontGetAdvancesForGlyphs(ctfont, kCTFontHorizontalOrientation, cgGlyphs.data(), advances.data(), glyph_pos);
+    CTFontGetAdvancesForGlyphs(ctfont, kCTFontOrientationHorizontal, cgGlyphs.data(), advances.data(), glyph_pos);
 
     for (int i = 0; i < glyph_pos; ++i) {
         if (glyphs->glyphs[i] & 0xff000000)
@@ -348,7 +395,7 @@ glyph_metrics_t QCoreTextFontEngine::boundingBox(glyph_t glyph)
 {
     glyph_metrics_t ret;
     CGGlyph g = glyph;
-    CGRect rect = CTFontGetBoundingRectsForGlyphs(ctfont, kCTFontHorizontalOrientation, &g, 0, 1);
+    CGRect rect = CTFontGetBoundingRectsForGlyphs(ctfont, kCTFontOrientationHorizontal, &g, 0, 1);
     if (synthesisFlags & QFontEngine::SynthesizedItalic) {
         rect.size.width += rect.size.height * SYNTHETIC_ITALIC_SKEW;
     }
@@ -357,7 +404,7 @@ glyph_metrics_t QCoreTextFontEngine::boundingBox(glyph_t glyph)
     ret.x = QFixed::fromReal(rect.origin.x);
     ret.y = -QFixed::fromReal(rect.origin.y) - ret.height;
     CGSize advances[1];
-    CTFontGetAdvancesForGlyphs(ctfont, kCTFontHorizontalOrientation, &g, advances, 1);
+    CTFontGetAdvancesForGlyphs(ctfont, kCTFontOrientationHorizontal, &g, advances, 1);
     ret.xoff = QFixed::fromReal(advances[0].width);
     ret.yoff = QFixed::fromReal(advances[0].height);
 
@@ -375,6 +422,19 @@ QFixed QCoreTextFontEngine::ascent() const
             ? QFixed::fromReal(CTFontGetAscent(ctfont)).round()
             : QFixed::fromReal(CTFontGetAscent(ctfont));
 }
+
+QFixed QCoreTextFontEngine::capHeight() const
+{
+    QFixed c = QFixed::fromReal(CTFontGetCapHeight(ctfont));
+    if (c <= 0)
+        return calculatedCapHeight();
+
+    if (fontDef.styleStrategy & QFont::ForceIntegerMetrics)
+        c = c.round();
+
+    return c;
+}
+
 QFixed QCoreTextFontEngine::descent() const
 {
     QFixed d = QFixed::fromReal(CTFontGetDescent(ctfont));
@@ -437,31 +497,25 @@ void QCoreTextFontEngine::draw(CGContextRef ctx, qreal x, qreal y, const QTextIt
 
     CGContextSetTextDrawingMode(ctx, kCGTextFill);
 
-
-    QVarLengthArray<CGSize> advances(glyphs.size());
+    QVarLengthArray<CGPoint> cgPositions(glyphs.size());
     QVarLengthArray<CGGlyph> cgGlyphs(glyphs.size());
-
-    for (int i = 0; i < glyphs.size() - 1; ++i) {
-        advances[i].width = (positions[i + 1].x - positions[i].x).toReal();
-        advances[i].height = (positions[i + 1].y - positions[i].y).toReal();
+    const qreal firstX = positions[0].x.toReal();
+    const qreal firstY = positions[0].y.toReal();
+    for (int i = 0; i < glyphs.size(); ++i) {
+        cgPositions[i].x = positions[i].x.toReal() - firstX;
+        cgPositions[i].y = positions[i].y.toReal() - firstY;
         cgGlyphs[i] = glyphs[i];
     }
-    advances[glyphs.size() - 1].width = 0;
-    advances[glyphs.size() - 1].height = 0;
-    cgGlyphs[glyphs.size() - 1] = glyphs[glyphs.size() - 1];
 
-    CGContextSetFont(ctx, cgFont);
     //NSLog(@"Font inDraw %@  ctfont %@", CGFontCopyFullName(cgFont), CTFontCopyFamilyName(ctfont));
 
     CGContextSetTextPosition(ctx, positions[0].x.toReal(), positions[0].y.toReal());
-
-    CGContextShowGlyphsWithAdvances(ctx, cgGlyphs.data(), advances.data(), glyphs.size());
+    CTFontDrawGlyphs(ctfont, cgGlyphs.data(), cgPositions.data(), glyphs.size(), ctx);
 
     if (synthesisFlags & QFontEngine::SynthesizedBold) {
         CGContextSetTextPosition(ctx, positions[0].x.toReal() + 0.5 * lineThickness().toReal(),
                                  positions[0].y.toReal());
-
-        CGContextShowGlyphsWithAdvances(ctx, cgGlyphs.data(), advances.data(), glyphs.size());
+        CTFontDrawGlyphs(ctfont, cgGlyphs.data(), cgPositions.data(), glyphs.size(), ctx);
     }
 
     CGContextSetTextMatrix(ctx, oldTextMatrix);
@@ -592,6 +646,11 @@ glyph_metrics_t QCoreTextFontEngine::alphaMapBoundingBox(glyph_t glyph, QFixed s
     return br;
 }
 
+bool QCoreTextFontEngine::expectsGammaCorrectedBlending() const
+{
+    // Only works well when font-smoothing is enabled
+    return (glyphFormat == Format_A32) && !(fontDef.styleStrategy & (QFont::NoAntialias | QFont::NoSubpixelAntialias));
+}
 
 QImage QCoreTextFontEngine::imageForGlyph(glyph_t glyph, QFixed subPixelPosition, bool aa, const QTransform &matrix)
 {
@@ -606,7 +665,7 @@ QImage QCoreTextFontEngine::imageForGlyph(glyph_t glyph, QFixed subPixelPosition
     if (!im.width() || !im.height())
         return im;
 
-#ifndef Q_OS_IOS
+#ifdef Q_OS_OSX
     CGColorSpaceRef colorspace = CGColorSpaceCreateWithName(kCGColorSpaceGenericRGB);
 #else
     CGColorSpaceRef colorspace = CGColorSpaceCreateDeviceRGB();
@@ -645,14 +704,13 @@ QImage QCoreTextFontEngine::imageForGlyph(glyph_t glyph, QFixed subPixelPosition
         CGContextSetTextMatrix(ctx, cgMatrix);
         CGContextSetRGBFillColor(ctx, 1, 1, 1, 1);
         CGContextSetTextDrawingMode(ctx, kCGTextFill);
-        CGContextSetFont(ctx, cgFont);
         CGContextSetTextPosition(ctx, pos_x, pos_y);
 
-        CGContextShowGlyphsWithAdvances(ctx, &cgGlyph, &CGSizeZero, 1);
+        CTFontDrawGlyphs(ctfont, &cgGlyph, &CGPointZero, 1, ctx);
 
         if (synthesisFlags & QFontEngine::SynthesizedBold) {
             CGContextSetTextPosition(ctx, pos_x + 0.5 * lineThickness().toReal(), pos_y);
-            CGContextShowGlyphsWithAdvances(ctx, &cgGlyph, &CGSizeZero, 1);
+            CTFontDrawGlyphs(ctfont, &cgGlyph, &CGPointZero, 1, ctx);
         }
     } else {
         // CGContextSetTextMatrix does not work with color glyphs, so we use
@@ -800,6 +858,16 @@ bool QCoreTextFontEngine::supportsTransformation(const QTransform &transform) co
         return false;
 }
 
+QFixed QCoreTextFontEngine::lineThickness() const
+{
+    return underlineThickness;
+}
+
+QFixed QCoreTextFontEngine::underlinePosition() const
+{
+    return underlinePos;
+}
+
 QFontEngine::Properties QCoreTextFontEngine::properties() const
 {
     Properties result;
@@ -807,8 +875,8 @@ QFontEngine::Properties QCoreTextFontEngine::properties() const
     QCFString psName, copyright;
     psName = CTFontCopyPostScriptName(ctfont);
     copyright = CTFontCopyName(ctfont, kCTFontCopyrightNameKey);
-    result.postscriptName = QCFString::toQString(psName).toUtf8();
-    result.copyright = QCFString::toQString(copyright).toUtf8();
+    result.postscriptName = QString::fromCFString(psName).toUtf8();
+    result.copyright = QString::fromCFString(copyright).toUtf8();
 
     qreal emSquare = CTFontGetUnitsPerEm(ctfont);
     qreal scale = emSquare / CTFontGetSize(ctfont);

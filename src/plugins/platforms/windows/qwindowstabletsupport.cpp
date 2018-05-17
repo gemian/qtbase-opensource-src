@@ -39,8 +39,6 @@
 
 #include "qwindowstabletsupport.h"
 
-#ifndef QT_NO_TABLETEVENT
-
 #include "qwindowscontext.h"
 #include "qwindowskeymapper.h"
 #include "qwindowswindow.h"
@@ -354,16 +352,28 @@ bool QWindowsTabletSupport::translateTabletProximityEvent(WPARAM /* wParam */, L
 {
     PACKET proximityBuffer[1]; // we are only interested in the first packet in this case
     const int totalPacks = QWindowsTabletSupport::m_winTab32DLL.wTPacketsGet(m_context, 1, proximityBuffer);
-    if (!totalPacks)
-        return false;
+
     if (!LOWORD(lParam)) {
         qCDebug(lcQpaTablet) << "leave proximity for device #" << m_currentDevice;
-        QWindowSystemInterface::handleTabletLeaveProximityEvent(proximityBuffer[0].pkTime,
-                                                                m_devices.at(m_currentDevice).currentDevice,
-                                                                m_devices.at(m_currentDevice).currentPointerType,
-                                                                m_devices.at(m_currentDevice).uniqueId);
+        if (m_currentDevice < 0 || m_currentDevice >= m_devices.size()) // QTBUG-65120, spurious leave observed
+            return false;
+        if (totalPacks > 0) {
+            QWindowSystemInterface::handleTabletLeaveProximityEvent(proximityBuffer[0].pkTime,
+                                                                    m_devices.at(m_currentDevice).currentDevice,
+                                                                    m_devices.at(m_currentDevice).currentPointerType,
+                                                                    m_devices.at(m_currentDevice).uniqueId);
+        } else {
+            QWindowSystemInterface::handleTabletLeaveProximityEvent(m_devices.at(m_currentDevice).currentDevice,
+                                                                    m_devices.at(m_currentDevice).currentPointerType,
+                                                                    m_devices.at(m_currentDevice).uniqueId);
+
+        }
         return true;
     }
+
+    if (!totalPacks)
+        return false;
+
     const UINT currentCursor = proximityBuffer[0].pkCursor;
     UINT physicalCursorId;
     QWindowsTabletSupport::m_winTab32DLL.wTInfo(WTI_CURSORS + currentCursor, CSR_PHYSID, &physicalCursorId);
@@ -465,13 +475,13 @@ bool QWindowsTabletSupport::translateTabletPacketEvent()
             // Z = sin(altitude)
             // X Tilt = arctan(X / Z)
             // Y Tilt = arctan(Y / Z)
-            const double radAzim = (packet.pkOrientation.orAzimuth / 10.0) * (M_PI / 180);
-            const double tanAlt = std::tan((std::abs(packet.pkOrientation.orAltitude / 10.0)) * (M_PI / 180));
+            const double radAzim = qDegreesToRadians(packet.pkOrientation.orAzimuth / 10.0);
+            const double tanAlt = std::tan(qDegreesToRadians(std::abs(packet.pkOrientation.orAltitude / 10.0)));
 
-            const double degX = std::atan(std::sin(radAzim) / tanAlt);
-            const double degY = std::atan(std::cos(radAzim) / tanAlt);
-            tiltX = int(degX * (180 / M_PI));
-            tiltY = int(-degY * (180 / M_PI));
+            const double radX = std::atan(std::sin(radAzim) / tanAlt);
+            const double radY = std::atan(std::cos(radAzim) / tanAlt);
+            tiltX = int(qRadiansToDegrees(radX));
+            tiltY = int(qRadiansToDegrees(-radY));
             rotation = 360.0 - (packet.pkOrientation.orTwist / 10.0);
             if (rotation > 180.0)
                 rotation -= 360.0;
@@ -498,5 +508,3 @@ bool QWindowsTabletSupport::translateTabletPacketEvent()
 }
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_TABLETEVENT

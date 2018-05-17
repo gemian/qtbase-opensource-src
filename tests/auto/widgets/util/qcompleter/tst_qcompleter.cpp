@@ -34,15 +34,11 @@
 #include <QList>
 #include <QPointer>
 
+#include <QtTest/private/qtesthelpers_p.h>
+
 #include "../../../../shared/filesystem.h"
 
-static inline void setFrameless(QWidget *w)
-{
-    Qt::WindowFlags flags = w->windowFlags();
-    flags |= Qt::FramelessWindowHint;
-    flags &= ~(Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
-    w->setWindowFlags(flags);
-}
+using namespace QTestPrivate;
 
 class CsvCompleter : public QCompleter
 {
@@ -143,6 +139,8 @@ private slots:
     void task253125_lineEditCompletion();
     void task247560_keyboardNavigation();
     void QTBUG_14292_filesystem();
+    void QTBUG_52028_tabAutoCompletes();
+    void QTBUG_51889_activatedSentTwice();
 
 private:
     void filter(bool assync = false);
@@ -348,7 +346,7 @@ void tst_QCompleter::getSetCheck()
     completer.setWrapAround(false);
     QCOMPARE(completer.wrapAround(), false);
 
-#ifndef QT_NO_FILESYSTEMMODEL
+#if QT_CONFIG(filesystemmodel)
     // QTBUG-54642, changing from QFileSystemModel to another model should restore role.
     completer.setCompletionRole(Qt::EditRole);
     QCOMPARE(completer.completionRole(), static_cast<int>(Qt::EditRole)); // default value
@@ -361,7 +359,7 @@ void tst_QCompleter::getSetCheck()
     QStandardItemModel standardItemModel2(2, 2); // Do not clobber a custom role when changing models
     completer.setModel(&standardItemModel2);
     QCOMPARE(completer.completionRole(), static_cast<int>(Qt::ToolTipRole));
-#endif // QT_NO_FILESYSTEMMODEL
+#endif // QT_CONFIG(filesystemmodel)
 }
 
 void tst_QCompleter::csMatchingOnCsSortedModel_data()
@@ -600,10 +598,7 @@ void tst_QCompleter::directoryModel_data()
         if (i == 1)
             QTest::newRow("FILTERING_OFF") << "FILTERING_OFF" << "" << "" << "";
 
-#if defined(Q_OS_WINCE)
-        QTest::newRow("()") << "" << "" << "/" << "/";
-        QTest::newRow("()") << "\\Program" << "" << "Program Files" << "\\Program Files";
-#elif defined(Q_OS_WIN)
+#if defined(Q_OS_WIN)
         QTest::newRow("()") << "C" << "" << "C:" << "C:";
         QTest::newRow("()") << "C:\\Program" << "" << "Program Files" << "C:\\Program Files";
 #elif defined (Q_OS_MAC)
@@ -649,10 +644,7 @@ void tst_QCompleter::fileSystemModel_data()
         if (i == 1)
             QTest::newRow("FILTERING_OFF") << "FILTERING_OFF" << "" << "" << "";
 
-#if defined(Q_OS_WINCE)
-        QTest::newRow("()") << "" << "" << "/" << "/";
-        QTest::newRow("()") << "\\Program" << "" << "Program Files" << "\\Program Files";
-#elif defined(Q_OS_WIN)
+#if defined(Q_OS_WIN)
         QTest::newRow("()") << "C" << "" << "C:" << "C:";
         QTest::newRow("()") << "C:\\Program" << "" << "Program Files" << "C:\\Program Files";
 #elif defined (Q_OS_MAC)
@@ -1199,7 +1191,7 @@ void tst_QCompleter::disabledItems()
     model->appendRow(suggestions);
     model->appendRow(new QStandardItem("suggestions Enabled"));
     QCompleter *completer = new QCompleter(model, &lineEdit);
-    QSignalSpy spy(completer, SIGNAL(activated(QString)));
+    QSignalSpy spy(completer, QOverload<const QString &>::of(&QCompleter::activated));
     lineEdit.setCompleter(completer);
     lineEdit.move(200, 200);
     lineEdit.show();
@@ -1225,7 +1217,7 @@ void tst_QCompleter::task178797_activatedOnReturn()
     setFrameless(&ledit);
     QCompleter *completer = new QCompleter(words, &ledit);
     ledit.setCompleter(completer);
-    QSignalSpy spy(completer, SIGNAL(activated(QString)));
+    QSignalSpy spy(completer, QOverload<const QString &>::of(&QCompleter::activated));
     QCOMPARE(spy.count(), 0);
     ledit.move(200, 200);
     ledit.show();
@@ -1293,7 +1285,7 @@ public:
         if (completer()) {
             completer()->setCompletionMode(QCompleter::PopupCompletion);
             completer()->setCompletionRole(Qt::DisplayRole);
-            connect(lineEdit(), SIGNAL(editingFinished()), SLOT(setCompletionPrefix()));
+            connect(lineEdit(), &QLineEdit::editingFinished, this, &task246056_ComboBox::setCompletionPrefix);
         }
     }
 private slots:
@@ -1312,7 +1304,7 @@ void tst_QCompleter::task246056_setCompletionPrefix()
     comboBox.show();
     QApplication::setActiveWindow(&comboBox);
     QVERIFY(QTest::qWaitForWindowActive(&comboBox));
-    QSignalSpy spy(comboBox.completer(), SIGNAL(activated(QModelIndex)));
+    QSignalSpy spy(comboBox.completer(), QOverload<const QModelIndex &>::of(&QCompleter::activated));
     QTest::keyPress(&comboBox, 'a');
     QTest::keyPress(comboBox.completer()->popup(), Qt::Key_Down);
     QTest::keyPress(comboBox.completer()->popup(), Qt::Key_Down);
@@ -1746,6 +1738,109 @@ void tst_QCompleter::QTBUG_14292_filesystem()
     //there is no reason creating a file should open a popup, it did in Qt 4.7.0
     QTest::qWait(60);
     QVERIFY(!comp.popup()->isVisible());
+}
+
+void tst_QCompleter::QTBUG_52028_tabAutoCompletes()
+{
+    QStringList words;
+    words << "foobar1" << "foobar2" << "hux";
+
+    QWidget w;
+    w.setLayout(new QVBoxLayout);
+
+    QComboBox cbox;
+    cbox.setEditable(true);
+    cbox.setInsertPolicy(QComboBox::NoInsert);
+    cbox.addItems(words);
+
+    cbox.completer()->setCaseSensitivity(Qt::CaseInsensitive);
+    cbox.completer()->setCompletionMode(QCompleter::PopupCompletion);
+
+    w.layout()->addWidget(&cbox);
+
+    // Adding a line edit is a good reason for tab to do something unrelated
+    QLineEdit le;
+    w.layout()->addWidget(&le);
+
+    const auto pos = QApplication::desktop()->availableGeometry(&w).topLeft() + QPoint(200,200);
+    w.move(pos);
+    w.show();
+    QApplication::setActiveWindow(&w);
+    QVERIFY(QTest::qWaitForWindowActive(&w));
+
+    QSignalSpy activatedSpy(&cbox, QOverload<int>::of(&QComboBox::activated));
+
+    // Tab key will complete but not activate
+    cbox.lineEdit()->clear();
+    QTest::keyClick(&cbox, Qt::Key_H);
+    QVERIFY(cbox.completer()->popup());
+    QTRY_VERIFY(cbox.completer()->popup()->isVisible());
+    QTest::keyClick(cbox.completer()->popup(), Qt::Key_Tab);
+    QCOMPARE(cbox.completer()->currentCompletion(), QLatin1String("hux"));
+    QCOMPARE(activatedSpy.count(), 0);
+    QEXPECT_FAIL("", "QTBUG-52028 will not be fixed today.", Abort);
+    QCOMPARE(cbox.currentText(), QLatin1String("hux"));
+    QCOMPARE(activatedSpy.count(), 0);
+    QVERIFY(!le.hasFocus());
+}
+
+void tst_QCompleter::QTBUG_51889_activatedSentTwice()
+{
+    QStringList words;
+    words << "foobar1" << "foobar2" << "bar" <<"hux";
+
+    QWidget w;
+    w.setLayout(new QVBoxLayout);
+
+    QComboBox cbox;
+    setFrameless(&cbox);
+    cbox.setEditable(true);
+    cbox.setInsertPolicy(QComboBox::NoInsert);
+    cbox.addItems(words);
+
+    cbox.completer()->setCaseSensitivity(Qt::CaseInsensitive);
+    cbox.completer()->setCompletionMode(QCompleter::PopupCompletion);
+
+    w.layout()->addWidget(&cbox);
+
+    QLineEdit le;
+    w.layout()->addWidget(&le);
+
+    const auto pos = QApplication::desktop()->availableGeometry(&w).topLeft() + QPoint(200,200);
+    w.move(pos);
+    w.show();
+    QApplication::setActiveWindow(&w);
+    QVERIFY(QTest::qWaitForWindowActive(&w));
+
+    QSignalSpy activatedSpy(&cbox, QOverload<int>::of(&QComboBox::activated));
+
+    // Navigate + enter activates only once (first item)
+    cbox.lineEdit()->clear();
+    QTest::keyClick(&cbox, Qt::Key_F);
+    QVERIFY(cbox.completer()->popup());
+    QTRY_VERIFY(cbox.completer()->popup()->isVisible());
+    QTest::keyClick(cbox.completer()->popup(), Qt::Key_Down);
+    QTest::keyClick(cbox.completer()->popup(), Qt::Key_Return);
+    QTRY_COMPARE(activatedSpy.count(), 1);
+
+    // Navigate + enter activates only once (non-first item)
+    cbox.lineEdit()->clear();
+    activatedSpy.clear();
+    QTest::keyClick(&cbox, Qt::Key_H);
+    QVERIFY(cbox.completer()->popup());
+    QTRY_VERIFY(cbox.completer()->popup()->isVisible());
+    QTest::keyClick(cbox.completer()->popup(), Qt::Key_Down);
+    QTest::keyClick(cbox.completer()->popup(), Qt::Key_Return);
+    QTRY_COMPARE(activatedSpy.count(), 1);
+
+    // Full text + enter activates only once
+    cbox.lineEdit()->clear();
+    activatedSpy.clear();
+    QTest::keyClicks(&cbox, "foobar1");
+    QVERIFY(cbox.completer()->popup());
+    QTRY_VERIFY(cbox.completer()->popup()->isVisible());
+    QTest::keyClick(&cbox, Qt::Key_Return);
+    QTRY_COMPARE(activatedSpy.count(), 1);
 }
 
 QTEST_MAIN(tst_QCompleter)

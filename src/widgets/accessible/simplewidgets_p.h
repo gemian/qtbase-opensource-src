@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtWidgets/qaccessiblewidget.h>
 
@@ -64,6 +65,7 @@ class QToolButton;
 class QGroupBox;
 class QProgressBar;
 
+#if QT_CONFIG(abstractbutton)
 class QAccessibleButton : public QAccessibleWidget
 {
     Q_DECLARE_TR_FUNCTIONS(QAccessibleButton)
@@ -82,8 +84,9 @@ public:
 protected:
     QAbstractButton *button() const;
 };
+#endif
 
-#ifndef QT_NO_TOOLBUTTON
+#if QT_CONFIG(toolbutton)
 class QAccessibleToolButton : public QAccessibleButton
 {
 public:
@@ -104,7 +107,7 @@ protected:
 
     bool isSplitButton() const;
 };
-#endif // QT_NO_TOOLBUTTON
+#endif // QT_CONFIG(toolbutton)
 
 class QAccessibleDisplay : public QAccessibleWidget, public QAccessibleImageInterface
 {
@@ -123,7 +126,7 @@ public:
     QPoint imagePosition() const Q_DECL_OVERRIDE;
 };
 
-#ifndef QT_NO_GROUPBOX
+#if QT_CONFIG(groupbox)
 class QAccessibleGroupBox : public QAccessibleWidget
 {
 public:
@@ -145,7 +148,7 @@ private:
 };
 #endif
 
-#ifndef QT_NO_LINEEDIT
+#if QT_CONFIG(lineedit)
 class QAccessibleLineEdit : public QAccessibleWidget, public QAccessibleTextInterface, public QAccessibleEditableTextInterface
 {
 public:
@@ -185,9 +188,9 @@ protected:
     QLineEdit *lineEdit() const;
     friend class QAccessibleAbstractSpinBox;
 };
-#endif // QT_NO_LINEEDIT
+#endif // QT_CONFIG(lineedit)
 
-#ifndef QT_NO_PROGRESSBAR
+#if QT_CONFIG(progressbar)
 class QAccessibleProgressBar : public QAccessibleDisplay, public QAccessibleValueInterface
 {
 public:

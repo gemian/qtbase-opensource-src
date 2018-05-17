@@ -42,6 +42,7 @@
 
 #if !defined(QT_NO_DATASTREAM) || defined(QT_BOOTSTRAPPED)
 #include "qbuffer.h"
+#include "qfloat16.h"
 #include "qstring.h"
 #include <stdio.h>
 #include <ctype.h>
@@ -448,6 +449,9 @@ QDataStream::FloatingPointPrecision QDataStream::floatingPointPrecision() const
 
     The default is DoublePrecision.
 
+    Note that this property does not affect the serialization or deserialization of \c qfloat16
+    instances.
+
     \warning This property must be set to the same value on the object that writes and the object
     that reads the data stream.
 
@@ -556,6 +560,9 @@ void QDataStream::setByteOrder(ByteOrder bo)
     \value Qt_5_5 Same as Qt_5_4
     \value Qt_5_6 Version 17 (Qt 5.6)
     \value Qt_5_7 Same as Qt_5_6
+    \value Qt_5_8 Same as Qt_5_6
+    \value Qt_5_9 Same as Qt_5_6
+    \value Qt_5_10 Same as Qt_5_6
     \omitvalue Qt_DefaultCompiledVersion
 
     \sa setVersion(), version()
@@ -765,6 +772,17 @@ int QDataStream::readBlock(char *data, int len)
 }
 
 /*!
+    \fn QDataStream &QDataStream::operator>>(std::nullptr &ptr)
+    \since 5.9
+    \overload
+
+    Simulates reading a \c{std::nullptr_t} from the stream into \a ptr and
+    returns a reference to the stream. This function does not actually read
+    anything from the stream, as \c{std::nullptr_t} values are stored as 0
+    bytes.
+*/
+
+/*!
     \fn QDataStream &QDataStream::operator>>(quint8 &i)
     \overload
 
@@ -971,6 +989,20 @@ QDataStream &QDataStream::operator>>(double &f)
 
 /*!
     \overload
+    \since 5.9
+
+    Reads a floating point number from the stream into \a f,
+    using the standard IEEE 754 format. Returns a reference to the
+    stream.
+*/
+QDataStream &QDataStream::operator>>(qfloat16 &f)
+{
+    return *this >> reinterpret_cast<qint16&>(f);
+}
+
+
+/*!
+    \overload
 
     Reads the '\\0'-terminated string \a s from the stream and returns
     a reference to the stream.
@@ -1064,6 +1096,15 @@ int QDataStream::readRawData(char *s, int len)
   QDataStream write functions
  *****************************************************************************/
 
+/*!
+    \fn QDataStream &QDataStream::operator<<(std::nullptr ptr)
+    \since 5.9
+    \overload
+
+    Simulates writing a \c{std::nullptr_t}, \a ptr, to the stream and returns a
+    reference to the stream. This function does not actually write anything to
+    the stream, as \c{std::nullptr_t} values are stored as 0 bytes.
+*/
 
 /*!
     \fn QDataStream &QDataStream::operator<<(quint8 i)
@@ -1258,6 +1299,19 @@ QDataStream &QDataStream::operator<<(double f)
 
 
 /*!
+    \fn QDataStream &QDataStream::operator<<(qfloat16 f)
+    \overload
+    \since 5.9
+
+    Writes a floating point number, \a f, to the stream using
+    the standard IEEE 754 format. Returns a reference to the stream.
+*/
+QDataStream &QDataStream::operator<<(qfloat16 f)
+{
+    return *this << reinterpret_cast<qint16&>(f);
+}
+
+/*!
     \overload
 
     Writes the '\\0'-terminated string \a s to the stream and returns a
@@ -1279,7 +1333,6 @@ QDataStream &QDataStream::operator<<(const char *s)
     writeRawData(s, len);
     return *this;
 }
-
 
 /*!
     Writes the length specifier \a len and the buffer \a s to the
@@ -1332,32 +1385,13 @@ int QDataStream::writeRawData(const char *s, int len)
 int QDataStream::skipRawData(int len)
 {
     CHECK_STREAM_PRECOND(-1)
+    if (q_status != Ok && dev->isTransactionStarted())
+        return -1;
 
-    if (dev->isSequential()) {
-        char buf[4096];
-        int sumRead = 0;
-
-        while (len > 0) {
-            int blockSize = qMin(len, (int)sizeof(buf));
-            int n = readBlock(buf, blockSize);
-            if (n == -1)
-                return -1;
-            if (n == 0)
-                return sumRead;
-
-            sumRead += n;
-            len -= blockSize;
-        }
-        return sumRead;
-    } else {
-        qint64 pos = dev->pos();
-        qint64 size = dev->size();
-        if (pos + len > size)
-            len = size - pos;
-        if (!dev->seek(pos + len))
-            return -1;
-        return len;
-    }
+    const int skipResult = dev->skip(len);
+    if (skipResult != len)
+        setStatus(ReadPastEnd);
+    return skipResult;
 }
 
 QT_END_NAMESPACE

@@ -61,10 +61,6 @@
 
 QT_BEGIN_NAMESPACE
 
-#if defined(Q_OS_WINCE_STD) && _WIN32_WCE < 0x600
-#define Q_USE_DEPRECATED_MAP_API 1
-#endif
-
 class QFSFileEnginePrivate;
 
 class Q_CORE_EXPORT QFSFileEngine : public QAbstractFileEngine
@@ -97,9 +93,11 @@ public:
     QStringList entryList(QDir::Filters filters, const QStringList &filterNames) const Q_DECL_OVERRIDE;
     FileFlags fileFlags(FileFlags type) const Q_DECL_OVERRIDE;
     bool setPermissions(uint perms) Q_DECL_OVERRIDE;
+    QByteArray id() const override;
     QString fileName(FileName file) const Q_DECL_OVERRIDE;
     uint ownerId(FileOwner) const Q_DECL_OVERRIDE;
     QString owner(FileOwner) const Q_DECL_OVERRIDE;
+    bool setFileTime(const QDateTime &newDate, FileTime time) Q_DECL_OVERRIDE;
     QDateTime fileTime(FileTime time) const Q_DECL_OVERRIDE;
     void setFileName(const QString &file) Q_DECL_OVERRIDE;
     int handle() const Q_DECL_OVERRIDE;
@@ -112,6 +110,10 @@ public:
     qint64 read(char *data, qint64 maxlen) Q_DECL_OVERRIDE;
     qint64 readLine(char *data, qint64 maxlen) Q_DECL_OVERRIDE;
     qint64 write(const char *data, qint64 len) Q_DECL_OVERRIDE;
+    bool cloneTo(QAbstractFileEngine *target) override;
+
+    virtual bool isUnnamedFile() const
+    { return false; }
 
     bool extension(Extension extension, const ExtensionOption *option = 0, ExtensionReturn *output = 0) Q_DECL_OVERRIDE;
     bool supportsExtension(Extension extension) const Q_DECL_OVERRIDE;
@@ -184,10 +186,7 @@ public:
     HANDLE mapHandle;
     QHash<uchar *, DWORD /* offset % AllocationGranularity */> maps;
 
-#ifndef Q_OS_WINCE
     mutable int cachedFd;
-#endif
-
     mutable DWORD fileAttrib;
 #else
     QHash<uchar *, QPair<int /*offset % PageSize*/, size_t /*length + offset % PageSize*/> > maps;
@@ -206,10 +205,8 @@ public:
 
     mutable uint is_sequential : 2;
     mutable uint tried_stat : 1;
-#if !defined(Q_OS_WINCE)
     mutable uint need_lstat : 1;
     mutable uint is_link : 1;
-#endif
 
 #if defined(Q_OS_WIN)
     bool doStat(QFileSystemMetaData::MetaDataFlags flags) const;

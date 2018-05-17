@@ -74,9 +74,8 @@ QT_BEGIN_NAMESPACE
 */
 
 QWindowsOleDataObject::QWindowsOleDataObject(QMimeData *mimeData) :
-    m_refs(1), data(mimeData),
-    CF_PERFORMEDDROPEFFECT(RegisterClipboardFormat(CFSTR_PERFORMEDDROPEFFECT)),
-    performedEffect(DROPEFFECT_NONE)
+    data(mimeData),
+    CF_PERFORMEDDROPEFFECT(RegisterClipboardFormat(CFSTR_PERFORMEDDROPEFFECT))
 {
     qCDebug(lcQpaMime) << __FUNCTION__ << mimeData->formats();
 }
@@ -98,39 +97,6 @@ QMimeData *QWindowsOleDataObject::mimeData() const
 DWORD QWindowsOleDataObject::reportedPerformedEffect() const
 {
     return performedEffect;
-}
-
-//---------------------------------------------------------------------
-//                    IUnknown Methods
-//---------------------------------------------------------------------
-
-STDMETHODIMP
-QWindowsOleDataObject::QueryInterface(REFIID iid, void FAR* FAR* ppv)
-{
-    if (iid == IID_IUnknown || iid == IID_IDataObject) {
-        *ppv = this;
-        AddRef();
-        return NOERROR;
-    }
-    *ppv = NULL;
-    return ResultFromScode(E_NOINTERFACE);
-}
-
-STDMETHODIMP_(ULONG)
-QWindowsOleDataObject::AddRef(void)
-{
-    return ++m_refs;
-}
-
-STDMETHODIMP_(ULONG)
-QWindowsOleDataObject::Release(void)
-{
-    if (--m_refs == 0) {
-        releaseQt();
-        delete this;
-        return 0;
-    }
-    return m_refs;
 }
 
 STDMETHODIMP
@@ -267,8 +233,7 @@ QWindowsOleDataObject::EnumDAdvise(LPENUMSTATDATA FAR*)
     \ingroup qt-lighthouse-win
 */
 
-QWindowsOleEnumFmtEtc::QWindowsOleEnumFmtEtc(const QVector<FORMATETC> &fmtetcs) :
-    m_dwRefs(1), m_nIndex(0), m_isNull(false)
+QWindowsOleEnumFmtEtc::QWindowsOleEnumFmtEtc(const QVector<FORMATETC> &fmtetcs)
 {
     if (QWindowsContext::verbose > 1)
         qCDebug(lcQpaMime) << __FUNCTION__ << fmtetcs;
@@ -285,8 +250,7 @@ QWindowsOleEnumFmtEtc::QWindowsOleEnumFmtEtc(const QVector<FORMATETC> &fmtetcs) 
     }
 }
 
-QWindowsOleEnumFmtEtc::QWindowsOleEnumFmtEtc(const QVector<LPFORMATETC> &lpfmtetcs) :
-    m_dwRefs(1), m_nIndex(0), m_isNull(false)
+QWindowsOleEnumFmtEtc::QWindowsOleEnumFmtEtc(const QVector<LPFORMATETC> &lpfmtetcs)
 {
     if (QWindowsContext::verbose > 1)
         qCDebug(lcQpaMime) << __FUNCTION__;
@@ -324,35 +288,6 @@ QWindowsOleEnumFmtEtc::~QWindowsOleEnumFmtEtc()
 bool QWindowsOleEnumFmtEtc::isNull() const
 {
     return m_isNull;
-}
-
-// IUnknown methods
-STDMETHODIMP
-QWindowsOleEnumFmtEtc::QueryInterface(REFIID riid, void FAR* FAR* ppvObj)
-{
-    if (riid == IID_IUnknown || riid == IID_IEnumFORMATETC) {
-        *ppvObj = this;
-        AddRef();
-        return NOERROR;
-    }
-    *ppvObj = NULL;
-    return ResultFromScode(E_NOINTERFACE);
-}
-
-STDMETHODIMP_(ULONG)
-QWindowsOleEnumFmtEtc::AddRef(void)
-{
-    return ++m_dwRefs;
-}
-
-STDMETHODIMP_(ULONG)
-QWindowsOleEnumFmtEtc::Release(void)
-{
-    if (--m_dwRefs == 0) {
-        delete this;
-        return 0;
-    }
-    return m_dwRefs;
 }
 
 // IEnumFORMATETC methods

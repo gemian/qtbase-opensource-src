@@ -28,12 +28,17 @@
 
 
 #include <QtTest/QtTest>
+#include <QtTest/private/qtesthelpers_p.h>
 
 #include <qcoreapplication.h>
 #include <qdebug.h>
 #include <qabstractspinbox.h>
 #include <qlineedit.h>
 #include <qspinbox.h>
+
+#include "../../../shared/platforminputcontext.h"
+#include <private/qinputmethod_p.h>
+
 
 class tst_QAbstractSpinBox : public QObject
 {
@@ -44,11 +49,19 @@ public:
     virtual ~tst_QAbstractSpinBox();
 
 private slots:
+    void initTestCase();
+    void cleanupTestCase();
+
     void getSetCheck();
 
     // task-specific tests below me:
     void task183108_clear();
     void task228728_cssselector();
+
+    void inputMethodUpdate();
+
+private:
+    PlatformInputContext m_platformInputContext;
 };
 
 tst_QAbstractSpinBox::tst_QAbstractSpinBox()
@@ -66,6 +79,18 @@ public:
     QLineEdit *lineEdit() { return QAbstractSpinBox::lineEdit(); }
     void setLineEdit(QLineEdit *le) { QAbstractSpinBox::setLineEdit(le); }
 };
+
+void tst_QAbstractSpinBox::initTestCase()
+{
+    QInputMethodPrivate *inputMethodPrivate = QInputMethodPrivate::get(qApp->inputMethod());
+    inputMethodPrivate->testContext = &m_platformInputContext;
+}
+
+void tst_QAbstractSpinBox::cleanupTestCase()
+{
+    QInputMethodPrivate *inputMethodPrivate = QInputMethodPrivate::get(qApp->inputMethod());
+    inputMethodPrivate->testContext = 0;
+}
 
 // Testing get/set functions
 void tst_QAbstractSpinBox::getSetCheck()
@@ -139,6 +164,60 @@ void tst_QAbstractSpinBox::task228728_cssselector()
     //so while the stylesheet want to access property, it should not crash
     qApp->setStyleSheet("[alignment=\"1\"], [text=\"foo\"] { color:black; }" );
     QSpinBox box;
+}
+
+void tst_QAbstractSpinBox::inputMethodUpdate()
+{
+    QSpinBox box;
+
+    QSpinBox *testWidget = &box;
+    testWidget->setRange(0, 1);
+
+    QTestPrivate::centerOnScreen(testWidget);
+    testWidget->clear();
+    testWidget->show();
+    QVERIFY(QTest::qWaitForWindowExposed(testWidget));
+
+    testWidget->activateWindow();
+    testWidget->setFocus();
+    QTRY_VERIFY(testWidget->hasFocus());
+    QTRY_COMPARE(qApp->focusObject(), testWidget);
+
+    m_platformInputContext.m_updateCallCount = 0;
+    {
+        QList<QInputMethodEvent::Attribute> attributes;
+        QInputMethodEvent event("1", attributes);
+        QApplication::sendEvent(testWidget, &event);
+    }
+    QVERIFY(m_platformInputContext.m_updateCallCount >= 1);
+
+    m_platformInputContext.m_updateCallCount = 0;
+    {
+        QList<QInputMethodEvent::Attribute> attributes;
+        attributes << QInputMethodEvent::Attribute(QInputMethodEvent::Cursor, 0, 1, QVariant());
+        QInputMethodEvent event("1", attributes);
+        QApplication::sendEvent(testWidget, &event);
+    }
+    QVERIFY(m_platformInputContext.m_updateCallCount >= 1);
+
+    m_platformInputContext.m_updateCallCount = 0;
+    {
+        QList<QInputMethodEvent::Attribute> attributes;
+        QInputMethodEvent event("", attributes);
+        event.setCommitString("1");
+        QApplication::sendEvent(testWidget, &event);
+    }
+    QVERIFY(m_platformInputContext.m_updateCallCount >= 1);
+    QCOMPARE(testWidget->value(), 1);
+
+    m_platformInputContext.m_updateCallCount = 0;
+    {
+        QList<QInputMethodEvent::Attribute> attributes;
+        attributes << QInputMethodEvent::Attribute(QInputMethodEvent::Selection, 0, 0, QVariant());
+        QInputMethodEvent event("", attributes);
+        QApplication::sendEvent(testWidget, &event);
+    }
+    QVERIFY(m_platformInputContext.m_updateCallCount >= 1);
 }
 
 

@@ -51,7 +51,7 @@
 // We mean it.
 //
 
-#include "QtCore/qglobal.h"
+#include <QtGui/private/qtguiglobal_p.h>
 #include "QtCore/qstring.h"
 #include "QtCore/qvarlengtharray.h"
 #include "QtCore/qnamespace.h"
@@ -236,13 +236,13 @@ struct QGlyphLayout
             last = numGlyphs;
         if (first == 0 && last == numGlyphs
             && reinterpret_cast<char *>(offsets + numGlyphs) == reinterpret_cast<char *>(glyphs)) {
-            memset(offsets, 0, (numGlyphs * SpaceNeeded));
+            memset(static_cast<void *>(offsets), 0, (numGlyphs * SpaceNeeded));
         } else {
             const int num = last - first;
-            memset(offsets + first, 0, num * sizeof(QFixedPoint));
+            memset(static_cast<void *>(offsets + first), 0, num * sizeof(QFixedPoint));
             memset(glyphs + first, 0, num * sizeof(glyph_t));
-            memset(advances + first, 0, num * sizeof(QFixed));
-            memset(justifications + first, 0, num * sizeof(QGlyphJustification));
+            memset(static_cast<void *>(advances + first), 0, num * sizeof(QFixed));
+            memset(static_cast<void *>(justifications + first), 0, num * sizeof(QGlyphJustification));
             memset(attributes + first, 0, num * sizeof(QGlyphAttributes));
         }
     }
@@ -323,13 +323,9 @@ public:
     QFontEngine *fontEngine;
 };
 
-struct Q_AUTOTEST_EXPORT QScriptItem
+struct QScriptItem
 {
-    inline QScriptItem()
-        : position(0),
-          num_glyphs(0), descent(-1), ascent(-1), leading(-1), width(-1),
-          glyph_data_offset(0) {}
-    inline QScriptItem(int p, const QScriptAnalysis &a)
+    Q_DECL_CONSTEXPR QScriptItem(int p, QScriptAnalysis a) Q_DECL_NOTHROW
         : position(p), analysis(a),
           num_glyphs(0), descent(-1), ascent(-1), leading(-1), width(-1),
           glyph_data_offset(0) {}
@@ -342,11 +338,12 @@ struct Q_AUTOTEST_EXPORT QScriptItem
     QFixed leading;
     QFixed width;
     int glyph_data_offset;
-    QFixed height() const { return ascent + descent; }
+    Q_DECL_CONSTEXPR QFixed height() const Q_DECL_NOTHROW { return ascent + descent; }
+private:
+    friend class QVector<QScriptItem>;
+    QScriptItem() {}; // for QVector, don't use
 };
-
-
-Q_DECLARE_TYPEINFO(QScriptItem, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QScriptItem, Q_PRIMITIVE_TYPE);
 
 typedef QVector<QScriptItem> QScriptItemArray;
 
@@ -649,7 +646,7 @@ private:
     void setBoundary(int strPos) const;
     void addRequiredBoundaries() const;
     void shapeText(int item) const;
-#ifdef QT_ENABLE_HARFBUZZ_NG
+#if QT_CONFIG(harfbuzz)
     int shapeTextWithHarfbuzzNG(const QScriptItem &si,
                                 const ushort *string,
                                 int itemLength,

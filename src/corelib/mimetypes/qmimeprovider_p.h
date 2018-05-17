@@ -56,6 +56,7 @@
 
 #ifndef QT_NO_MIMETYPE
 
+#include "qmimeglobpattern_p.h"
 #include <QtCore/qdatetime.h>
 #include <QtCore/qset.h>
 #include <QtCore/qelapsedtimer.h>
@@ -72,7 +73,7 @@ public:
 
     virtual bool isValid() = 0;
     virtual QMimeType mimeTypeForName(const QString &name) = 0;
-    virtual QStringList findByFileName(const QString &fileName, QString *foundSuffix) = 0;
+    virtual QMimeGlobMatchResult findByFileName(const QString &fileName) = 0;
     virtual QStringList parents(const QString &mime) = 0;
     virtual QString resolveAlias(const QString &name) = 0;
     virtual QStringList listAliases(const QString &name) = 0;
@@ -99,7 +100,7 @@ public:
 
     virtual bool isValid() Q_DECL_OVERRIDE;
     virtual QMimeType mimeTypeForName(const QString &name) Q_DECL_OVERRIDE;
-    virtual QStringList findByFileName(const QString &fileName, QString *foundSuffix) Q_DECL_OVERRIDE;
+    virtual QMimeGlobMatchResult findByFileName(const QString &fileName) Q_DECL_OVERRIDE;
     virtual QStringList parents(const QString &mime) Q_DECL_OVERRIDE;
     virtual QString resolveAlias(const QString &name) Q_DECL_OVERRIDE;
     virtual QStringList listAliases(const QString &name) Q_DECL_OVERRIDE;
@@ -115,7 +116,7 @@ private:
     void matchGlobList(QMimeGlobMatchResult &result, CacheFile *cacheFile, int offset, const QString &fileName);
     bool matchSuffixTree(QMimeGlobMatchResult &result, CacheFile *cacheFile, int numEntries, int firstOffset, const QString &fileName, int charPos, bool caseSensitiveCheck);
     bool matchMagicRule(CacheFile *cacheFile, int numMatchlets, int firstOffset, const QByteArray &data);
-    QString iconForMime(CacheFile *cacheFile, int posListOffset, const QByteArray &inputMime);
+    QLatin1String iconForMime(CacheFile *cacheFile, int posListOffset, const QByteArray &inputMime);
     void loadMimeTypeList();
     void checkCache();
 
@@ -138,10 +139,11 @@ class QMimeXMLProvider : public QMimeProviderBase
 {
 public:
     QMimeXMLProvider(QMimeDatabasePrivate *db);
+    ~QMimeXMLProvider();
 
     virtual bool isValid() Q_DECL_OVERRIDE;
     virtual QMimeType mimeTypeForName(const QString &name) Q_DECL_OVERRIDE;
-    virtual QStringList findByFileName(const QString &fileName, QString *foundSuffix) Q_DECL_OVERRIDE;
+    virtual QMimeGlobMatchResult findByFileName(const QString &fileName) Q_DECL_OVERRIDE;
     virtual QStringList parents(const QString &mime) Q_DECL_OVERRIDE;
     virtual QString resolveAlias(const QString &name) Q_DECL_OVERRIDE;
     virtual QStringList listAliases(const QString &name) Q_DECL_OVERRIDE;

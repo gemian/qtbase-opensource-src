@@ -161,6 +161,42 @@ QString QScreen::name() const
 }
 
 /*!
+  \property QScreen::manufacturer
+  \brief the manufacturer of the screen
+
+  \since 5.9
+*/
+QString QScreen::manufacturer() const
+{
+    Q_D(const QScreen);
+    return d->platformScreen->manufacturer();
+}
+
+/*!
+  \property QScreen::model
+  \brief the model of the screen
+
+  \since 5.9
+*/
+QString QScreen::model() const
+{
+    Q_D(const QScreen);
+    return d->platformScreen->model();
+}
+
+/*!
+  \property QScreen::serialNumber
+  \brief the serial number of the screen
+
+  \since 5.9
+*/
+QString QScreen::serialNumber() const
+{
+    Q_D(const QScreen);
+    return d->platformScreen->serialNumber();
+}
+
+/*!
   \property QScreen::depth
   \brief the color depth of the screen
 */
@@ -348,6 +384,10 @@ QRect QScreen::geometry() const
 
   The available geometry is the geometry excluding window manager reserved areas
   such as task bars and system menus.
+
+  Note, on X11 this will return the true available geometry only on systems with one monitor and
+  if window manager has set _NET_WORKAREA atom. In all other cases this is equal to geometry().
+  This is a limitation in X11 window manager specification.
 */
 QRect QScreen::availableGeometry() const
 {
@@ -666,6 +706,10 @@ void QScreenPrivate::updatePrimaryOrientation()
     identifier and not a QWidget, is to enable grabbing of windows
     that are not part of the application, window system frames, and so
     on.
+
+    \warning Grabbing windows that are not part of the application is
+    not supported on systems such as iOS, where sandboxing/security
+    prevents reading pixels of windows not owned by the application.
 
     The grabWindow() function grabs pixels from the screen, not from
     the window, i.e. if there is another window partially or entirely

@@ -43,8 +43,6 @@
 #include "qprinter.h"
 #include "private/qprinter_p.h"
 
-#ifndef QT_NO_PRINTDIALOG
-
 QT_BEGIN_NAMESPACE
 
 // hack
@@ -473,7 +471,7 @@ void QPrintDialog::done(int result)
     if (d->receiverToDisconnectOnClose) {
         disconnect(this, SIGNAL(accepted(QPrinter*)),
                    d->receiverToDisconnectOnClose, d->memberToDisconnectOnClose);
-        d->receiverToDisconnectOnClose = 0;
+        d->receiverToDisconnectOnClose = nullptr;
     }
     d->memberToDisconnectOnClose.clear();
 }
@@ -497,5 +495,3 @@ void QPrintDialog::open(QObject *receiver, const char *member)
 }
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_PRINTDIALOG

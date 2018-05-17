@@ -51,19 +51,16 @@
 // We mean it.
 //
 
-#include "QtWidgets/qcombobox.h"
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtWidgets/qcalendarwidget.h"
 #include "QtWidgets/qspinbox.h"
 #include "QtWidgets/qtoolbutton.h"
 #include "QtWidgets/qmenu.h"
-#include "QtWidgets/qlabel.h"
 #include "QtWidgets/qdatetimeedit.h"
 #include "private/qabstractspinbox_p.h"
 #include "private/qdatetimeparser_p.h"
 
 #include "qdebug.h"
-
-#ifndef QT_NO_DATETIMEEDIT
 
 QT_BEGIN_NAMESPACE
 
@@ -166,10 +163,10 @@ private Q_SLOTS:
     void dateSelectionChanged();
 
 protected:
-    void hideEvent(QHideEvent *);
-    void mousePressEvent(QMouseEvent *e);
-    void mouseReleaseEvent(QMouseEvent *);
-    bool event(QEvent *e);
+    void hideEvent(QHideEvent *) override;
+    void mousePressEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *) override;
+    bool event(QEvent *e) override;
 
 private:
     QCalendarWidget *verifyCalendarInstance();
@@ -180,7 +177,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_DATETIMEEDIT
 
 #endif // QDATETIMEEDIT_P_H

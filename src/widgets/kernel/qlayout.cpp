@@ -41,15 +41,21 @@
 
 #include "qapplication.h"
 #include "qlayoutengine_p.h"
+#if QT_CONFIG(menubar)
 #include "qmenubar.h"
+#endif
 #include "qtoolbar.h"
+#if QT_CONFIG(sizegrip)
 #include "qsizegrip.h"
+#endif
 #include "qevent.h"
 #include "qstyle.h"
 #include "qvariant.h"
 #include "qwidget_p.h"
 #include "qlayout_p.h"
+#if QT_CONFIG(formlayout)
 #include "qformlayout.h"
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -320,8 +326,10 @@ int QLayout::spacing() const
         return boxlayout->spacing();
     } else if (const QGridLayout* gridlayout = qobject_cast<const QGridLayout*>(this)) {
         return gridlayout->spacing();
+#if QT_CONFIG(formlayout)
     } else if (const QFormLayout* formlayout = qobject_cast<const QFormLayout*>(this)) {
         return formlayout->spacing();
+#endif
     } else {
         Q_D(const QLayout);
         if (d->insideSpacing >=0) {
@@ -347,8 +355,10 @@ void QLayout::setSpacing(int spacing)
         boxlayout->setSpacing(spacing);
     } else if (QGridLayout* gridlayout = qobject_cast<QGridLayout*>(this)) {
         gridlayout->setSpacing(spacing);
+#if QT_CONFIG(formlayout)
     } else if (QFormLayout* formlayout = qobject_cast<QFormLayout*>(this)) {
         formlayout->setSpacing(spacing);
+#endif
     } else {
         Q_D(QLayout);
         d->insideSpacing = spacing;
@@ -575,9 +585,9 @@ void QLayoutPrivate::doResize(const QSize &r)
     QWidget *mw = q->parentWidget();
     QRect rect = mw->testAttribute(Qt::WA_LayoutOnEntireRect) ? mw->rect() : mw->contentsRect();
     const int mbTop = rect.top();
-    rect.setTop(rect.top() + mbh);
+    rect.setTop(mbTop + mbh);
     q->setGeometry(rect);
-#ifndef QT_NO_MENUBAR
+#if QT_CONFIG(menubar)
     if (menubar)
         menubar->setGeometry(rect.left(), mbTop, r.width(), mbh);
 #endif
@@ -609,7 +619,7 @@ void QLayout::widgetEvent(QEvent *e)
         {
             QChildEvent *c = (QChildEvent *)e;
             if (c->child()->isWidgetType()) {
-#ifndef QT_NO_MENUBAR
+#if QT_CONFIG(menubar)
                 if (c->child() == d->menubar)
                     d->menubar = 0;
 #endif
@@ -635,21 +645,11 @@ void QLayout::childEvent(QChildEvent *e)
     if (!d->enabled)
         return;
 
-    if (e->type() == QEvent::ChildRemoved) {
-        QChildEvent *c = (QChildEvent*)e;
-        int i = 0;
+    if (e->type() != QEvent::ChildRemoved)
+        return;
 
-        QLayoutItem *item;
-        while ((item = itemAt(i))) {
-            if (item == static_cast<QLayout*>(c->child())) {
-                takeAt(i);
-                invalidate();
-                break;
-            } else {
-                ++i;
-            }
-        }
-    }
+    if (QLayout *childLayout = qobject_cast<QLayout *>(e->child()))
+        removeItem(childLayout);
 }
 
 /*!
@@ -668,7 +668,7 @@ int QLayout::totalHeightForWidth(int w) const
         top += wd->topmargin + wd->bottommargin;
     }
     int h = heightForWidth(w - side) + top;
-#ifndef QT_NO_MENUBAR
+#if QT_CONFIG(menubar)
     h += menuBarHeightForWidth(d->menubar, w);
 #endif
     return h;
@@ -691,7 +691,7 @@ QSize QLayout::totalMinimumSize() const
     }
 
     QSize s = minimumSize();
-#ifndef QT_NO_MENUBAR
+#if QT_CONFIG(menubar)
     top += menuBarHeightForWidth(d->menubar, s.width() + side);
 #endif
     return s + QSize(side, top);
@@ -716,7 +716,7 @@ QSize QLayout::totalSizeHint() const
     QSize s = sizeHint();
     if (hasHeightForWidth())
         s.setHeight(heightForWidth(s.width() + side));
-#ifndef QT_NO_MENUBAR
+#if QT_CONFIG(menubar)
     top += menuBarHeightForWidth(d->menubar, s.width());
 #endif
     return s + QSize(side, top);
@@ -739,7 +739,7 @@ QSize QLayout::totalMaximumSize() const
     }
 
     QSize s = maximumSize();
-#ifndef QT_NO_MENUBAR
+#if QT_CONFIG(menubar)
     top += menuBarHeightForWidth(d->menubar, s.width());
 #endif
 
@@ -760,13 +760,10 @@ QSize QLayout::totalMaximumSize() const
 QLayout::~QLayout()
 {
     Q_D(QLayout);
-    /*
-      This function may be called during the QObject destructor,
-      when the parent no longer is a QWidget.
-    */
-    if (d->topLevel && parent() && parent()->isWidgetType() &&
-         ((QWidget*)parent())->layout() == this)
-        ((QWidget*)parent())->d_func()->layout = 0;
+    if (d->topLevel && parent() && parent()->isWidgetType() && parentWidget()->layout() == this)
+        parentWidget()->d_func()->layout = 0;
+    else if (QLayout *parentLayout = qobject_cast<QLayout *>(parent()))
+        parentLayout->removeItem(this);
 }
 
 
@@ -809,7 +806,7 @@ static bool layoutDebug()
 {
     static int checked_env = -1;
     if(checked_env == -1)
-        checked_env = !!qgetenv("QT_LAYOUT_DEBUG").toInt();
+        checked_env = !!qEnvironmentVariableIntValue("QT_LAYOUT_DEBUG");
 
     return checked_env;
 }
@@ -820,7 +817,7 @@ void QLayoutPrivate::reparentChildWidgets(QWidget *mw)
     Q_Q(QLayout);
     int n =  q->count();
 
-#ifndef QT_NO_MENUBAR
+#if QT_CONFIG(menubar)
     if (menubar && menubar->parentWidget() != mw) {
         menubar->setParent(mw);
     }
@@ -944,12 +941,7 @@ void QLayout::addChildWidget(QWidget *w)
 void QLayout::setMenuBar(QWidget *widget)
 {
     Q_D(QLayout);
-
-#ifdef Q_OS_WINCE_WM
-    if (widget && widget->size().height() > 0)
-#else
         if (widget)
-#endif
             addChildWidget(widget);
     d->menubar = widget;
 }
@@ -1358,7 +1350,8 @@ QRect QLayout::alignmentRect(const QRect &r) const
 /*!
     Removes the widget \a widget from the layout. After this call, it
     is the caller's responsibility to give the widget a reasonable
-    geometry or to put the widget back into a layout.
+    geometry or to put the widget back into a layout or to explicitly
+    hide it if necessary.
 
     \b{Note:} The ownership of \a widget remains the same as
     when it was added.

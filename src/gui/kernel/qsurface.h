@@ -40,6 +40,7 @@
 #ifndef QSURFACE_H
 #define QSURFACE_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qnamespace.h>
 #include <QtGui/qsurfaceformat.h>
 #include <QtCore/qmetatype.h>
@@ -63,7 +64,9 @@ public:
     enum SurfaceType {
         RasterSurface,
         OpenGLSurface,
-        RasterGLSurface
+        RasterGLSurface,
+        OpenVGSurface,
+        VulkanSurface
     };
 
     virtual ~QSurface();

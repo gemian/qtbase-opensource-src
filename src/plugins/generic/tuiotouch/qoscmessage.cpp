@@ -38,18 +38,18 @@
 **
 ****************************************************************************/
 
-#include <QByteArray>
-#include <QDebug>
-#include <QtEndian>
-#include <QVariant>
-#include <QLoggingCategory>
-
 #include "qoscmessage_p.h"
 #include "qtuio_p.h"
+
+#include <QDebug>
+#include <QtEndian>
+#include <QLoggingCategory>
 
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcTuioMessage, "qt.qpa.tuio.message")
+
+QOscMessage::QOscMessage() {}
 
 // TUIO packets are transmitted using the OSC protocol, located at:
 //   http://opensoundcontrol.org/specification
@@ -113,7 +113,7 @@ QOscMessage::QOscMessage(const QByteArray &data)
             parsedBytes += sizeof(quint32);
             arguments.append(value.f);
         } else {
-            qWarning() << "Reading argument of unknown type " << typeTag;
+            qCWarning(lcTuioMessage) << "Reading argument of unknown type " << typeTag;
             return;
         }
     }
@@ -123,21 +123,6 @@ QOscMessage::QOscMessage(const QByteArray &data)
     m_arguments = arguments;
 
     qCDebug(lcTuioMessage) << "Message with address pattern: " << addressPattern << " arguments: " << arguments;
-}
-
-bool QOscMessage::isValid() const
-{
-    return m_isValid;
-}
-
-QByteArray QOscMessage::addressPattern() const
-{
-    return m_addressPattern;
-}
-
-QList<QVariant> QOscMessage::arguments() const
-{
-    return m_arguments;
 }
 
 QT_END_NAMESPACE

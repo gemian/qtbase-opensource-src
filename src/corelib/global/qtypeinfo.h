@@ -38,8 +38,7 @@
 **
 ****************************************************************************/
 
-#include <QtCore/qtypetraits.h>
-#include <QtCore/qisenum.h>
+#include <QtCore/qglobal.h>
 
 #ifndef QTYPEINFO_H
 #define QTYPEINFO_H
@@ -59,11 +58,12 @@ class QTypeInfo
 {
 public:
     enum {
+        isSpecialized = std::is_enum<T>::value, // don't require every enum to be marked manually
         isPointer = false,
-        isIntegral = QtPrivate::is_integral<T>::value,
-        isComplex = true,
+        isIntegral = std::is_integral<T>::value,
+        isComplex = !isIntegral && !std::is_enum<T>::value,
         isStatic = true,
-        isRelocatable = Q_IS_ENUM(T),
+        isRelocatable = std::is_enum<T>::value,
         isLarge = (sizeof(T)>sizeof(void*)),
         isDummy = false, //### Qt6: remove
         sizeOf = sizeof(T)
@@ -75,6 +75,7 @@ class QTypeInfo<void>
 {
 public:
     enum {
+        isSpecialized = true,
         isPointer = false,
         isIntegral = false,
         isComplex = false,
@@ -91,6 +92,7 @@ class QTypeInfo<T*>
 {
 public:
     enum {
+        isSpecialized = true,
         isPointer = true,
         isIntegral = false,
         isComplex = false,
@@ -125,7 +127,7 @@ struct QTypeInfoQuery : public QTypeInfo<T>
 
 // if QTypeInfo<T>::isRelocatable exists, use it
 template <typename T>
-struct QTypeInfoQuery<T, typename QtPrivate::QEnableIf<QTypeInfo<T>::isRelocatable || true>::Type> : public QTypeInfo<T>
+struct QTypeInfoQuery<T, typename std::enable_if<QTypeInfo<T>::isRelocatable || true>::type> : public QTypeInfo<T>
 {};
 
 /*!
@@ -153,6 +155,7 @@ class QTypeInfoMerger
 {
 public:
     enum {
+        isSpecialized = true,
         isComplex = QTypeInfoQuery<T1>::isComplex || QTypeInfoQuery<T2>::isComplex
                     || QTypeInfoQuery<T3>::isComplex || QTypeInfoQuery<T4>::isComplex,
         isStatic = QTypeInfoQuery<T1>::isStatic || QTypeInfoQuery<T2>::isStatic
@@ -174,6 +177,7 @@ class QTypeInfo< CONTAINER<T> > \
 { \
 public: \
     enum { \
+        isSpecialized = true, \
         isPointer = false, \
         isIntegral = false, \
         isComplex = true, \
@@ -202,6 +206,7 @@ class QTypeInfo< CONTAINER<K, V> > \
 { \
 public: \
     enum { \
+        isSpecialized = true, \
         isPointer = false, \
         isIntegral = false, \
         isComplex = true, \
@@ -242,12 +247,13 @@ class QTypeInfo<TYPE > \
 { \
 public: \
     enum { \
+        isSpecialized = true, \
         isComplex = (((FLAGS) & Q_PRIMITIVE_TYPE) == 0), \
         isStatic = (((FLAGS) & (Q_MOVABLE_TYPE | Q_PRIMITIVE_TYPE)) == 0), \
         isRelocatable = !isStatic || ((FLAGS) & Q_RELOCATABLE_TYPE), \
         isLarge = (sizeof(TYPE)>sizeof(void*)), \
         isPointer = false, \
-        isIntegral = QtPrivate::is_integral< TYPE >::value, \
+        isIntegral = std::is_integral< TYPE >::value, \
         isDummy = (((FLAGS) & Q_DUMMY_TYPE) != 0), \
         sizeOf = sizeof(TYPE) \
     }; \
@@ -305,14 +311,11 @@ Q_DECLARE_TYPEINFO(qint64, Q_PRIMITIVE_TYPE);
 Q_DECLARE_TYPEINFO(quint64, Q_PRIMITIVE_TYPE);
 Q_DECLARE_TYPEINFO(float, Q_PRIMITIVE_TYPE);
 Q_DECLARE_TYPEINFO(double, Q_PRIMITIVE_TYPE);
-#ifndef Q_OS_DARWIN
-Q_DECLARE_TYPEINFO(long double, Q_PRIMITIVE_TYPE);
-#endif
-
 
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
 // ### Qt 6: remove the other branch
 // This was required so that QList<T> for these types allocates out of the array storage
+Q_DECLARE_TYPEINFO(long double, Q_PRIMITIVE_TYPE);
 #  ifdef Q_COMPILER_UNICODE_STRINGS
 Q_DECLARE_TYPEINFO(char16_t, Q_PRIMITIVE_TYPE);
 Q_DECLARE_TYPEINFO(char32_t, Q_PRIMITIVE_TYPE);
@@ -321,6 +324,11 @@ Q_DECLARE_TYPEINFO(char32_t, Q_PRIMITIVE_TYPE);
 Q_DECLARE_TYPEINFO(wchar_t, Q_PRIMITIVE_TYPE);
 #  endif
 #else
+#  ifndef Q_OS_DARWIN
+Q_DECLARE_TYPEINFO(long double, Q_PRIMITIVE_TYPE);
+#  else
+Q_DECLARE_TYPEINFO(long double, Q_RELOCATABLE_TYPE);
+#  endif
 #  ifdef Q_COMPILER_UNICODE_STRINGS
 Q_DECLARE_TYPEINFO(char16_t, Q_RELOCATABLE_TYPE);
 Q_DECLARE_TYPEINFO(char32_t, Q_RELOCATABLE_TYPE);

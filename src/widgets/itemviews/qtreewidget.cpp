@@ -39,7 +39,6 @@
 
 #include "qtreewidget.h"
 
-#ifndef QT_NO_TREEWIDGET
 #include <qheaderview.h>
 #include <qpainter.h>
 #include <qitemdelegate.h>
@@ -1700,6 +1699,9 @@ Qt::ItemFlags QTreeWidgetItem::flags() const
 
     The \a role describes the type of data specified by \a value, and is defined by
     the Qt::ItemDataRole enum.
+
+    \note The default implementation treats Qt::EditRole and Qt::DisplayRole as
+    referring to the same data.
 */
 void QTreeWidgetItem::setData(int column, int role, const QVariant &value)
 {
@@ -1738,7 +1740,7 @@ void QTreeWidgetItem::setData(int column, int role, const QVariant &value)
                 }
             }
         }
-        // Don't break, but fall through
+        Q_FALLTHROUGH();
     default:
         if (column < values.count()) {
             bool found = false;
@@ -1788,7 +1790,7 @@ QVariant QTreeWidgetItem::data(int column, int role) const
         // special case for check state in tristate
         if (children.count() && (itemFlags & Qt::ItemIsAutoTristate))
             return childrenCheckState(column);
-        // fallthrough intended
+        Q_FALLTHROUGH();
    default:
         if (column >= 0 && column < values.size()) {
             const QVector<QWidgetItemData> &column_values = values.at(column);
@@ -2354,6 +2356,8 @@ void QTreeWidgetPrivate::_q_dataChanged(const QModelIndex &topLeft,
   \ingroup model-view
   \inmodule QtWidgets
 
+  \image windows-treeview.png
+
   The QTreeWidget class is a convenience class that provides a standard
   tree widget with a classic item-based interface similar to that used by
   the QListView class in Qt 3.
@@ -2386,15 +2390,6 @@ void QTreeWidgetPrivate::_q_dataChanged(const QModelIndex &topLeft,
   \l{QTreeView::setSortingEnabled()}{setSortingEnabled()}. The
   \l{QTreeView::isSortingEnabled()}{isSortingEnabled()} function indicates
   whether sorting is enabled.
-
-  \table 100%
-  \row \li \inlineimage windowsvista-treeview.png Screenshot of a Windows Vista style tree widget
-       \li \inlineimage macintosh-treeview.png Screenshot of a Macintosh style tree widget
-       \li \inlineimage fusion-treeview.png Screenshot of a Fusion style tree widget
-  \row \li A \l{Windows Vista Style Widget Gallery}{Windows Vista style} tree widget.
-       \li A \l{Macintosh Style Widget Gallery}{Macintosh style} tree widget.
-       \li A \l{Fusion Style Widget Gallery}{Fusion style} tree widget.
-  \endtable
 
   \sa QTreeWidgetItem, QTreeWidgetItemIterator, QTreeView,
   {Model/View Programming}, {Settings Editor Example}
@@ -2914,7 +2909,7 @@ void QTreeWidget::editItem(QTreeWidgetItem *item, int column)
 /*!
   Opens a persistent editor for the \a item in the given \a column.
 
-  \sa closePersistentEditor()
+  \sa closePersistentEditor(), isPersistentEditorOpen()
 */
 
 void QTreeWidget::openPersistentEditor(QTreeWidgetItem *item, int column)
@@ -2929,13 +2924,28 @@ void QTreeWidget::openPersistentEditor(QTreeWidgetItem *item, int column)
   This function has no effect if no persistent editor is open for this
   combination of item and column.
 
-  \sa openPersistentEditor()
+  \sa openPersistentEditor(), isPersistentEditorOpen()
 */
 
 void QTreeWidget::closePersistentEditor(QTreeWidgetItem *item, int column)
 {
     Q_D(QTreeWidget);
     QAbstractItemView::closePersistentEditor(d->index(item, column));
+}
+
+/*!
+    \since 5.10
+
+    Returns whether a persistent editor is open for item \a item in
+    column \a column.
+
+    \sa openPersistentEditor(), closePersistentEditor()
+*/
+
+bool QTreeWidget::isPersistentEditorOpen(QTreeWidgetItem *item, int column) const
+{
+    Q_D(const QTreeWidget);
+    return QAbstractItemView::isPersistentEditorOpen(d->index(item, column));
 }
 
 /*!
@@ -3468,5 +3478,3 @@ QT_END_NAMESPACE
 
 #include "moc_qtreewidget.cpp"
 #include "moc_qtreewidget_p.cpp"
-
-#endif // QT_NO_TREEWIDGET

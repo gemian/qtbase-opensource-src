@@ -40,14 +40,14 @@
 #ifndef QTREEVIEW_H
 #define QTREEVIEW_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qabstractitemview.h>
 
 class tst_QTreeView;
 
+QT_REQUIRE_CONFIG(treeview);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_TREEVIEW
 
 class QTreeViewPrivate;
 class QHeaderView;
@@ -235,8 +235,6 @@ private:
     Q_PRIVATE_SLOT(d_func(), void _q_modelAboutToBeReset())
     Q_PRIVATE_SLOT(d_func(), void _q_sortIndicatorChanged(int column, Qt::SortOrder order))
 };
-
-#endif // QT_NO_TREEVIEW
 
 QT_END_NAMESPACE
 

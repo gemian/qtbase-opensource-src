@@ -44,12 +44,6 @@
 #include <QtCore/QBuffer>
 #include <qdebug.h>
 
-#include <X11/Xutil.h>
-
-#undef XCB_ATOM_STRING
-#undef XCB_ATOM_PIXMAP
-#undef XCB_ATOM_BITMAP
-
 QT_BEGIN_NAMESPACE
 
 #if !(defined(QT_NO_DRAGANDDROP) && defined(QT_NO_CLIPBOARD))
@@ -121,9 +115,7 @@ bool QXcbMime::mimeDataForAtom(QXcbConnection *connection, xcb_atom_t a, QMimeDa
         // so QXcbConnection::atomName() has to be used.
         if (atomName == QLatin1String("text/uri-list")
             && connection->atomName(a) == "text/x-moz-url") {
-            const QByteArray uri = data->split('\n').first();
-            QString mozUri = QString::fromLatin1(uri, uri.size());
-            mozUri += QLatin1Char('\n');
+            const QString mozUri = QLatin1String(data->split('\n').constFirst()) + QLatin1Char('\n');
             *data = QByteArray(reinterpret_cast<const char *>(mozUri.utf16()),
                                mozUri.length() * 2);
         } else if (atomName == QLatin1String("application/x-color"))
@@ -175,7 +167,7 @@ QVariant QXcbMime::mimeConvertToFormat(QXcbConnection *connection, xcb_atom_t a,
 //    qDebug() << "mimeConvertDataToFormat" << format << atomName << data;
 
     if (!encoding.isEmpty()
-        && atomName == format + QLatin1String(";charset=") + QString::fromLatin1(encoding)) {
+        && atomName == format + QLatin1String(";charset=") + QLatin1String(encoding)) {
 
 #ifndef QT_NO_TEXTCODEC
         if (requestedType == QVariant::String) {
@@ -210,10 +202,11 @@ QVariant QXcbMime::mimeConvertToFormat(QXcbConnection *connection, xcb_atom_t a,
                   reinterpret_cast<const ushort *>(data.constData()), data.size() / 2);
             if (!str.isNull()) {
                 if (format == QLatin1String("text/uri-list")) {
-                    const QStringList urls = str.split(QLatin1Char('\n'));
+                    const auto urls = str.splitRef(QLatin1Char('\n'));
                     QList<QVariant> list;
-                    foreach (const QString &s, urls) {
-                        const QUrl url(s.trimmed());
+                    list.reserve(urls.size());
+                    for (const QStringRef &s : urls) {
+                        const QUrl url(s.trimmed().toString());
                         if (url.isValid())
                             list.append(url);
                     }
@@ -221,7 +214,7 @@ QVariant QXcbMime::mimeConvertToFormat(QXcbConnection *connection, xcb_atom_t a,
                     // The atomName variable is not used because mimeAtomToString()
                     // converts "text/x-moz-url" to "text/uri-list".
                     if (!list.isEmpty() && connection->atomName(a) == "text/x-moz-url")
-                        return list.first();
+                        return list.constFirst();
                     return list;
                 } else {
                     return str;
@@ -306,7 +299,7 @@ xcb_atom_t QXcbMime::mimeAtomForFormat(QXcbConnection *connection, const QString
         QString formatWithCharset = format;
         formatWithCharset.append(QLatin1String(";charset=utf-8"));
 
-        xcb_atom_t a = connection->internAtom(formatWithCharset.toLatin1());
+        xcb_atom_t a = connection->internAtom(std::move(formatWithCharset).toLatin1());
         if (a && atoms.contains(a)) {
             *requestedEncoding = "utf-8";
             return a;

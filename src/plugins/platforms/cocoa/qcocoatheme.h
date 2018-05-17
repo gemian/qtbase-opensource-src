@@ -70,12 +70,11 @@ public:
     const QPalette *palette(Palette type = SystemPalette) const Q_DECL_OVERRIDE;
     const QFont *font(Font type = SystemFont) const Q_DECL_OVERRIDE;
     QPixmap standardPixmap(StandardPixmap sp, const QSizeF &size) const Q_DECL_OVERRIDE;
-    QPixmap fileIconPixmap(const QFileInfo &fileInfo,
-                           const QSizeF &size,
-                           QPlatformTheme::IconOptions options = 0) const Q_DECL_OVERRIDE;
+    QIcon fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions options = 0) const override;
 
     QVariant themeHint(ThemeHint hint) const Q_DECL_OVERRIDE;
     QString standardButtonText(int button) const Q_DECL_OVERRIDE;
+    QKeySequence standardButtonShortcut(int button) const Q_DECL_OVERRIDE;
 
     static const char *name;
 

@@ -1,15 +1,9 @@
 CONFIG += testcase
 TARGET = tst_qstyle
-QT += widgets testlib
+QT += widgets testlib testlib-private
 SOURCES  += tst_qstyle.cpp
 
-wince* {
-   addPixmap.files = task_25863.png
-   addPixmap.path = .
-   DEPLOYMENT += addPixmap
-}
-
-android {
+android:!android-embedded {
     RESOURCES += \
         testdata.qrc
 }

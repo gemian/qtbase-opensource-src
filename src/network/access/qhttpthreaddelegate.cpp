@@ -44,6 +44,7 @@
 #include <QTimer>
 #include <QAuthenticator>
 #include <QEventLoop>
+#include <QCryptographicHash>
 
 #include "private/qhttpnetworkreply_p.h"
 #include "private/qnetworkaccesscache_p.h"
@@ -67,7 +68,7 @@ static QNetworkReply::NetworkError statusCodeFromHttp(int httpStatusCode, const 
         break;
 
     case 403:               // Access denied
-        code = QNetworkReply::ContentOperationNotPermittedError;
+        code = QNetworkReply::ContentAccessDenied;
         break;
 
     case 404:               // Not Found
@@ -158,7 +159,10 @@ static QByteArray makeCacheKey(QUrl &url, QNetworkProxy *proxy)
         }
 
         if (!key.scheme().isEmpty()) {
+            const QByteArray obfuscatedPassword = QCryptographicHash::hash(proxy->password().toUtf8(),
+                                                                           QCryptographicHash::Sha1).toHex();
             key.setUserName(proxy->user());
+            key.setPassword(QString::fromUtf8(obfuscatedPassword));
             key.setHost(proxy->hostName());
             key.setPort(proxy->port());
             key.setQuery(result);
@@ -169,7 +173,7 @@ static QByteArray makeCacheKey(QUrl &url, QNetworkProxy *proxy)
     Q_UNUSED(proxy)
 #endif
 
-    return "http-connection:" + result.toLatin1();
+    return "http-connection:" + std::move(result).toLatin1();
 }
 
 class QNetworkAccessCachedHttpConnection: public QHttpNetworkConnection,
@@ -234,6 +238,7 @@ QHttpThreadDelegate::QHttpThreadDelegate(QObject *parent) :
     , isPipeliningUsed(false)
     , isSpdyUsed(false)
     , incomingContentLength(-1)
+    , removedContentLength(-1)
     , incomingErrorCode(QNetworkReply::NoError)
     , downloadBuffer()
     , httpConnection(0)
@@ -285,15 +290,24 @@ void QHttpThreadDelegate::startRequest()
     urlCopy.setPort(urlCopy.port(ssl ? 443 : 80));
 
     QHttpNetworkConnection::ConnectionType connectionType
-            = QHttpNetworkConnection::ConnectionTypeHTTP;
+        = httpRequest.isHTTP2Allowed() ? QHttpNetworkConnection::ConnectionTypeHTTP2
+                                       : QHttpNetworkConnection::ConnectionTypeHTTP;
 #ifndef QT_NO_SSL
-    if (httpRequest.isSPDYAllowed() && ssl) {
+    if (ssl && !incomingSslConfiguration.data())
+        incomingSslConfiguration.reset(new QSslConfiguration);
+
+    if (httpRequest.isHTTP2Allowed() && ssl) {
+        QList<QByteArray> protocols;
+        protocols << QSslConfiguration::ALPNProtocolHTTP2
+                  << QSslConfiguration::NextProtocolHttp1_1;
+        incomingSslConfiguration->setAllowedNextProtocols(protocols);
+    } else if (httpRequest.isSPDYAllowed() && ssl) {
         connectionType = QHttpNetworkConnection::ConnectionTypeSPDY;
         urlCopy.setScheme(QStringLiteral("spdy")); // to differentiate SPDY requests from HTTPS requests
         QList<QByteArray> nextProtocols;
         nextProtocols << QSslConfiguration::NextProtocolSpdy3_0
                       << QSslConfiguration::NextProtocolHttp1_1;
-        incomingSslConfiguration.setAllowedNextProtocols(nextProtocols);
+        incomingSslConfiguration->setAllowedNextProtocols(nextProtocols);
     }
 #endif // QT_NO_SSL
 
@@ -319,12 +333,15 @@ void QHttpThreadDelegate::startRequest()
         httpConnection = new QNetworkAccessCachedHttpConnection(urlCopy.host(), urlCopy.port(), ssl,
                                                                 connectionType,
                                                                 networkSession);
-#endif
+#endif // QT_NO_BEARERMANAGEMENT
+        if (connectionType == QHttpNetworkConnection::ConnectionTypeHTTP2
+            && http2Parameters.validate()) {
+            httpConnection->setHttp2Parameters(http2Parameters);
+        } // else we ignore invalid parameters and use our own defaults.
 #ifndef QT_NO_SSL
         // Set the QSslConfiguration from this QNetworkRequest.
-        if (ssl && incomingSslConfiguration != QSslConfiguration::defaultConfiguration()) {
-            httpConnection->setSslConfiguration(incomingSslConfiguration);
-        }
+        if (ssl)
+            httpConnection->setSslConfiguration(*incomingSslConfiguration);
 #endif
 
 #ifndef QT_NO_NETWORKPROXY
@@ -345,7 +362,6 @@ void QHttpThreadDelegate::startRequest()
             }
         }
     }
-
 
     // Send the request to the connection
     httpReply = httpConnection->sendRequest(httpRequest);
@@ -616,6 +632,7 @@ void QHttpThreadDelegate::headerChangedSlot()
     incomingReasonPhrase = httpReply->reasonPhrase();
     isPipeliningUsed = httpReply->isPipeliningUsed();
     incomingContentLength = httpReply->contentLength();
+    removedContentLength = httpReply->removedContentLength();
     isSpdyUsed = httpReply->isSpdyUsed();
 
     emit downloadMetaData(incomingHeaders,
@@ -624,6 +641,7 @@ void QHttpThreadDelegate::headerChangedSlot()
                           isPipeliningUsed,
                           downloadBuffer,
                           incomingContentLength,
+                          removedContentLength,
                           isSpdyUsed);
 }
 

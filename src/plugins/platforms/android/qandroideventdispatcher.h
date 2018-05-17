@@ -42,7 +42,7 @@
 
 #include <QtCore/QMutex>
 #include <QtCore/QSemaphore>
-#include <QtPlatformSupport/private/qunixeventdispatcher_qpa_p.h>
+#include <QtEventDispatcherSupport/private/qunixeventdispatcher_qpa_p.h>
 
 class QAndroidEventDispatcher : public QUnixEventDispatcherQPA
 {
@@ -56,7 +56,7 @@ public:
     void goingToStop(bool stop);
 
 protected:
-    bool processEvents(QEventLoop::ProcessEventsFlags flags);
+    bool processEvents(QEventLoop::ProcessEventsFlags flags) override;
 
 private:
     QAtomicInt m_stopRequest;
@@ -68,7 +68,7 @@ class QAndroidEventDispatcherStopper
 {
 public:
     static QAndroidEventDispatcherStopper *instance();
-    static bool stopped() {return !instance()->started; }
+    static bool stopped() {return !instance()->m_started.load(); }
     void startAll();
     void stopAll();
     void addEventDispatcher(QAndroidEventDispatcher *dispatcher);
@@ -77,7 +77,7 @@ public:
 
 private:
     QMutex m_mutex;
-    bool started = true;
+    QAtomicInt m_started = 1;
     QVector<QAndroidEventDispatcher *> m_dispatchers;
 };
 

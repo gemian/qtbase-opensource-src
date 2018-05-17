@@ -137,6 +137,17 @@ QT_BEGIN_NAMESPACE
 
     \endlist
 
+    \section1 Notes for Universal Windows Platform Users
+
+    \list
+
+    \li The Universal Windows Platform only allows to query the
+    clipboard in case the application is active and an application
+    window has focus. Accessing the clipboard data when in background
+    will fail due to access denial.
+
+    \endlist
+
     \sa QGuiApplication
 */
 
@@ -425,8 +436,9 @@ void QClipboard::setPixmap(const QPixmap &pixmap, Mode mode)
 /*!
     \fn QMimeData *QClipboard::mimeData(Mode mode) const
 
-    Returns a reference to a QMimeData representation of the current
-    clipboard data.
+    Returns a pointer to a QMimeData representation of the current
+    clipboard data (can be NULL if the given \a mode is not
+    supported by the platform).
 
     The \a mode argument is used to control which part of the system
     clipboard is used.  If \a mode is QClipboard::Clipboard, the
@@ -437,6 +449,10 @@ void QClipboard::setPixmap(const QPixmap &pixmap, Mode mode)
 
     The text(), image(), and pixmap() functions are simpler
     wrappers for retrieving text, image, and pixmap data.
+
+    \note The pointer returned might become invalidated when the contents
+    of the clipboard changes; either by calling one of the setter functions
+    or externally by the system clipboard changing.
 
     \sa setMimeData()
 */
@@ -471,7 +487,7 @@ void QClipboard::setMimeData(QMimeData* src, Mode mode)
     QPlatformClipboard *clipboard = QGuiApplicationPrivate::platformIntegration()->clipboard();
     if (!clipboard->supportsMode(mode)) {
         if (src != 0) {
-            qWarning("Data set on unsupported clipboard mode. QMimeData object will be deleted.");
+            qDebug("Data set on unsupported clipboard mode. QMimeData object will be deleted.");
             src->deleteLater();
         }
     } else {
@@ -553,7 +569,7 @@ bool QClipboard::ownsFindBuffer() const
 bool QClipboard::supportsMode(Mode mode) const
 {
     QPlatformClipboard *clipboard = QGuiApplicationPrivate::platformIntegration()->clipboard();
-    return clipboard->supportsMode(mode);
+    return clipboard && clipboard->supportsMode(mode);
 }
 
 /*!
@@ -565,7 +581,7 @@ bool QClipboard::supportsMode(Mode mode) const
 bool QClipboard::ownsMode(Mode mode) const
 {
     QPlatformClipboard *clipboard = QGuiApplicationPrivate::platformIntegration()->clipboard();
-    return clipboard->ownsMode(mode);
+    return clipboard && clipboard->ownsMode(mode);
 }
 
 /*!

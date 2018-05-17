@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include "private/qpaintengineex_p.h"
 #include "QtGui/qpainterpath.h"
 #include "private/qdatabuffer_p.h"
@@ -224,7 +225,7 @@ public:
 #endif
 
     QRasterBuffer *rasterBuffer();
-    void alphaPenBlt(const void* src, int bpl, int depth, int rx,int ry,int w,int h);
+    void alphaPenBlt(const void* src, int bpl, int depth, int rx,int ry,int w,int h, bool useGammaCorrection);
 
     Type type() const Q_DECL_OVERRIDE { return Raster; }
 
@@ -286,7 +287,7 @@ public:
     void rasterize(QT_FT_Outline *outline, ProcessSpans callback, void *userData, QRasterBuffer *rasterBuffer);
     void updateMatrixData(QSpanData *spanData, const QBrush &brush, const QTransform &brushMatrix);
 
-    void systemStateChanged();
+    void systemStateChanged() override;
 
     void drawImage(const QPointF &pt, const QImage &img, SrcOverBlendFunc func,
                    const QRect &clip, int alpha, const QRect &sr = QRect());
@@ -456,6 +457,8 @@ public:
     int height() const { return m_height; }
     int bytesPerLine() const { return bytes_per_line; }
     int bytesPerPixel() const { return bytes_per_pixel; }
+    template<typename T>
+    int stride() { return bytes_per_line / sizeof(T); }
 
     uchar *buffer() const { return m_buffer; }
 

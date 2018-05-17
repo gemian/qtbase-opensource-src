@@ -40,7 +40,7 @@
 #ifndef QWINDOWSGLCONTEXT_H
 #define QWINDOWSGLCONTEXT_H
 
-#include "qtwindows_additional.h"
+#include <QtCore/qt_windows.h>
 #include "qwindowsopenglcontext.h"
 
 #include <QtGui/QOpenGLContext>
@@ -48,6 +48,7 @@
 #include <vector>
 
 QT_BEGIN_NAMESPACE
+#ifndef QT_NO_OPENGL
 
 class QDebug;
 
@@ -72,24 +73,23 @@ struct QWindowsOpenGLAdditionalFormat
 struct QOpenGLContextData
 {
     QOpenGLContextData(HGLRC r, HWND h, HDC d) : renderingContext(r), hwnd(h), hdc(d) {}
-    QOpenGLContextData() : renderingContext(0), hwnd(0), hdc(0) {}
+    QOpenGLContextData() {}
 
-    HGLRC renderingContext;
-    HWND hwnd;
-    HDC hdc;
+    HGLRC renderingContext = 0;
+    HWND hwnd = 0;
+    HDC hdc = 0;
 };
 
 class QOpenGLStaticContext;
 
 struct QWindowsOpenGLContextFormat
 {
-    QWindowsOpenGLContextFormat();
     static QWindowsOpenGLContextFormat current();
     void apply(QSurfaceFormat *format) const;
 
-    QSurfaceFormat::OpenGLContextProfile profile;
-    int version; //! majorVersion<<8 + minorVersion
-    QSurfaceFormat::FormatOptions options;
+    QSurfaceFormat::OpenGLContextProfile profile = QSurfaceFormat::NoProfile;
+    int version = 0; //! majorVersion<<8 + minorVersion
+    QSurfaceFormat::FormatOptions options = 0;
 };
 
 #ifndef QT_NO_DEBUG_STREAM
@@ -122,7 +122,7 @@ struct QWindowsOpengl32DLL
     void (APIENTRY * glGetIntegerv)(GLenum pname, GLint* params);
     const GLubyte * (APIENTRY * glGetString)(GLenum name);
 
-    PROC resolve(const char *name);
+    FARPROC resolve(const char *name);
 private:
     HMODULE m_lib;
     bool m_nonOpengl32;
@@ -139,7 +139,8 @@ class QOpenGLStaticContext : public QWindowsStaticOpenGLContext
 public:
     enum Extensions
     {
-        SampleBuffers = 0x1
+        SampleBuffers = 0x1,
+        sRGBCapableFramebuffer = 0x2
     };
 
     typedef bool
@@ -159,6 +160,9 @@ public:
         (APIENTRY *WglSwapInternalExt)(int interval);
     typedef int
         (APIENTRY *WglGetSwapInternalExt)(void);
+
+    typedef const char *
+        (APIENTRY *WglGetExtensionsStringARB)(HDC);
 
     bool hasExtensions() const
         { return wglGetPixelFormatAttribIVARB && wglChoosePixelFormatARB && wglCreateContextAttribsARB; }
@@ -185,6 +189,7 @@ public:
     WglCreateContextAttribsARB wglCreateContextAttribsARB;
     WglSwapInternalExt wglSwapInternalExt;
     WglGetSwapInternalExt wglGetSwapInternalExt;
+    WglGetExtensionsStringARB wglGetExtensionsStringARB;
 
     static QWindowsOpengl32DLL opengl32;
 };
@@ -194,22 +199,22 @@ class QWindowsGLContext : public QWindowsOpenGLContext
 public:
     explicit QWindowsGLContext(QOpenGLStaticContext *staticContext, QOpenGLContext *context);
     ~QWindowsGLContext();
-    bool isSharing() const Q_DECL_OVERRIDE { return m_context->shareHandle(); }
-    bool isValid() const Q_DECL_OVERRIDE { return m_renderingContext && !m_lost; }
-    QSurfaceFormat format() const Q_DECL_OVERRIDE { return m_obtainedFormat; }
+    bool isSharing() const override { return m_context->shareHandle(); }
+    bool isValid() const override { return m_renderingContext && !m_lost; }
+    QSurfaceFormat format() const override { return m_obtainedFormat; }
 
-    void swapBuffers(QPlatformSurface *surface) Q_DECL_OVERRIDE;
+    void swapBuffers(QPlatformSurface *surface) override;
 
-    bool makeCurrent(QPlatformSurface *surface) Q_DECL_OVERRIDE;
-    void doneCurrent() Q_DECL_OVERRIDE;
+    bool makeCurrent(QPlatformSurface *surface) override;
+    void doneCurrent() override;
 
     typedef void (*GL_Proc) ();
 
-    QFunctionPointer getProcAddress(const char *procName) Q_DECL_OVERRIDE;
+    QFunctionPointer getProcAddress(const char *procName) override;
 
     HGLRC renderingContext() const { return m_renderingContext; }
 
-    void *nativeContext() const Q_DECL_OVERRIDE { return m_renderingContext; }
+    void *nativeContext() const override { return m_renderingContext; }
 
 private:
     inline void releaseDCs();
@@ -228,7 +233,7 @@ private:
     GLenum (APIENTRY * m_getGraphicsResetStatus)();
     bool m_lost;
 };
-
+#endif
 QT_END_NAMESPACE
 
 #endif // QWINDOWSGLCONTEXT_H

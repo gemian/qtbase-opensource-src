@@ -36,27 +36,33 @@
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
 # include <private/qcore_mac_p.h>
 #endif
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
+
 #include <qapplication.h>
 #include <qdesktopwidget.h>
+#include <private/qdesktopwidget_p.h>
 #include <qevent.h>
-#include <qlabel.h>
 #include <qpointer.h>
 #include <qstyle.h>
 #include <qstyleoption.h>
 #include <qstylepainter.h>
 #include <qtimer.h>
-#include <qtooltip.h>
+#if QT_CONFIG(effects)
 #include <private/qeffects_p.h>
+#endif
 #include <qtextdocument.h>
 #include <qdebug.h>
 #include <private/qstylesheetstyle_p.h>
-#ifndef QT_NO_TOOLTIP
 
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#ifndef QT_NO_TOOLTIP
+#include <qlabel.h>
+#include <qtooltip.h>
+
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
 # include <private/qcore_mac_p.h>
 #include <private/qt_cocoa_helpers_mac_p.h>
 #endif
@@ -284,7 +290,7 @@ void QTipLabel::timerEvent(QTimerEvent *e)
         || e->timerId() == expireTimer.timerId()){
         hideTimer.stop();
         expireTimer.stop();
-#if defined(Q_DEAD_CODE_FROM_QT4_MAC) && !defined(QT_NO_EFFECTS)
+#if 0 /* Used to be included in Qt4 for Q_WS_MAC */ && QT_CONFIG(effects)
         if (QApplication::isEffectEnabled(Qt::UI_FadeTooltip)){
             // Fade out tip on mac (makes it invisible).
             // The tip will not be deleted until a new tip is shown.
@@ -304,7 +310,7 @@ void QTipLabel::timerEvent(QTimerEvent *e)
 bool QTipLabel::eventFilter(QObject *o, QEvent *e)
 {
     switch (e->type()) {
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     case QEvent::KeyPress:
     case QEvent::KeyRelease: {
         int key = static_cast<QKeyEvent *>(e)->key();
@@ -361,10 +367,10 @@ bool QTipLabel::eventFilter(QObject *o, QEvent *e)
 
 int QTipLabel::getTipScreen(const QPoint &pos, QWidget *w)
 {
-    if (QApplication::desktop()->isVirtualDesktop())
-        return QApplication::desktop()->screenNumber(pos);
+    if (QDesktopWidgetPrivate::isVirtualDesktop())
+        return QDesktopWidgetPrivate::screenNumber(pos);
     else
-        return QApplication::desktop()->screenNumber(w);
+        return QDesktopWidgetPrivate::screenNumber(w);
 }
 
 void QTipLabel::placeTip(const QPoint &pos, QWidget *w)
@@ -386,7 +392,7 @@ void QTipLabel::placeTip(const QPoint &pos, QWidget *w)
 #endif //QT_NO_STYLE_STYLESHEET
 
 
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     // When in full screen mode, there is no Dock nor Menu so we can use
     // the whole screen for displaying the tooltip. However when not in
     // full screen mode we need to save space for the dock, so we use
@@ -394,16 +400,16 @@ void QTipLabel::placeTip(const QPoint &pos, QWidget *w)
     extern bool qt_mac_app_fullscreen; //qapplication_mac.mm
     QRect screen;
     if(qt_mac_app_fullscreen)
-        screen = QApplication::desktop()->screenGeometry(getTipScreen(pos, w));
+        screen = QDesktopWidgetPrivate::screenGeometry(getTipScreen(pos, w));
     else
-        screen = QApplication::desktop()->availableGeometry(getTipScreen(pos, w));
+        screen = QDesktopWidgetPrivate::availableGeometry(getTipScreen(pos, w));
 #else
-    QRect screen = QApplication::desktop()->screenGeometry(getTipScreen(pos, w));
+    QRect screen = QDesktopWidgetPrivate::screenGeometry(getTipScreen(pos, w));
 #endif
 
     QPoint p = pos;
     p += QPoint(2,
-#ifdef Q_DEAD_CODE_FROM_QT4_WIN
+#if 0 // Used to be included in Qt4 for Q_WS_WIN
                 21
 #else
                 16
@@ -492,19 +498,19 @@ void QToolTip::showText(const QPoint &pos, const QString &text, QWidget *w, cons
     }
 
     if (!text.isEmpty()){ // no tip can be reused, create new tip:
-#ifndef Q_DEAD_CODE_FROM_QT4_WIN
-        new QTipLabel(text, w, msecDisplayTime); // sets QTipLabel::instance to itself
-#else
+#ifdef Q_OS_WIN32
         // On windows, we can't use the widget as parent otherwise the window will be
         // raised when the tooltip will be shown
         new QTipLabel(text, QApplication::desktop()->screen(QTipLabel::getTipScreen(pos, w)), msecDisplayTime);
+#else
+        new QTipLabel(text, w, msecDisplayTime); // sets QTipLabel::instance to itself
 #endif
         QTipLabel::instance->setTipRect(w, rect);
         QTipLabel::instance->placeTip(pos, w);
         QTipLabel::instance->setObjectName(QLatin1String("qtooltip_label"));
 
 
-#if !defined(QT_NO_EFFECTS) && !defined(Q_DEAD_CODE_FROM_QT4_MAC)
+#if QT_CONFIG(effects) && !0 /* Used to be included in Qt4 for Q_WS_MAC */
         if (QApplication::isEffectEnabled(Qt::UI_FadeTooltip))
             qFadeEffect(QTipLabel::instance);
         else if (QApplication::isEffectEnabled(Qt::UI_AnimateTooltip))

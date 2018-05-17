@@ -28,6 +28,7 @@
 
 #include "option.h"
 #include "cachekeys.h"
+#include <ioutils.h>
 #include <qdir.h>
 #include <qregexp.h>
 #include <qhash.h>
@@ -37,6 +38,8 @@
 #include <stdarg.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace QMakeInternal;
 
 EvalHandler Option::evalHandler;
 QMakeGlobals *Option::globals;
@@ -151,17 +154,23 @@ bool usage(const char *a0)
             "  -Wdeprecated   Turn on deprecation warnings (on by default)\n"
             "\n"
             "Options:\n"
-            "   * You can place any variable assignment in options and it will be     *\n"
-            "   * processed as if it was in [files]. These assignments will be parsed *\n"
-            "   * before [files].                                                     *\n"
+            "   * You can place any variable assignment in options and it will be *\n"
+            "   * processed as if it was in [files]. These assignments will be    *\n"
+            "   * processed before [files] by default.                            *\n"
             "  -o file        Write output to file\n"
             "  -d             Increase debug level\n"
             "  -t templ       Overrides TEMPLATE as templ\n"
             "  -tp prefix     Overrides TEMPLATE so that prefix is prefixed into the value\n"
             "  -help          This help\n"
             "  -v             Version information\n"
-            "  -after         All variable assignments after this will be\n"
+            "  -early         All subsequent variable assignments will be\n"
+            "                 parsed right before default_pre.prf\n"
+            "  -before        All subsequent variable assignments will be\n"
+            "                 parsed right before [files] (the default)\n"
+            "  -after         All subsequent variable assignments will be\n"
             "                 parsed after [files]\n"
+            "  -late          All subsequent variable assignments will be\n"
+            "                 parsed right after default_post.prf\n"
             "  -norecursive   Don't do a recursive search\n"
             "  -recursive     Do a recursive search\n"
             "  -set <prop> <value> Set persistent property\n"
@@ -313,9 +322,13 @@ Option::init(int argc, char **argv)
 
     if(argc && argv) {
         QString argv0 = argv[0];
+#ifdef Q_OS_WIN
+        if (!argv0.endsWith(QLatin1String(".exe"), Qt::CaseInsensitive))
+            argv0 += QLatin1String(".exe");
+#endif
         if(Option::qmake_mode == Option::QMAKE_GENERATE_NOTHING)
             Option::qmake_mode = default_mode(argv0);
-        if(!argv0.isEmpty() && !QFileInfo(argv0).isRelative()) {
+        if (!argv0.isEmpty() && IoUtils::isAbsolutePath(argv0)) {
             globals->qmake_abslocation = argv0;
         } else if (argv0.contains(QLatin1Char('/'))
 #ifdef Q_OS_WIN
@@ -336,26 +349,25 @@ Option::init(int argc, char **argv)
                 if ((*p).isEmpty())
                     continue;
                 QString candidate = currentDir.absoluteFilePath(*p + QLatin1Char('/') + argv0);
-#ifdef Q_OS_WIN
-                if (!candidate.endsWith(QLatin1String(".exe")))
-                    candidate += QLatin1String(".exe");
-#endif
                 if (QFile::exists(candidate)) {
                     globals->qmake_abslocation = candidate;
                     break;
                 }
             }
         }
-        if (!globals->qmake_abslocation.isNull())
-            globals->qmake_abslocation = QDir::cleanPath(globals->qmake_abslocation);
-        else // This is rather unlikely to ever happen on a modern system ...
-            globals->qmake_abslocation = QLibraryInfo::rawLocation(QLibraryInfo::HostBinariesPath,
-                                                                   QLibraryInfo::EffectivePaths) +
+        if (Q_UNLIKELY(globals->qmake_abslocation.isNull())) {
+            // This is rather unlikely to ever happen on a modern system ...
+            globals->qmake_abslocation = QLibraryInfo::rawLocation(
+                                                QLibraryInfo::HostBinariesPath,
+                                                QLibraryInfo::EffectivePaths)
 #ifdef Q_OS_WIN
-                    "/qmake.exe";
+                                         + "/qmake.exe";
 #else
-                    "/qmake";
+                                         + "/qmake";
 #endif
+        } else {
+            globals->qmake_abslocation = QDir::cleanPath(globals->qmake_abslocation);
+        }
     } else {
         Option::qmake_mode = Option::QMAKE_GENERATE_MAKEFILE;
     }
@@ -427,6 +439,7 @@ Option::init(int argc, char **argv)
             //return ret == QMAKE_CMDLINE_SHOW_USAGE ? usage(argv[0]) : false;
         }
         globals->qmake_args = args;
+        globals->qmake_extra_args = cmdstate.extraargs;
     }
     globals->commitCommandLineArguments(cmdstate);
     globals->debugLevel = Option::debug_level;
@@ -455,7 +468,9 @@ Option::init(int argc, char **argv)
 
 void Option::prepareProject(const QString &pfile)
 {
-    QString srcpath = QDir::cleanPath(QFileInfo(pfile).absolutePath());
+    // Canonicalize only the directory, otherwise things will go haywire
+    // if the file itself is a symbolic link.
+    const QString srcpath = QFileInfo(QFileInfo(pfile).absolutePath()).canonicalFilePath();
     globals->setDirectories(srcpath, output_dir);
 }
 

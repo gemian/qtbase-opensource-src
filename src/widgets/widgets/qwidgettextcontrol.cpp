@@ -48,17 +48,23 @@
 #include <qdebug.h>
 #include <qdrag.h>
 #include <qclipboard.h>
+#if QT_CONFIG(menu)
 #include <qmenu.h>
+#endif
 #include <qstyle.h>
 #include <qtimer.h>
 #include "private/qtextdocumentlayout_p.h"
 #include "private/qabstracttextdocumentlayout_p.h"
+#if QT_CONFIG(textedit)
 #include "private/qtextedit_p.h"
+#endif
 #include "qtextdocument.h"
 #include "private/qtextdocument_p.h"
 #include "qtextlist.h"
 #include "private/qwidgettextcontrol_p.h"
+#if QT_CONFIG(graphicsview)
 #include "qgraphicssceneevent.h"
+#endif
 #include "qpagedpaintdevice.h"
 #include "private/qpagedpaintdevice_p.h"
 #include "qtextdocumentwriter.h"
@@ -77,7 +83,9 @@
 #include <qinputmethod.h>
 #include <qtooltip.h>
 #include <qstyleoption.h>
+#if QT_CONFIG(lineedit)
 #include <QtWidgets/qlineedit.h>
+#endif
 #include <QtGui/qaccessible.h>
 #include <QtCore/qmetaobject.h>
 
@@ -85,7 +93,10 @@
 #include "private/qapplication_p.h"
 #include "private/qshortcutmap_p.h"
 #include <qkeysequence.h>
-#define ACCEL_KEY(k) (!qApp->d_func()->shortcutMap.hasShortcutForKeySequence(k) ? \
+#define ACCEL_KEY(k) ((qApp->testAttribute(Qt::AA_DontShowIconsInMenus) \
+                        ? false \
+                        : qApp->styleHints()->showShortcutsInContextMenus()) \
+                      && !qApp->d_func()->shortcutMap.hasShortcutForKeySequence(k) ? \
                       QLatin1Char('\t') + QKeySequence(k).toString(QKeySequence::NativeText) : QString())
 
 #else
@@ -848,21 +859,21 @@ void QWidgetTextControl::redo()
 }
 
 QWidgetTextControl::QWidgetTextControl(QObject *parent)
-    : QObject(*new QWidgetTextControlPrivate, parent)
+    : QInputControl(QInputControl::TextEdit, *new QWidgetTextControlPrivate, parent)
 {
     Q_D(QWidgetTextControl);
     d->init();
 }
 
 QWidgetTextControl::QWidgetTextControl(const QString &text, QObject *parent)
-    : QObject(*new QWidgetTextControlPrivate, parent)
+    : QInputControl(QInputControl::TextEdit, *new QWidgetTextControlPrivate, parent)
 {
     Q_D(QWidgetTextControl);
     d->init(Qt::RichText, text);
 }
 
 QWidgetTextControl::QWidgetTextControl(QTextDocument *doc, QObject *parent)
-    : QObject(*new QWidgetTextControlPrivate, parent)
+    : QInputControl(QInputControl::TextEdit, *new QWidgetTextControlPrivate, parent)
 {
     Q_D(QWidgetTextControl);
     d->init(Qt::RichText, QString(), doc);
@@ -983,7 +994,7 @@ void QWidgetTextControl::processEvent(QEvent *e, const QMatrix &matrix, QWidget 
 
     if (!d->contextWidget) {
         switch (e->type()) {
-#ifndef QT_NO_GRAPHICSVIEW
+#if QT_CONFIG(graphicsview)
             case QEvent::GraphicsSceneMouseMove:
             case QEvent::GraphicsSceneMousePress:
             case QEvent::GraphicsSceneMouseRelease:
@@ -1001,7 +1012,7 @@ void QWidgetTextControl::processEvent(QEvent *e, const QMatrix &matrix, QWidget 
                 d->contextWidget = ev->widget();
                 break;
             }
-#endif // QT_NO_GRAPHICSVIEW
+#endif // QT_CONFIG(graphicsview)
             default: break;
         };
     }
@@ -1080,7 +1091,7 @@ void QWidgetTextControl::processEvent(QEvent *e, const QMatrix &matrix, QWidget 
         }
 #endif
 
-#ifndef QT_NO_GRAPHICSVIEW
+#if QT_CONFIG(graphicsview)
         case QEvent::GraphicsSceneMousePress: {
             QGraphicsSceneMouseEvent *ev = static_cast<QGraphicsSceneMouseEvent *>(e);
             d->mousePressEvent(ev, ev->button(), matrix.map(ev->pos()), ev->modifiers(), ev->buttons(),
@@ -1130,7 +1141,7 @@ void QWidgetTextControl::processEvent(QEvent *e, const QMatrix &matrix, QWidget 
             if (d->dropEvent(ev->mimeData(), matrix.map(ev->pos()), ev->dropAction(), ev->source()))
                 ev->accept();
             break; }
-#endif // QT_NO_GRAPHICSVIEW
+#endif // QT_CONFIG(graphicsview)
 #ifdef QT_KEYPAD_NAVIGATION
         case QEvent::EnterEditFocus:
         case QEvent::LeaveEditFocus:
@@ -1141,52 +1152,8 @@ void QWidgetTextControl::processEvent(QEvent *e, const QMatrix &matrix, QWidget 
         case QEvent::ShortcutOverride:
             if (d->interactionFlags & Qt::TextEditable) {
                 QKeyEvent* ke = static_cast<QKeyEvent *>(e);
-                if (ke->modifiers() == Qt::NoModifier
-                    || ke->modifiers() == Qt::ShiftModifier
-                    || ke->modifiers() == Qt::KeypadModifier) {
-                    if (ke->key() < Qt::Key_Escape) {
-                        ke->accept();
-                    } else {
-                        switch (ke->key()) {
-                            case Qt::Key_Return:
-                            case Qt::Key_Enter:
-                            case Qt::Key_Delete:
-                            case Qt::Key_Home:
-                            case Qt::Key_End:
-                            case Qt::Key_Backspace:
-                            case Qt::Key_Left:
-                            case Qt::Key_Right:
-                            case Qt::Key_Up:
-                            case Qt::Key_Down:
-                            case Qt::Key_Tab:
-                            ke->accept();
-                        default:
-                            break;
-                        }
-                    }
-#ifndef QT_NO_SHORTCUT
-                } else if (ke == QKeySequence::Copy
-                           || ke == QKeySequence::Paste
-                           || ke == QKeySequence::Cut
-                           || ke == QKeySequence::Redo
-                           || ke == QKeySequence::Undo
-                           || ke == QKeySequence::MoveToNextWord
-                           || ke == QKeySequence::MoveToPreviousWord
-                           || ke == QKeySequence::MoveToStartOfDocument
-                           || ke == QKeySequence::MoveToEndOfDocument
-                           || ke == QKeySequence::SelectNextWord
-                           || ke == QKeySequence::SelectPreviousWord
-                           || ke == QKeySequence::SelectStartOfLine
-                           || ke == QKeySequence::SelectEndOfLine
-                           || ke == QKeySequence::SelectStartOfBlock
-                           || ke == QKeySequence::SelectEndOfBlock
-                           || ke == QKeySequence::SelectStartOfDocument
-                           || ke == QKeySequence::SelectEndOfDocument
-                           || ke == QKeySequence::SelectAll
-                          ) {
+                if (isCommonTextEditShortcut(ke))
                     ke->accept();
-#endif
-                }
             }
             break;
         default:
@@ -1361,14 +1328,7 @@ void QWidgetTextControlPrivate::keyPressEvent(QKeyEvent *e)
 
 process:
     {
-        // QTBUG-35734: ignore Ctrl/Ctrl+Shift; accept only AltGr (Alt+Ctrl) on German keyboards
-        if (e->modifiers() == Qt::ControlModifier
-            || e->modifiers() == (Qt::ShiftModifier | Qt::ControlModifier)) {
-            e->ignore();
-            return;
-        }
-        QString text = e->text();
-        if (!text.isEmpty() && (text.at(0).isPrint() || text.at(0) == QLatin1Char('\t'))) {
+        if (q->isAcceptableInput(e)) {
             if (overwriteMode
                 // no need to call deleteChar() if we have a selection, insertText
                 // does it already
@@ -1376,7 +1336,7 @@ process:
                 && !cursor.atBlockEnd())
                 cursor.deleteChar();
 
-            cursor.insertText(text);
+            cursor.insertText(e->text());
             selectionChanged();
         } else {
             e->ignore();
@@ -1396,7 +1356,7 @@ process:
 
 QVariant QWidgetTextControl::loadResource(int type, const QUrl &name)
 {
-#ifdef QT_NO_TEXTEDIT
+#if !QT_CONFIG(textedit)
     Q_UNUSED(type);
     Q_UNUSED(name);
 #else
@@ -2059,14 +2019,57 @@ void QWidgetTextControlPrivate::inputMethodEvent(QInputMethodEvent *e)
             preeditCursor = a.start;
             hideCursor = !a.length;
         } else if (a.type == QInputMethodEvent::TextFormat) {
-            QTextCharFormat f = qvariant_cast<QTextFormat>(a.value).toCharFormat();
+            QTextCharFormat f = cursor.charFormat();
+            f.merge(qvariant_cast<QTextFormat>(a.value).toCharFormat());
             if (f.isValid()) {
                 QTextLayout::FormatRange o;
                 o.start = a.start + cursor.position() - block.position();
                 o.length = a.length;
                 o.format = f;
-                overrides.append(o);
+
+                // Make sure list is sorted by start index
+                QVector<QTextLayout::FormatRange>::iterator it = overrides.end();
+                while (it != overrides.begin()) {
+                    QVector<QTextLayout::FormatRange>::iterator previous = it - 1;
+                    if (o.start >= previous->start) {
+                        overrides.insert(it, o);
+                        break;
+                    }
+                    it = previous;
+                }
+
+                if (it == overrides.begin())
+                    overrides.prepend(o);
             }
+        }
+    }
+
+    if (cursor.charFormat().isValid()) {
+        int start = cursor.position() - block.position();
+        int end = start + e->preeditString().length();
+
+        QVector<QTextLayout::FormatRange>::iterator it = overrides.begin();
+        while (it != overrides.end()) {
+            QTextLayout::FormatRange range = *it;
+            int rangeStart = range.start;
+            if (rangeStart > start) {
+                QTextLayout::FormatRange o;
+                o.start = start;
+                o.length = rangeStart - start;
+                o.format = cursor.charFormat();
+                it = overrides.insert(it, o) + 1;
+            }
+
+            ++it;
+            start = range.start + range.length;
+        }
+
+        if (start < end) {
+            QTextLayout::FormatRange o;
+            o.start = start;
+            o.length = end - start;
+            o.format = cursor.charFormat();
+            overrides.append(o);
         }
     }
     layout->setFormats(overrides);
@@ -2414,7 +2417,7 @@ void QWidgetTextControl::setAcceptRichText(bool accept)
     d->acceptRichText = accept;
 }
 
-#ifndef QT_NO_TEXTEDIT
+#if QT_CONFIG(textedit)
 
 void QWidgetTextControl::setExtraSelections(const QList<QTextEdit::ExtraSelection> &selections)
 {
@@ -2478,7 +2481,7 @@ QList<QTextEdit::ExtraSelection> QWidgetTextControl::extraSelections() const
     return selections;
 }
 
-#endif // QT_NO_TEXTEDIT
+#endif // QT_CONFIG(textedit)
 
 void QWidgetTextControl::setTextWidth(qreal width)
 {
@@ -2582,6 +2585,11 @@ bool QWidgetTextControl::isWordSelectionEnabled() const
 {
     Q_D(const QWidgetTextControl);
     return d->wordSelectionEnabled;
+}
+
+bool QWidgetTextControl::isPreediting()
+{
+    return d_func()->isPreediting();
 }
 
 #ifndef QT_NO_PRINTER
@@ -3119,6 +3127,7 @@ void QWidgetTextControlPrivate::append(const QString &text, Qt::TextFormat forma
         tmp.insertText(text);
     }
 #else
+    Q_UNUSED(format);
     tmp.insertText(text);
 #endif // QT_NO_TEXTHTMLPARSER
     if (!cursor.hasSelection())
@@ -3293,7 +3302,7 @@ void QUnicodeControlCharacterMenu::menuActionTriggered()
     QChar c(qt_controlCharacters[idx].character);
     QString str(c);
 
-#ifndef QT_NO_TEXTEDIT
+#if QT_CONFIG(textedit)
     if (QTextEdit *edit = qobject_cast<QTextEdit *>(editWidget)) {
         edit->insertPlainText(str);
         return;
@@ -3302,7 +3311,7 @@ void QUnicodeControlCharacterMenu::menuActionTriggered()
     if (QWidgetTextControl *control = qobject_cast<QWidgetTextControl *>(editWidget)) {
         control->insertPlainText(str);
     }
-#ifndef QT_NO_LINEEDIT
+#if QT_CONFIG(lineedit)
     if (QLineEdit *edit = qobject_cast<QLineEdit *>(editWidget)) {
         edit->insert(str);
         return;

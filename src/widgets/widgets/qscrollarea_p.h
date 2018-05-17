@@ -51,12 +51,12 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
-
-#ifndef QT_NO_SCROLLAREA
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 
 #include "private/qabstractscrollarea_p.h"
 #include <QtWidgets/qscrollbar.h>
+
+QT_REQUIRE_CONFIG(scrollarea);
 
 QT_BEGIN_NAMESPACE
 
@@ -73,8 +73,6 @@ public:
     bool resizable;
     Qt::Alignment alignment;
 };
-
-#endif
 
 QT_END_NAMESPACE
 

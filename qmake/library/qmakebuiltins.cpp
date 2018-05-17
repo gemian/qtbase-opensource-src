@@ -51,10 +51,12 @@
 #ifdef PROEVALUATOR_THREAD_SAFE
 # include <qthreadpool.h>
 #endif
+#include <qversionnumber.h>
+
+#include <algorithm>
 
 #ifdef Q_OS_UNIX
 #include <time.h>
-#include <utime.h>
 #include <errno.h>
 #include <unistd.h>
 #include <signal.h>
@@ -84,9 +86,10 @@ QT_BEGIN_NAMESPACE
 #define fL1S(s) QString::fromLatin1(s)
 
 enum ExpandFunc {
-    E_INVALID = 0, E_MEMBER, E_FIRST, E_LAST, E_SIZE, E_CAT, E_FROMFILE, E_EVAL, E_LIST,
-    E_SPRINTF, E_FORMAT_NUMBER, E_JOIN, E_SPLIT, E_BASENAME, E_DIRNAME, E_SECTION,
-    E_FIND, E_SYSTEM, E_UNIQUE, E_REVERSE, E_QUOTE, E_ESCAPE_EXPAND,
+    E_INVALID = 0, E_MEMBER, E_STR_MEMBER, E_FIRST, E_TAKE_FIRST, E_LAST, E_TAKE_LAST,
+    E_SIZE, E_STR_SIZE, E_CAT, E_FROMFILE, E_EVAL, E_LIST, E_SPRINTF, E_FORMAT_NUMBER,
+    E_NUM_ADD, E_JOIN, E_SPLIT, E_BASENAME, E_DIRNAME, E_SECTION,
+    E_FIND, E_SYSTEM, E_UNIQUE, E_SORTED, E_REVERSE, E_QUOTE, E_ESCAPE_EXPAND,
     E_UPPER, E_LOWER, E_TITLE, E_FILES, E_PROMPT, E_RE_ESCAPE, E_VAL_ESCAPE,
     E_REPLACE, E_SORT_DEPENDS, E_RESOLVE_DEPENDS, E_ENUMERATE_VARS,
     E_SHADOWED, E_ABSOLUTE_PATH, E_RELATIVE_PATH, E_CLEAN_PATH,
@@ -95,10 +98,11 @@ enum ExpandFunc {
 
 enum TestFunc {
     T_INVALID = 0, T_REQUIRES, T_GREATERTHAN, T_LESSTHAN, T_EQUALS,
+    T_VERSION_AT_LEAST, T_VERSION_AT_MOST,
     T_EXISTS, T_EXPORT, T_CLEAR, T_UNSET, T_EVAL, T_CONFIG, T_SYSTEM,
-    T_DEFINED, T_CONTAINS, T_INFILE,
+    T_DEFINED, T_DISCARD_FROM, T_CONTAINS, T_INFILE,
     T_COUNT, T_ISEMPTY, T_PARSE_JSON, T_INCLUDE, T_LOAD, T_DEBUG, T_LOG, T_MESSAGE, T_WARNING, T_ERROR, T_IF,
-    T_MKPATH, T_WRITE_FILE, T_TOUCH, T_CACHE
+    T_MKPATH, T_WRITE_FILE, T_TOUCH, T_CACHE, T_RELOAD_PROPERTIES
 };
 
 void QMakeEvaluator::initFunctionStatics()
@@ -108,15 +112,20 @@ void QMakeEvaluator::initFunctionStatics()
         const ExpandFunc func;
     } expandInits[] = {
         { "member", E_MEMBER },
+        { "str_member", E_STR_MEMBER },
         { "first", E_FIRST },
+        { "take_first", E_TAKE_FIRST },
         { "last", E_LAST },
+        { "take_last", E_TAKE_LAST },
         { "size", E_SIZE },
+        { "str_size", E_STR_SIZE },
         { "cat", E_CAT },
         { "fromfile", E_FROMFILE },
         { "eval", E_EVAL },
         { "list", E_LIST },
         { "sprintf", E_SPRINTF },
         { "format_number", E_FORMAT_NUMBER },
+        { "num_add", E_NUM_ADD },
         { "join", E_JOIN },
         { "split", E_SPLIT },
         { "basename", E_BASENAME },
@@ -125,6 +134,7 @@ void QMakeEvaluator::initFunctionStatics()
         { "find", E_FIND },
         { "system", E_SYSTEM },
         { "unique", E_UNIQUE },
+        { "sorted", E_SORTED },
         { "reverse", E_REVERSE },
         { "quote", E_QUOTE },
         { "escape_expand", E_ESCAPE_EXPAND },
@@ -162,6 +172,8 @@ void QMakeEvaluator::initFunctionStatics()
         { "lessThan", T_LESSTHAN },
         { "equals", T_EQUALS },
         { "isEqual", T_EQUALS },
+        { "versionAtLeast", T_VERSION_AT_LEAST },
+        { "versionAtMost", T_VERSION_AT_MOST },
         { "exists", T_EXISTS },
         { "export", T_EXPORT },
         { "clear", T_CLEAR },
@@ -171,6 +183,7 @@ void QMakeEvaluator::initFunctionStatics()
         { "if", T_IF },
         { "isActiveConfig", T_CONFIG },
         { "system", T_SYSTEM },
+        { "discard_from", T_DISCARD_FROM },
         { "defined", T_DEFINED },
         { "contains", T_CONTAINS },
         { "infile", T_INFILE },
@@ -190,6 +203,7 @@ void QMakeEvaluator::initFunctionStatics()
         { "write_file", T_WRITE_FILE },
         { "touch", T_TOUCH },
         { "cache", T_CACHE },
+        { "reload_properties", T_RELOAD_PROPERTIES },
     };
     statics.functions.reserve((int)(sizeof(testInits)/sizeof(testInits[0])));
     for (unsigned i = 0; i < sizeof(testInits)/sizeof(testInits[0]); ++i)
@@ -201,22 +215,48 @@ static bool isTrue(const ProString &str)
     return !str.compare(statics.strtrue, Qt::CaseInsensitive) || str.toInt();
 }
 
-#if defined(Q_OS_WIN) && defined(PROEVALUATOR_FULL)
-static QString windowsErrorCode()
+bool
+QMakeEvaluator::getMemberArgs(const ProKey &func, int srclen, const ProStringList &args,
+                              int *start, int *end)
 {
-    wchar_t *string = 0;
-    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM,
-                  NULL,
-                  GetLastError(),
-                  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                  (LPWSTR)&string,
-                  0,
-                  NULL);
-    QString ret = QString::fromWCharArray(string);
-    LocalFree((HLOCAL)string);
-    return ret.trimmed();
+    *start = 0, *end = 0;
+    if (args.count() >= 2) {
+        bool ok = true;
+        const ProString &start_str = args.at(1);
+        *start = start_str.toInt(&ok);
+        if (!ok) {
+            if (args.count() == 2) {
+                int dotdot = start_str.indexOf(statics.strDotDot);
+                if (dotdot != -1) {
+                    *start = start_str.left(dotdot).toInt(&ok);
+                    if (ok)
+                        *end = start_str.mid(dotdot+2).toInt(&ok);
+                }
+            }
+            if (!ok) {
+                evalError(fL1S("%1() argument 2 (start) '%2' invalid.")
+                          .arg(func.toQString(m_tmp1), start_str.toQString(m_tmp2)));
+                return false;
+            }
+        } else {
+            *end = *start;
+            if (args.count() == 3)
+                *end = args.at(2).toInt(&ok);
+            if (!ok) {
+                evalError(fL1S("%1() argument 3 (end) '%2' invalid.")
+                          .arg(func.toQString(m_tmp1), args.at(2).toQString(m_tmp2)));
+                return false;
+            }
+        }
+    }
+    if (*start < 0)
+        *start += srclen;
+    if (*end < 0)
+        *end += srclen;
+    if (*start < 0 || *start >= srclen || *end < 0 || *end >= srclen)
+        return false;
+    return true;
 }
-#endif
 
 QString
 QMakeEvaluator::quoteValue(const ProString &val)
@@ -271,7 +311,7 @@ QMakeEvaluator::quoteValue(const ProString &val)
                 break;
             case 32:
                 quote = true;
-                // fallthrough
+                Q_FALLTHROUGH();
             default:
                 ret += c;
                 break;
@@ -343,11 +383,49 @@ static void addJsonValue(const QJsonValue &value, const QString &keyPrefix, ProV
     }
 }
 
-static QMakeEvaluator::VisitReturn parseJsonInto(const QByteArray &json, const QString &into, ProValueMap *value)
+struct ErrorPosition {
+    int line;
+    int column;
+};
+
+static ErrorPosition calculateErrorPosition(const QByteArray &json, int offset)
 {
-    QJsonDocument document = QJsonDocument::fromJson(json);
-    if (document.isNull())
+    ErrorPosition pos = { 0, 0 };
+    offset--; // offset is 1-based, switching to 0-based
+    for (int i = 0; i < offset; ++i) {
+        switch (json.at(i)) {
+        case '\n':
+            pos.line++;
+            pos.column = 0;
+            break;
+        case '\r':
+            break;
+        case '\t':
+            pos.column = (pos.column + 8) & ~7;
+            break;
+        default:
+            pos.column++;
+            break;
+        }
+    }
+    // Lines and columns in text editors are 1-based:
+    pos.line++;
+    pos.column++;
+    return pos;
+}
+
+QMakeEvaluator::VisitReturn QMakeEvaluator::parseJsonInto(const QByteArray &json, const QString &into, ProValueMap *value)
+{
+    QJsonParseError error;
+    QJsonDocument document = QJsonDocument::fromJson(json, &error);
+    if (document.isNull()) {
+        if (error.error != QJsonParseError::NoError) {
+            ErrorPosition errorPos = calculateErrorPosition(json, error.offset);
+            evalError(fL1S("Error parsing JSON at %1:%2: %3")
+                      .arg(errorPos.line).arg(errorPos.column).arg(error.errorString()));
+        }
         return QMakeEvaluator::ReturnFalse;
+    }
 
     QString currentKey = into + QLatin1Char('.');
 
@@ -377,7 +455,7 @@ QMakeEvaluator::writeFile(const QString &ctx, const QString &fn, QIODevice::Open
     return ReturnTrue;
 }
 
-#ifndef QT_BOOTSTRAPPED
+#if QT_CONFIG(process)
 void QMakeEvaluator::runProcess(QProcess *proc, const QString &command) const
 {
     proc->setWorkingDirectory(currentDirectory());
@@ -395,12 +473,13 @@ void QMakeEvaluator::runProcess(QProcess *proc, const QString &command) const
 }
 #endif
 
-QByteArray QMakeEvaluator::getCommandOutput(const QString &args) const
+QByteArray QMakeEvaluator::getCommandOutput(const QString &args, int *exitCode) const
 {
     QByteArray out;
-#ifndef QT_BOOTSTRAPPED
+#if QT_CONFIG(process)
     QProcess proc;
     runProcess(&proc, args);
+    *exitCode = (proc.exitStatus() == QProcess::NormalExit) ? proc.exitCode() : -1;
     QByteArray errout = proc.readAllStandardError();
 # ifdef PROEVALUATOR_FULL
     // FIXME: Qt really should have the option to set forwarding per channel
@@ -430,7 +509,12 @@ QByteArray QMakeEvaluator::getCommandOutput(const QString &args) const
                 break;
             out += QByteArray(buff, read_in);
         }
-        QT_PCLOSE(proc);
+        int ec = QT_PCLOSE(proc);
+# ifdef Q_OS_WIN
+        *exitCode = ec >= 0 ? ec : -1;
+# else
+        *exitCode = WIFEXITED(ec) ? WEXITSTATUS(ec) : -1;
+# endif
     }
 # ifdef Q_OS_WIN
     out.replace("\r\n", "\n");
@@ -463,11 +547,9 @@ void QMakeEvaluator::populateDeps(
         }
 }
 
-ProStringList QMakeEvaluator::evaluateBuiltinExpand(
-        int func_t, const ProKey &func, const ProStringList &args)
+QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinExpand(
+        int func_t, const ProKey &func, const ProStringList &args, ProStringList &ret)
 {
-    ProStringList ret;
-
     traceMsg("calling built-in $$%s(%s)", dbgKey(func), dbgSepStrList(args));
 
     switch (func_t) {
@@ -481,8 +563,7 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         int end = -1;
         if (func_t == E_SECTION) {
             if (args.count() != 3 && args.count() != 4) {
-                evalError(fL1S("%1(var) section(var, sep, begin, end) requires"
-                               " three or four arguments.").arg(func.toQString(m_tmp1)));
+                evalError(fL1S("section(var, sep, begin, end) requires three or four arguments."));
             } else {
                 var = args[0];
                 sep = args.at(1).toQString();
@@ -492,7 +573,7 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
             }
         } else {
             if (args.count() != 1) {
-                evalError(fL1S("%1(var) requires one argument.").arg(func.toQString(m_tmp1)));
+                evalError(fL1S("%1(var) requires one argument.").arg(func.toQStringView()));
             } else {
                 var = args[0];
                 regexp = true;
@@ -508,8 +589,8 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
             if (regexp) {
                 QRegExp sepRx(sep);
                 for (const ProString &str : strings) {
-                    const QString &rstr = str.toQString(m_tmp1).section(sepRx, beg, end);
-                    ret << (rstr.isSharedWith(m_tmp1) ? str : ProString(rstr).setSource(str));
+                    const QString &rstr = str.toQString(m_tmp[m_toggle ^= 1]).section(sepRx, beg, end);
+                    ret << (rstr.isSharedWith(m_tmp[m_toggle]) ? str : ProString(rstr).setSource(str));
                 }
             } else {
                 for (const ProString &str : strings) {
@@ -526,7 +607,7 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         } else {
             QString tmp = args.at(0).toQString(m_tmp1);
             for (int i = 1; i < args.count(); ++i)
-                tmp = tmp.arg(args.at(i).toQString(m_tmp2));
+                tmp = tmp.arg(args.at(i).toQStringView());
             ret << (tmp.isSharedWith(m_tmp1) ? args.at(0) : ProString(tmp).setSource(args.at(0)));
         }
         break;
@@ -541,31 +622,30 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
             bool leftalign = false;
             enum { DefaultSign, PadSign, AlwaysSign } sign = DefaultSign;
             if (args.count() >= 2) {
-                const auto opts = split_value_list(args.at(1).toQString(m_tmp2));
+                const auto opts = split_value_list(args.at(1).toQStringRef());
                 for (const ProString &opt : opts) {
-                    opt.toQString(m_tmp3);
-                    if (m_tmp3.startsWith(QLatin1String("ibase="))) {
-                        ibase = m_tmp3.mid(6).toInt();
-                    } else if (m_tmp3.startsWith(QLatin1String("obase="))) {
-                        obase = m_tmp3.mid(6).toInt();
-                    } else if (m_tmp3.startsWith(QLatin1String("width="))) {
-                        width = m_tmp3.mid(6).toInt();
-                    } else if (m_tmp3 == QLatin1String("zeropad")) {
+                    if (opt.startsWith(QLatin1String("ibase="))) {
+                        ibase = opt.mid(6).toInt();
+                    } else if (opt.startsWith(QLatin1String("obase="))) {
+                        obase = opt.mid(6).toInt();
+                    } else if (opt.startsWith(QLatin1String("width="))) {
+                        width = opt.mid(6).toInt();
+                    } else if (opt == QLatin1String("zeropad")) {
                         zeropad = true;
-                    } else if (m_tmp3 == QLatin1String("padsign")) {
+                    } else if (opt == QLatin1String("padsign")) {
                         sign = PadSign;
-                    } else if (m_tmp3 == QLatin1String("alwayssign")) {
+                    } else if (opt == QLatin1String("alwayssign")) {
                         sign = AlwaysSign;
-                    } else if (m_tmp3 == QLatin1String("leftalign")) {
+                    } else if (opt == QLatin1String("leftalign")) {
                         leftalign = true;
                     } else {
-                        evalError(fL1S("format_number(): invalid format option %1.").arg(m_tmp3));
+                        evalError(fL1S("format_number(): invalid format option %1.")
+                                  .arg(opt.toQStringView()));
                         goto formfail;
                     }
                 }
             }
-            args.at(0).toQString(m_tmp3);
-            if (m_tmp3.contains(QLatin1Char('.'))) {
+            if (args.at(0).contains(QLatin1Char('.'))) {
                 evalError(fL1S("format_number(): floats are currently not supported."));
                 break;
             }
@@ -573,7 +653,7 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
             qlonglong num = args.at(0).toLongLong(&ok, ibase);
             if (!ok) {
                 evalError(fL1S("format_number(): malformed number %2 for base %1.")
-                          .arg(ibase).arg(m_tmp3));
+                          .arg(ibase).arg(args.at(0).toQStringView()));
                 break;
             }
             QString outstr;
@@ -601,23 +681,45 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         }
       formfail:
         break;
+    case E_NUM_ADD:
+        if (args.count() < 1 || args.at(0).isEmpty()) {
+            evalError(fL1S("num_add(num, ...) requires at least one argument."));
+        } else {
+            qlonglong sum = 0;
+            for (const ProString &arg : qAsConst(args)) {
+                if (arg.contains(QLatin1Char('.'))) {
+                    evalError(fL1S("num_add(): floats are currently not supported."));
+                    goto nafail;
+                }
+                bool ok;
+                qlonglong num = arg.toLongLong(&ok);
+                if (!ok) {
+                    evalError(fL1S("num_add(): malformed number %1.")
+                              .arg(arg.toQStringView()));
+                    goto nafail;
+                }
+                sum += num;
+            }
+            ret += ProString(QString::number(sum));
+        }
+      nafail:
+        break;
     case E_JOIN: {
         if (args.count() < 1 || args.count() > 4) {
             evalError(fL1S("join(var, glue, before, after) requires one to four arguments."));
         } else {
-            QString glue;
-            ProString before, after;
+            ProString glue, before, after;
             if (args.count() >= 2)
-                glue = args.at(1).toQString(m_tmp1);
+                glue = args.at(1);
             if (args.count() >= 3)
                 before = args[2];
             if (args.count() == 4)
                 after = args[3];
             const ProStringList &var = values(map(args.at(0)));
             if (!var.isEmpty()) {
-                const ProFile *src = currentProFile();
+                int src = currentFileId();
                 for (const ProString &v : var)
-                    if (const ProFile *s = v.sourceFile()) {
+                    if (int s = v.sourceFile()) {
                         src = s;
                         break;
                     }
@@ -633,9 +735,9 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
             const QString &sep = (args.count() == 2) ? args.at(1).toQString(m_tmp1) : statics.field_sep;
             const auto vars = values(map(args.at(0)));
             for (const ProString &var : vars) {
-                const auto splits = var.toQString(m_tmp2).split(sep);
-                for (const QString &splt : splits)
-                    ret << (splt.isSharedWith(m_tmp2) ? var : ProString(splt).setSource(var));
+                const auto splits = var.toQStringRef().split(sep);
+                for (const auto &splt : splits)
+                    ret << ProString(splt).setSource(var);
             }
         }
         break;
@@ -643,54 +745,44 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         if (args.count() < 1 || args.count() > 3) {
             evalError(fL1S("member(var, start, end) requires one to three arguments."));
         } else {
-            bool ok = true;
-            const ProStringList &var = values(map(args.at(0)));
-            int start = 0, end = 0;
-            if (args.count() >= 2) {
-                const ProString &start_str = args.at(1);
-                start = start_str.toInt(&ok);
-                if (!ok) {
-                    if (args.count() == 2) {
-                        int dotdot = start_str.indexOf(statics.strDotDot);
-                        if (dotdot != -1) {
-                            start = start_str.left(dotdot).toInt(&ok);
-                            if (ok)
-                                end = start_str.mid(dotdot+2).toInt(&ok);
-                        }
-                    }
-                    if (!ok)
-                        evalError(fL1S("member() argument 2 (start) '%2' invalid.")
-                                  .arg(start_str.toQString(m_tmp1)));
+            const ProStringList &src = values(map(args.at(0)));
+            int start, end;
+            if (getMemberArgs(func, src.size(), args, &start, &end)) {
+                ret.reserve(qAbs(end - start) + 1);
+                if (start < end) {
+                    for (int i = start; i <= end && src.size() >= i; i++)
+                        ret += src.at(i);
                 } else {
-                    end = start;
-                    if (args.count() == 3)
-                        end = args.at(2).toInt(&ok);
-                    if (!ok)
-                        evalError(fL1S("member() argument 3 (end) '%2' invalid.")
-                                  .arg(args.at(2).toQString(m_tmp1)));
+                    for (int i = start; i >= end && src.size() >= i && i >= 0; i--)
+                        ret += src.at(i);
                 }
             }
-            if (ok) {
-                if (start < 0)
-                    start += var.count();
-                if (end < 0)
-                    end += var.count();
-                if (start < 0 || start >= var.count() || end < 0 || end >= var.count()) {
-                    //nothing
-                } else if (start < end) {
-                    for (int i = start; i <= end && var.count() >= i; i++)
-                        ret.append(var[i]);
+        }
+        break;
+    case E_STR_MEMBER:
+        if (args.count() < 1 || args.count() > 3) {
+            evalError(fL1S("str_member(str, start, end) requires one to three arguments."));
+        } else {
+            const ProString &src = args.at(0);
+            int start, end;
+            if (getMemberArgs(func, src.size(), args, &start, &end)) {
+                QString res;
+                res.reserve(qAbs(end - start) + 1);
+                if (start < end) {
+                    for (int i = start; i <= end && src.size() >= i; i++)
+                        res += src.at(i);
                 } else {
-                    for (int i = start; i >= end && var.count() >= i && i >= 0; i--)
-                        ret += var[i];
+                    for (int i = start; i >= end && src.size() >= i && i >= 0; i--)
+                        res += src.at(i);
                 }
+                ret += ProString(res);
             }
         }
         break;
     case E_FIRST:
     case E_LAST:
         if (args.count() != 1) {
-            evalError(fL1S("%1(var) requires one argument.").arg(func.toQString(m_tmp1)));
+            evalError(fL1S("%1(var) requires one argument.").arg(func.toQStringView()));
         } else {
             const ProStringList &var = values(map(args.at(0)));
             if (!var.isEmpty()) {
@@ -701,32 +793,52 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
             }
         }
         break;
+    case E_TAKE_FIRST:
+    case E_TAKE_LAST:
+        if (args.count() != 1) {
+            evalError(fL1S("%1(var) requires one argument.").arg(func.toQStringView()));
+        } else {
+            ProStringList &var = valuesRef(map(args.at(0)));
+            if (!var.isEmpty()) {
+                if (func_t == E_TAKE_FIRST)
+                    ret.append(var.takeFirst());
+                else
+                    ret.append(var.takeLast());
+            }
+        }
+        break;
     case E_SIZE:
         if (args.count() != 1)
             evalError(fL1S("size(var) requires one argument."));
         else
             ret.append(ProString(QString::number(values(map(args.at(0))).size())));
         break;
+    case E_STR_SIZE:
+        if (args.count() != 1)
+            evalError(fL1S("str_size(str) requires one argument."));
+        else
+            ret.append(ProString(QString::number(args.at(0).size())));
+        break;
     case E_CAT:
         if (args.count() < 1 || args.count() > 2) {
             evalError(fL1S("cat(file, singleline=true) requires one or two arguments."));
         } else {
-            const QString &file = args.at(0).toQString(m_tmp1);
+            QString fn = resolvePath(m_option->expandEnvVars(args.at(0).toQString(m_tmp1)));
+            fn.detach();
 
             bool blob = false;
             bool lines = false;
             bool singleLine = true;
             if (args.count() > 1) {
-                args.at(1).toQString(m_tmp2);
-                if (!m_tmp2.compare(QLatin1String("false"), Qt::CaseInsensitive))
+                if (!args.at(1).compare(QLatin1String("false"), Qt::CaseInsensitive))
                     singleLine = false;
-                else if (!m_tmp2.compare(QLatin1String("blob"), Qt::CaseInsensitive))
+                else if (!args.at(1).compare(QLatin1String("blob"), Qt::CaseInsensitive))
                     blob = true;
-                else if (!m_tmp2.compare(QLatin1String("lines"), Qt::CaseInsensitive))
+                else if (!args.at(1).compare(QLatin1String("lines"), Qt::CaseInsensitive))
                     lines = true;
             }
 
-            QFile qfile(resolvePath(m_option->expandEnvVars(file)));
+            QFile qfile(fn);
             if (qfile.open(QIODevice::ReadOnly)) {
                 QTextStream stream(&qfile);
                 if (blob) {
@@ -736,7 +848,8 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
                         if (lines) {
                             ret += ProString(stream.readLine());
                         } else {
-                            ret += split_value_list(stream.readLine().trimmed());
+                            const QString &line = stream.readLine();
+                            ret += split_value_list(QStringRef(&line).trimmed());
                             if (!singleLine)
                                 ret += ProString("\n");
                         }
@@ -768,7 +881,7 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         ret = ProStringList(ProString(tmp));
         ProStringList lst;
         for (const ProString &arg : args)
-            lst += split_value_list(arg.toQString(m_tmp1), arg.sourceFile()); // Relies on deep copy
+            lst += split_value_list(arg.toQStringRef(), arg.sourceFile()); // Relies on deep copy
         m_valuemapStack.top()[ret.at(0).toKey()] = lst;
         break; }
     case E_FIND:
@@ -776,33 +889,35 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
             evalError(fL1S("find(var, str) requires two arguments."));
         } else {
             QRegExp regx(args.at(1).toQString());
-            int t = 0;
             const auto vals = values(map(args.at(0)));
             for (const ProString &val : vals) {
-                if (regx.indexIn(val.toQString(m_tmp[t])) != -1)
+                if (regx.indexIn(val.toQString(m_tmp[m_toggle ^= 1])) != -1)
                     ret += val;
-                t ^= 1;
             }
         }
         break;
     case E_SYSTEM:
         if (!m_skipLevel) {
-            if (args.count() < 1 || args.count() > 2) {
-                evalError(fL1S("system(execute) requires one or two arguments."));
+            if (args.count() < 1 || args.count() > 3) {
+                evalError(fL1S("system(command, [mode], [stsvar]) requires one to three arguments."));
             } else {
                 bool blob = false;
                 bool lines = false;
                 bool singleLine = true;
                 if (args.count() > 1) {
-                    args.at(1).toQString(m_tmp2);
-                    if (!m_tmp2.compare(QLatin1String("false"), Qt::CaseInsensitive))
+                    if (!args.at(1).compare(QLatin1String("false"), Qt::CaseInsensitive))
                         singleLine = false;
-                    else if (!m_tmp2.compare(QLatin1String("blob"), Qt::CaseInsensitive))
+                    else if (!args.at(1).compare(QLatin1String("blob"), Qt::CaseInsensitive))
                         blob = true;
-                    else if (!m_tmp2.compare(QLatin1String("lines"), Qt::CaseInsensitive))
+                    else if (!args.at(1).compare(QLatin1String("lines"), Qt::CaseInsensitive))
                         lines = true;
                 }
-                QByteArray bytes = getCommandOutput(args.at(0).toQString(m_tmp2));
+                int exitCode;
+                QByteArray bytes = getCommandOutput(args.at(0).toQString(), &exitCode);
+                if (args.count() > 2 && !args.at(2).isEmpty()) {
+                    m_valuemapStack.top()[args.at(2).toKey()] =
+                            ProStringList(ProString(QString::number(exitCode)));
+                }
                 if (lines) {
                     QTextStream stream(bytes);
                     while (!stream.atEnd())
@@ -815,7 +930,7 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
                         output.replace(QLatin1Char('\t'), QLatin1Char(' '));
                         if (singleLine)
                             output.replace(QLatin1Char('\n'), QLatin1Char(' '));
-                        ret += split_value_list(output);
+                        ret += split_value_list(QStringRef(&output));
                     }
                 }
             }
@@ -827,6 +942,14 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         } else {
             ret = values(map(args.at(0)));
             ret.removeDuplicates();
+        }
+        break;
+    case E_SORTED:
+        if (args.count() != 1) {
+            evalError(fL1S("sorted(var) requires one argument."));
+        } else {
+            ret = values(map(args.at(0)));
+            std::sort(ret.begin(), ret.end());
         }
         break;
     case E_REVERSE:
@@ -944,27 +1067,39 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
                             dirs.append(fname + QLatin1Char('/'));
                     }
                     if (regex.exactMatch(qdir[i]))
-                        ret += ProString(fname).setSource(currentProFile());
+                        ret += ProString(fname).setSource(currentFileId());
                 }
             }
         }
         break;
 #ifdef PROEVALUATOR_FULL
     case E_PROMPT: {
-        if (args.count() != 1) {
-            evalError(fL1S("prompt(question) requires one argument."));
+        if (args.count() != 1 && args.count() != 2) {
+            evalError(fL1S("prompt(question, [decorate=true]) requires one or two arguments."));
 //        } else if (currentFileName() == QLatin1String("-")) {
 //            evalError(fL1S("prompt(question) cannot be used when '-o -' is used"));
         } else {
             QString msg = m_option->expandEnvVars(args.at(0).toQString(m_tmp1));
-            if (!msg.endsWith(QLatin1Char('?')))
-                msg += QLatin1Char('?');
-            fprintf(stderr, "Project PROMPT: %s ", qPrintable(msg));
-
+            bool decorate = true;
+            if (args.count() == 2)
+                decorate = isTrue(args.at(1));
+            if (decorate) {
+                if (!msg.endsWith(QLatin1Char('?')))
+                    msg += QLatin1Char('?');
+                fprintf(stderr, "Project PROMPT: %s ", qPrintable(msg));
+            } else {
+                fputs(qPrintable(msg), stderr);
+            }
             QFile qfile;
             if (qfile.open(stdin, QIODevice::ReadOnly)) {
                 QTextStream t(&qfile);
-                ret = split_value_list(t.readLine());
+                const QString &line = t.readLine();
+                if (t.atEnd()) {
+                    fputs("\n", stderr);
+                    evalError(fL1S("Unexpected EOF."));
+                    return ReturnError;
+                }
+                ret = split_value_list(QStringRef(&line));
             }
         }
         break; }
@@ -980,7 +1115,11 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
                 QString rstr = val.toQString(m_tmp1);
                 QString copy = rstr; // Force a detach on modify
                 rstr.replace(before, after);
-                ret << (rstr.isSharedWith(m_tmp1) ? val : ProString(rstr).setSource(val));
+                ret << (rstr.isSharedWith(m_tmp1)
+                            ? val
+                            : rstr.isSharedWith(m_tmp2)
+                                ? args.at(2)
+                                : ProString(rstr).setSource(val));
             }
         }
         break;
@@ -988,7 +1127,7 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
     case E_RESOLVE_DEPENDS:
         if (args.count() < 1 || args.count() > 4) {
             evalError(fL1S("%1(var, [prefix, [suffixes, [prio-suffix]]]) requires one to four arguments.")
-                      .arg(func.toQString(m_tmp1)));
+                      .arg(func.toQStringView()));
         } else {
             QHash<ProKey, QSet<ProKey> > dependencies;
             ProValueMap dependees;
@@ -998,7 +1137,7 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
             ProString priosfx = args.count() < 4 ? ProString(".priority") : args.at(3);
             populateDeps(orgList, prefix,
                          args.count() < 3 ? ProStringList(ProString(".depends"))
-                                          : split_value_list(args.at(2).toQString(m_tmp2)),
+                                          : split_value_list(args.at(2).toQStringRef()),
                          priosfx, dependencies, dependees, rootSet);
             while (!rootSet.isEmpty()) {
                 QMultiMap<int, ProString>::iterator it = rootSet.begin();
@@ -1038,9 +1177,9 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         if (args.count() > 2) {
             evalError(fL1S("absolute_path(path[, base]) requires one or two arguments."));
         } else {
-            QString rstr = QDir::cleanPath(
-                    QDir(args.count() > 1 ? args.at(1).toQString(m_tmp2) : currentDirectory())
-                    .absoluteFilePath(args.at(0).toQString(m_tmp1)));
+            QString arg = args.at(0).toQString(m_tmp1);
+            QString baseDir = args.count() > 1 ? args.at(1).toQString(m_tmp2) : currentDirectory();
+            QString rstr = arg.isEmpty() ? baseDir : IoUtils::resolvePath(baseDir, arg);
             ret << (rstr.isSharedWith(m_tmp1)
                         ? args.at(0)
                         : args.count() > 1 && rstr.isSharedWith(m_tmp2)
@@ -1052,9 +1191,10 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         if (args.count() > 2) {
             evalError(fL1S("relative_path(path[, base]) requires one or two arguments."));
         } else {
-            QDir baseDir(args.count() > 1 ? args.at(1).toQString(m_tmp2) : currentDirectory());
-            QString rstr = baseDir.relativeFilePath(baseDir.absoluteFilePath(
-                                args.at(0).toQString(m_tmp1)));
+            QString arg = args.at(0).toQString(m_tmp1);
+            QString baseDir = args.count() > 1 ? args.at(1).toQString(m_tmp2) : currentDirectory();
+            QString absArg = arg.isEmpty() ? baseDir : IoUtils::resolvePath(baseDir, arg);
+            QString rstr = QDir(baseDir).relativeFilePath(absArg);
             ret << (rstr.isSharedWith(m_tmp1) ? args.at(0) : ProString(rstr).setSource(args.at(0)));
         }
         break;
@@ -1129,11 +1269,11 @@ ProStringList QMakeEvaluator::evaluateBuiltinExpand(
         }
         break;
     default:
-        evalError(fL1S("Function '%1' is not implemented.").arg(func.toQString(m_tmp1)));
+        evalError(fL1S("Function '%1' is not implemented.").arg(func.toQStringView()));
         break;
     }
 
-    return ret;
+    return ReturnTrue;
 }
 
 QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
@@ -1159,7 +1299,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
                 return returnBool(findValues(var, &it));
             }
             evalError(fL1S("defined(function, type): unexpected type [%1].")
-                      .arg(args.at(1).toQString(m_tmp1)));
+                      .arg(args.at(1).toQStringView()));
             return ReturnFalse;
         }
         return returnBool(m_functionDefs.replaceFunctions.contains(var)
@@ -1189,6 +1329,53 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
         }
         return ReturnTrue;
     }
+    case T_DISCARD_FROM: {
+        if (args.count() != 1 || args.at(0).isEmpty()) {
+            evalError(fL1S("discard_from(file) requires one argument."));
+            return ReturnFalse;
+        }
+        if (m_valuemapStack.count() != 1) {
+            evalError(fL1S("discard_from() cannot be called from functions."));
+            return ReturnFalse;
+        }
+        QString fn = resolvePath(args.at(0).toQString(m_tmp1));
+        int pro = m_parser->idForFileName(fn);
+        if (!pro)
+            return ReturnFalse;
+        ProValueMap &vmap = m_valuemapStack.first();
+        for (auto vit = vmap.begin(); vit != vmap.end(); ) {
+            if (!vit->isEmpty()) {
+                auto isFrom = [pro](const ProString &s) {
+                    return s.sourceFile() == pro;
+                };
+                vit->erase(std::remove_if(vit->begin(), vit->end(), isFrom), vit->end());
+                if (vit->isEmpty()) {
+                    // When an initially non-empty variable becomes entirely empty,
+                    // undefine it altogether.
+                    vit = vmap.erase(vit);
+                    continue;
+                }
+            }
+            ++vit;
+        }
+        for (auto fit = m_functionDefs.testFunctions.begin(); fit != m_functionDefs.testFunctions.end(); ) {
+            if (fit->pro()->id() == pro)
+                fit = m_functionDefs.testFunctions.erase(fit);
+            else
+                ++fit;
+        }
+        for (auto fit = m_functionDefs.replaceFunctions.begin(); fit != m_functionDefs.replaceFunctions.end(); ) {
+            if (fit->pro()->id() == pro)
+                fit = m_functionDefs.replaceFunctions.erase(fit);
+            else
+                ++fit;
+        }
+        ProStringList &iif = m_valuemapStack.first()[ProKey("QMAKE_INTERNAL_INCLUDED_FILES")];
+        int idx = iif.indexOf(ProString(fn));
+        if (idx >= 0)
+            iif.removeAt(idx);
+        return ReturnTrue;
+    }
     case T_INFILE:
         if (args.count() < 2 || args.count() > 3) {
             evalError(fL1S("infile(file, var, [values]) requires two or three arguments."));
@@ -1208,12 +1395,10 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
                 copy.detach();
                 regx.setPattern(copy);
             }
-            int t = 0;
             const auto strings = vars.value(map(args.at(1)));
             for (const ProString &s : strings) {
-                if ((!regx.isEmpty() && regx.exactMatch(s.toQString(m_tmp[t]))) || s == qry)
+                if ((!regx.isEmpty() && regx.exactMatch(s.toQString(m_tmp[m_toggle ^= 1]))) || s == qry)
                     return ReturnTrue;
-                t ^= 1;
             }
         }
         return ReturnFalse;
@@ -1225,7 +1410,8 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
         return ReturnFalse; // Another qmake breakage
     case T_EVAL: {
             VisitReturn ret = ReturnFalse;
-            ProFile *pro = m_parser->parsedProBlock(args.join(statics.field_sep),
+            QString contents = args.join(statics.field_sep);
+            ProFile *pro = m_parser->parsedProBlock(QStringRef(&contents),
                                                     m_current.pro->fileName(), m_current.line);
             if (m_cumulative || pro->isOk()) {
                 m_locationStack.push(m_current);
@@ -1241,7 +1427,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
             evalError(fL1S("if(condition) requires one argument."));
             return ReturnFalse;
         }
-        return evaluateConditional(args.at(0).toQString(),
+        return evaluateConditional(args.at(0).toQStringRef(),
                                    m_current.pro->fileName(), m_current.line);
     }
     case T_CONFIG: {
@@ -1250,13 +1436,13 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
             return ReturnFalse;
         }
         if (args.count() == 1)
-            return returnBool(isActiveConfig(args.at(0).toQString(m_tmp2)));
-        const QStringList &mutuals = args.at(1).toQString(m_tmp2).split(QLatin1Char('|'));
+            return returnBool(isActiveConfig(args.at(0).toQStringRef()));
+        const auto mutuals = args.at(1).toQStringRef().split(QLatin1Char('|'));
         const ProStringList &configs = values(statics.strCONFIG);
 
         for (int i = configs.size() - 1; i >= 0; i--) {
             for (int mut = 0; mut < mutuals.count(); mut++) {
-                if (configs[i] == mutuals[mut].trimmed())
+                if (configs[i].toQStringRef() == mutuals[mut].trimmed())
                     return returnBool(configs[i] == args[0]);
             }
         }
@@ -1277,21 +1463,19 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
         }
         const ProStringList &l = values(map(args.at(0)));
         if (args.count() == 2) {
-            int t = 0;
             for (int i = 0; i < l.size(); ++i) {
                 const ProString &val = l[i];
-                if ((!regx.isEmpty() && regx.exactMatch(val.toQString(m_tmp[t]))) || val == qry)
+                if ((!regx.isEmpty() && regx.exactMatch(val.toQString(m_tmp[m_toggle ^= 1]))) || val == qry)
                     return ReturnTrue;
-                t ^= 1;
             }
         } else {
-            const QStringList &mutuals = args.at(2).toQString(m_tmp3).split(QLatin1Char('|'));
+            const auto mutuals = args.at(2).toQStringRef().split(QLatin1Char('|'));
             for (int i = l.size() - 1; i >= 0; i--) {
                 const ProString val = l[i];
                 for (int mut = 0; mut < mutuals.count(); mut++) {
-                    if (val == mutuals[mut].trimmed()) {
+                    if (val.toQStringRef() == mutuals[mut].trimmed()) {
                         return returnBool((!regx.isEmpty()
-                                           && regx.exactMatch(val.toQString(m_tmp2)))
+                                           && regx.exactMatch(val.toQString(m_tmp[m_toggle ^= 1])))
                                           || val == qry);
                     }
                 }
@@ -1320,7 +1504,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
                        || comp == QLatin1String("=") || comp == QLatin1String("==")) {
                 // fallthrough
             } else {
-                evalError(fL1S("Unexpected modifier to count(%2).").arg(comp.toQString(m_tmp1)));
+                evalError(fL1S("Unexpected modifier to count(%2).").arg(comp.toQStringView()));
                 return ReturnFalse;
             }
         }
@@ -1330,11 +1514,11 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
     case T_LESSTHAN: {
         if (args.count() != 2) {
             evalError(fL1S("%1(variable, value) requires two arguments.")
-                      .arg(function.toQString(m_tmp1)));
+                      .arg(function.toQStringView()));
             return ReturnFalse;
         }
-        const QString &rhs(args.at(1).toQString(m_tmp1)),
-                      &lhs(values(map(args.at(0))).join(statics.field_sep));
+        const ProString &rhs = args.at(1);
+        const QString &lhs = values(map(args.at(0))).join(statics.field_sep);
         bool ok;
         int rhs_int = rhs.toInt(&ok);
         if (ok) { // do integer compare
@@ -1346,21 +1530,34 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
             }
         }
         if (func_t == T_GREATERTHAN)
-            return returnBool(lhs > rhs);
-        return returnBool(lhs < rhs);
+            return returnBool(lhs > rhs.toQStringRef());
+        return returnBool(lhs < rhs.toQStringRef());
     }
     case T_EQUALS:
         if (args.count() != 2) {
             evalError(fL1S("%1(variable, value) requires two arguments.")
-                      .arg(function.toQString(m_tmp1)));
+                      .arg(function.toQStringView()));
             return ReturnFalse;
         }
         return returnBool(values(map(args.at(0))).join(statics.field_sep)
-                          == args.at(1).toQString(m_tmp1));
+                          == args.at(1).toQStringView());
+    case T_VERSION_AT_LEAST:
+    case T_VERSION_AT_MOST: {
+        if (args.count() != 2) {
+            evalError(fL1S("%1(variable, versionNumber) requires two arguments.")
+                      .arg(function.toQStringView()));
+            return ReturnFalse;
+        }
+        const QVersionNumber lvn = QVersionNumber::fromString(values(args.at(0).toKey()).join('.'));
+        const QVersionNumber rvn = QVersionNumber::fromString(args.at(1).toQStringView());
+        if (func_t == T_VERSION_AT_LEAST)
+            return returnBool(lvn >= rvn);
+        return returnBool(lvn <= rvn);
+    }
     case T_CLEAR: {
         if (args.count() != 1) {
             evalError(fL1S("%1(variable) requires one argument.")
-                      .arg(function.toQString(m_tmp1)));
+                      .arg(function.toQStringView()));
             return ReturnFalse;
         }
         ProValueMap *hsh;
@@ -1377,7 +1574,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
     case T_UNSET: {
         if (args.count() != 1) {
             evalError(fL1S("%1(variable) requires one argument.")
-                      .arg(function.toQString(m_tmp1)));
+                      .arg(function.toQStringView()));
             return ReturnFalse;
         }
         ProValueMap *hsh;
@@ -1415,7 +1612,8 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
         if (m_cumulative)
             flags = LoadSilent;
         if (args.count() >= 2) {
-            parseInto = args.at(1).toQString(m_tmp2);
+            if (!args.at(1).isEmpty())
+                parseInto = args.at(1) + QLatin1Char('.');
             if (args.count() >= 3 && isTrue(args.at(2)))
                 flags = LoadSilent;
         }
@@ -1432,17 +1630,15 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
                         it = m_valuemapStack.top().constBegin(),
                         end = m_valuemapStack.top().constEnd();
                         it != end; ++it) {
-                    const QString &ky = it.key().toQString(m_tmp1);
-                    if (!(ky.startsWith(parseInto) &&
-                          (ky.length() == parseInto.length()
-                           || ky.at(parseInto.length()) == QLatin1Char('.'))))
+                    const ProString &ky = it.key();
+                    if (!ky.startsWith(parseInto))
                         newMap[it.key()] = it.value();
                 }
                 for (ProValueMap::ConstIterator it = symbols.constBegin();
                      it != symbols.constEnd(); ++it) {
                     const QString &ky = it.key().toQString(m_tmp1);
                     if (!ky.startsWith(QLatin1Char('.')))
-                        newMap.insert(ProKey(parseInto + QLatin1Char('.') + ky), it.value());
+                        newMap.insert(ProKey(parseInto + ky), it.value());
                 }
                 m_valuemapStack.top() = newMap;
             }
@@ -1485,7 +1681,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
     case T_MESSAGE: {
         if (args.count() != 1) {
             evalError(fL1S("%1(message) requires one argument.")
-                      .arg(function.toQString(m_tmp1)));
+                      .arg(function.toQStringView()));
             return ReturnFalse;
         }
         const QString &msg = m_option->expandEnvVars(args.at(0).toQString(m_tmp2));
@@ -1494,7 +1690,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
 #ifdef PROEVALUATOR_FULL
                 fputs(msg.toLatin1().constData(), stderr);
 #endif
-            } else {
+            } else if (!msg.isEmpty() || func_t != T_ERROR) {
                 m_handler->fileMessage(
                         (func_t == T_ERROR   ? QMakeHandler::ErrorMessage :
                          func_t == T_WARNING ? QMakeHandler::WarningMessage :
@@ -1513,10 +1709,10 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
 #ifdef PROEVALUATOR_FULL
         if (m_cumulative) // Anything else would be insanity
             return ReturnFalse;
-#ifndef QT_BOOTSTRAPPED
+#if QT_CONFIG(process)
         QProcess proc;
         proc.setProcessChannelMode(QProcess::ForwardedChannels);
-        runProcess(&proc, args.at(0).toQString(m_tmp2));
+        runProcess(&proc, args.at(0).toQString());
         return returnBool(proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0);
 #else
         int ec = system((QLatin1String("cd ")
@@ -1553,8 +1749,10 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
             return ReturnTrue;
         int slsh = file.lastIndexOf(QLatin1Char('/'));
         QString fn = file.mid(slsh+1);
+        fn.detach();
         if (fn.contains(QLatin1Char('*')) || fn.contains(QLatin1Char('?'))) {
             QString dirstr = file.left(slsh+1);
+            dirstr.detach();
             if (!QDir(dirstr).entryList(QStringList(fn)).isEmpty())
                 return ReturnTrue;
         }
@@ -1567,7 +1765,8 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
             return ReturnFalse;
         }
 #ifdef PROEVALUATOR_FULL
-        const QString &fn = resolvePath(args.at(0).toQString(m_tmp1));
+        QString fn = resolvePath(args.at(0).toQString(m_tmp1));
+        fn.detach();
         if (!QDir::current().mkpath(fn)) {
             evalError(fL1S("Cannot create directory %1.").arg(QDir::toNativeSeparators(fn)));
             return ReturnFalse;
@@ -1588,15 +1787,14 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
             if (!vals.isEmpty())
                 contents = vals.join(QLatin1Char('\n')) + QLatin1Char('\n');
             if (args.count() >= 3) {
-                const auto opts = split_value_list(args.at(2).toQString(m_tmp2));
+                const auto opts = split_value_list(args.at(2).toQStringRef());
                 for (const ProString &opt : opts) {
-                    opt.toQString(m_tmp3);
-                    if (m_tmp3 == QLatin1String("append")) {
+                    if (opt == QLatin1String("append")) {
                         mode = QIODevice::Append;
-                    } else if (m_tmp3 == QLatin1String("exe")) {
+                    } else if (opt == QLatin1String("exe")) {
                         exe = true;
                     } else {
-                        evalError(fL1S("write_file(): invalid flag %1.").arg(m_tmp3));
+                        evalError(fL1S("write_file(): invalid flag %1.").arg(opt.toQString(m_tmp3)));
                         return ReturnFalse;
                     }
                 }
@@ -1614,40 +1812,11 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
 #ifdef PROEVALUATOR_FULL
         const QString &tfn = resolvePath(args.at(0).toQString(m_tmp1));
         const QString &rfn = resolvePath(args.at(1).toQString(m_tmp2));
-#ifdef Q_OS_UNIX
-        struct stat st;
-        if (stat(rfn.toLocal8Bit().constData(), &st)) {
-            evalError(fL1S("Cannot stat() reference file %1: %2.").arg(rfn, fL1S(strerror(errno))));
+        QString error;
+        if (!IoUtils::touchFile(tfn, rfn, &error)) {
+            evalError(error);
             return ReturnFalse;
         }
-        struct utimbuf utb;
-        utb.actime = time(0);
-        utb.modtime = st.st_mtime;
-        if (utime(tfn.toLocal8Bit().constData(), &utb)) {
-            evalError(fL1S("Cannot touch %1: %2.").arg(tfn, fL1S(strerror(errno))));
-            return ReturnFalse;
-        }
-#else
-        HANDLE rHand = CreateFile((wchar_t*)rfn.utf16(),
-                                  GENERIC_READ, FILE_SHARE_READ,
-                                  NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (rHand == INVALID_HANDLE_VALUE) {
-            evalError(fL1S("Cannot open reference file %1: %2").arg(rfn, windowsErrorCode()));
-            return ReturnFalse;
-        }
-        FILETIME ft;
-        GetFileTime(rHand, 0, 0, &ft);
-        CloseHandle(rHand);
-        HANDLE wHand = CreateFile((wchar_t*)tfn.utf16(),
-                                  GENERIC_WRITE, FILE_SHARE_READ,
-                                  NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (wHand == INVALID_HANDLE_VALUE) {
-            evalError(fL1S("Cannot open %1: %2").arg(tfn, windowsErrorCode()));
-            return ReturnFalse;
-        }
-        SetFileTime(wHand, 0, 0, &ft);
-        CloseHandle(wHand);
-#endif
 #endif
         return ReturnTrue;
     }
@@ -1661,23 +1830,22 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
         enum { CacheSet, CacheAdd, CacheSub } mode = CacheSet;
         ProKey srcvar;
         if (args.count() >= 2) {
-            const auto opts = split_value_list(args.at(1).toQString(m_tmp2));
+            const auto opts = split_value_list(args.at(1).toQStringRef());
             for (const ProString &opt : opts) {
-                opt.toQString(m_tmp3);
-                if (m_tmp3 == QLatin1String("transient")) {
+                if (opt == QLatin1String("transient")) {
                     persist = false;
-                } else if (m_tmp3 == QLatin1String("super")) {
+                } else if (opt == QLatin1String("super")) {
                     target = TargetSuper;
-                } else if (m_tmp3 == QLatin1String("stash")) {
+                } else if (opt == QLatin1String("stash")) {
                     target = TargetStash;
-                } else if (m_tmp3 == QLatin1String("set")) {
+                } else if (opt == QLatin1String("set")) {
                     mode = CacheSet;
-                } else if (m_tmp3 == QLatin1String("add")) {
+                } else if (opt == QLatin1String("add")) {
                     mode = CacheAdd;
-                } else if (m_tmp3 == QLatin1String("sub")) {
+                } else if (opt == QLatin1String("sub")) {
                     mode = CacheSub;
                 } else {
-                    evalError(fL1S("cache(): invalid flag %1.").arg(m_tmp3));
+                    evalError(fL1S("cache(): invalid flag %1.").arg(opt.toQString(m_tmp3)));
                     return ReturnFalse;
                 }
             }
@@ -1695,7 +1863,7 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
                 srcvar = dstvar;
             ProValueMap::Iterator srcvarIt;
             if (!findValues(srcvar, &srcvarIt)) {
-                evalError(fL1S("Variable %1 is not defined.").arg(srcvar.toQString(m_tmp1)));
+                evalError(fL1S("Variable %1 is not defined.").arg(srcvar.toQStringView()));
                 return ReturnFalse;
             }
             // The caches for the host and target may differ (e.g., when we are manipulating
@@ -1818,8 +1986,13 @@ QMakeEvaluator::VisitReturn QMakeEvaluator::evaluateBuiltinConditional(
         }
         return writeFile(fL1S("cache "), fn, QIODevice::Append, false, varstr);
     }
+    case T_RELOAD_PROPERTIES:
+#ifdef QT_BUILD_QMAKE
+        m_option->reloadProperties();
+#endif
+        return ReturnTrue;
     default:
-        evalError(fL1S("Function '%1' is not implemented.").arg(function.toQString(m_tmp1)));
+        evalError(fL1S("Function '%1' is not implemented.").arg(function.toQStringView()));
         return ReturnFalse;
     }
 }

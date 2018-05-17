@@ -49,6 +49,8 @@
 #include <qvariant.h>
 #include <qvector.h>
 
+#include <private/qimage_p.h> // for qt_getImageText
+
 #include <png.h>
 #include <pngconf.h>
 
@@ -75,19 +77,7 @@
 #   endif
 #endif
 
-#ifdef Q_OS_WINCE
-#define CALLBACK_CALL_TYPE        __cdecl
-#else
-#define CALLBACK_CALL_TYPE
-#endif
-
 QT_BEGIN_NAMESPACE
-
-#if defined(Q_OS_WINCE) && defined(STANDARDSHELL_UI_MODEL)
-#  define Q_INTERNAL_WIN_NO_THROW __declspec(nothrow)
-#else
-#  define Q_INTERNAL_WIN_NO_THROW
-#endif
 
 // avoid going through QImage::scanLine() which calls detach
 #define FAST_SCAN_LINE(data, bpl, y) (data + (y) * bpl)
@@ -190,7 +180,7 @@ private:
 
 extern "C" {
 static
-void CALLBACK_CALL_TYPE iod_read_fn(png_structp png_ptr, png_bytep data, png_size_t length)
+void iod_read_fn(png_structp png_ptr, png_bytep data, png_size_t length)
 {
     QPngHandlerPrivate *d = (QPngHandlerPrivate *)png_get_io_ptr(png_ptr);
     QIODevice *in = d->q->device();
@@ -215,7 +205,7 @@ void CALLBACK_CALL_TYPE iod_read_fn(png_structp png_ptr, png_bytep data, png_siz
 
 
 static
-void CALLBACK_CALL_TYPE qpiw_write_fn(png_structp png_ptr, png_bytep data, png_size_t length)
+void qpiw_write_fn(png_structp png_ptr, png_bytep data, png_size_t length)
 {
     QPNGImageWriter* qpiw = (QPNGImageWriter*)png_get_io_ptr(png_ptr);
     QIODevice* out = qpiw->device();
@@ -229,7 +219,7 @@ void CALLBACK_CALL_TYPE qpiw_write_fn(png_structp png_ptr, png_bytep data, png_s
 
 
 static
-void CALLBACK_CALL_TYPE qpiw_flush_fn(png_structp /* png_ptr */)
+void qpiw_flush_fn(png_structp /* png_ptr */)
 {
 }
 
@@ -487,7 +477,7 @@ static void read_image_scaled(QImage *outImage, png_structp png_ptr, png_infop i
 }
 
 extern "C" {
-static void CALLBACK_CALL_TYPE qt_png_warning(png_structp /*png_ptr*/, png_const_charp message)
+static void qt_png_warning(png_structp /*png_ptr*/, png_const_charp message)
 {
     qWarning("libpng warning: %s", message);
 }
@@ -495,7 +485,7 @@ static void CALLBACK_CALL_TYPE qt_png_warning(png_structp /*png_ptr*/, png_const
 }
 
 
-void Q_INTERNAL_WIN_NO_THROW QPngHandlerPrivate::readPngTexts(png_info *info)
+void QPngHandlerPrivate::readPngTexts(png_info *info)
 {
     png_textp text_ptr;
     int num_text=0;
@@ -522,7 +512,7 @@ void Q_INTERNAL_WIN_NO_THROW QPngHandlerPrivate::readPngTexts(png_info *info)
 }
 
 
-bool Q_INTERNAL_WIN_NO_THROW QPngHandlerPrivate::readPngHeader()
+bool QPngHandlerPrivate::readPngHeader()
 {
     state = Error;
     png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING,0,0,0);
@@ -530,6 +520,12 @@ bool Q_INTERNAL_WIN_NO_THROW QPngHandlerPrivate::readPngHeader()
         return false;
 
     png_set_error_fn(png_ptr, 0, 0, qt_png_warning);
+
+#if defined(PNG_SET_OPTION_SUPPORTED) && defined(PNG_MAXIMUM_INFLATE_WINDOW)
+    // Trade off a little bit of memory for better compatibility with existing images
+    // Ref. "invalid distance too far back" explanation in libpng-manual.txt
+    png_set_option(png_ptr, PNG_MAXIMUM_INFLATE_WINDOW, PNG_OPTION_ON);
+#endif
 
     info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr) {
@@ -566,7 +562,7 @@ bool Q_INTERNAL_WIN_NO_THROW QPngHandlerPrivate::readPngHeader()
     return true;
 }
 
-bool Q_INTERNAL_WIN_NO_THROW QPngHandlerPrivate::readPngImage(QImage *outImage)
+bool QPngHandlerPrivate::readPngImage(QImage *outImage)
 {
     if (state == Error)
         return false;
@@ -730,27 +726,10 @@ void QPNGImageWriter::setGamma(float g)
     gamma = g;
 }
 
-
 static void set_text(const QImage &image, png_structp png_ptr, png_infop info_ptr,
                      const QString &description)
 {
-    QMap<QString, QString> text;
-    foreach (const QString &key, image.textKeys()) {
-        if (!key.isEmpty())
-            text.insert(key, image.text(key));
-    }
-    foreach (const QString &pair, description.split(QLatin1String("\n\n"))) {
-        int index = pair.indexOf(QLatin1Char(':'));
-        if (index >= 0 && pair.indexOf(QLatin1Char(' ')) < index) {
-            QString s = pair.simplified();
-            if (!s.isEmpty())
-                text.insert(QLatin1String("Description"), s);
-        } else {
-            QString key = pair.left(index);
-            if (!key.simplified().isEmpty())
-                text.insert(key, pair.mid(index + 2).simplified());
-        }
-    }
+    const QMap<QString, QString> text = qt_getImageText(image, description);
 
     if (text.isEmpty())
         return;
@@ -766,7 +745,7 @@ static void set_text(const QImage &image, png_structp png_ptr, png_infop info_pt
 
 #ifdef PNG_iTXt_SUPPORTED
         bool needsItxt = false;
-        foreach(const QChar c, it.value()) {
+        for (const QChar c : it.value()) {
             uchar ch = c.cell();
             if (c.row() || (ch < 0x20 && ch != '\n') || (ch > 0x7e && ch < 0xa0)) {
                 needsItxt = true;
@@ -810,7 +789,7 @@ bool QPNGImageWriter::writeImage(const QImage& image, int off_x, int off_y)
     return writeImage(image, -1, QString(), off_x, off_y);
 }
 
-bool Q_INTERNAL_WIN_NO_THROW QPNGImageWriter::writeImage(const QImage& image, volatile int quality_in, const QString &description,
+bool QPNGImageWriter::writeImage(const QImage& image, volatile int quality_in, const QString &description,
                                  int off_x_in, int off_y_in)
 {
     QPoint offset = image.offset();
@@ -851,7 +830,7 @@ bool Q_INTERNAL_WIN_NO_THROW QPNGImageWriter::writeImage(const QImage& image, vo
 
 
     int color_type = 0;
-    if (image.colorCount()) {
+    if (image.format() <= QImage::Format_Indexed8) {
         if (image.isGrayscale())
             color_type = PNG_COLOR_TYPE_GRAY;
         else

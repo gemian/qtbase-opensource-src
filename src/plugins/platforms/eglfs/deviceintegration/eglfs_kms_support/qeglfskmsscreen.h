@@ -42,60 +42,52 @@
 #ifndef QEGLFSKMSSCREEN_H
 #define QEGLFSKMSSCREEN_H
 
-#include "qeglfskmsintegration.h"
-#include "qeglfsscreen.h"
+#include "private/qeglfsscreen_p.h"
 #include <QtCore/QList>
 #include <QtCore/QMutex>
 
-#include <xf86drm.h>
-#include <xf86drmMode.h>
+#include <QtKmsSupport/private/qkmsdevice_p.h>
+#include <QtEdidSupport/private/qedidparser_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class QEglFSKmsDevice;
 class QEglFSKmsInterruptHandler;
-
-struct QEglFSKmsOutput
-{
-    QString name;
-    uint32_t connector_id;
-    uint32_t crtc_id;
-    QSizeF physical_size;
-    int mode; // index of selected mode in list below
-    bool mode_set;
-    drmModeCrtcPtr saved_crtc;
-    QList<drmModeModeInfo> modes;
-    int subpixel;
-    drmModePropertyPtr dpms_prop;
-};
 
 class Q_EGLFS_EXPORT QEglFSKmsScreen : public QEglFSScreen
 {
 public:
-    QEglFSKmsScreen(QEglFSKmsIntegration *integration,
-                    QEglFSKmsDevice *device,
-                    QEglFSKmsOutput output,
-                    QPoint position);
+    QEglFSKmsScreen(QKmsDevice *device, const QKmsOutput &output);
     ~QEglFSKmsScreen();
 
-    QRect geometry() const Q_DECL_OVERRIDE;
-    int depth() const Q_DECL_OVERRIDE;
-    QImage::Format format() const Q_DECL_OVERRIDE;
+    void setVirtualPosition(const QPoint &pos);
 
-    QSizeF physicalSize() const Q_DECL_OVERRIDE;
-    QDpi logicalDpi() const Q_DECL_OVERRIDE;
-    Qt::ScreenOrientation nativeOrientation() const Q_DECL_OVERRIDE;
-    Qt::ScreenOrientation orientation() const Q_DECL_OVERRIDE;
+    QRect rawGeometry() const override;
 
-    QString name() const Q_DECL_OVERRIDE;
+    int depth() const override;
+    QImage::Format format() const override;
 
-    qreal refreshRate() const Q_DECL_OVERRIDE;
+    QSizeF physicalSize() const override;
+    QDpi logicalDpi() const override;
+    Qt::ScreenOrientation nativeOrientation() const override;
+    Qt::ScreenOrientation orientation() const override;
 
-    QList<QPlatformScreen *> virtualSiblings() const Q_DECL_OVERRIDE { return m_siblings; }
+    QString name() const override;
+
+    QString manufacturer() const override;
+    QString model() const override;
+    QString serialNumber() const override;
+
+    qreal refreshRate() const override;
+
+    QList<QPlatformScreen *> virtualSiblings() const override { return m_siblings; }
     void setVirtualSiblings(QList<QPlatformScreen *> sl) { m_siblings = sl; }
 
-    QEglFSKmsIntegration *integration() const { return m_integration; }
-    QEglFSKmsDevice *device() const { return m_device; }
+    QVector<QPlatformScreen::Mode> modes() const override;
+
+    int currentMode() const override;
+    int preferredMode() const override;
+
+    QKmsDevice *device() const { return m_device; }
 
     void destroySurface();
 
@@ -103,19 +95,19 @@ public:
     virtual void flip();
     virtual void flipFinished();
 
-    QEglFSKmsOutput &output() { return m_output; }
+    QKmsOutput &output() { return m_output; }
     void restoreMode();
 
-    SubpixelAntialiasingType subpixelAntialiasingTypeHint() const Q_DECL_OVERRIDE;
+    SubpixelAntialiasingType subpixelAntialiasingTypeHint() const override;
 
-    QPlatformScreen::PowerState powerState() const Q_DECL_OVERRIDE;
-    void setPowerState(QPlatformScreen::PowerState state) Q_DECL_OVERRIDE;
+    QPlatformScreen::PowerState powerState() const override;
+    void setPowerState(QPlatformScreen::PowerState state) override;
 
 protected:
-    QEglFSKmsIntegration *m_integration;
-    QEglFSKmsDevice *m_device;
+    QKmsDevice *m_device;
 
-    QEglFSKmsOutput m_output;
+    QKmsOutput m_output;
+    QEdidParser m_edid;
     QPoint m_pos;
 
     QList<QPlatformScreen *> m_siblings;

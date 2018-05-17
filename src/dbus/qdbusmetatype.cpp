@@ -216,7 +216,6 @@ Q_GLOBAL_STATIC(QReadWriteLock, customTypesLock)
 void QDBusMetaType::registerMarshallOperators(int id, MarshallFunction mf,
                                               DemarshallFunction df)
 {
-    QByteArray var;
     QVector<QDBusCustomTypeInfo> *ct = customTypes();
     if (id < 0 || !mf || !df || !ct)
         return;                 // error!
@@ -373,7 +372,7 @@ int QDBusMetaType::signatureToType(const char *signature)
             return qMetaTypeId<QList<QDBusSignature> >();
 
         }
-        // fall through
+        Q_FALLTHROUGH();
     default:
         return QMetaType::UnknownType;
     }

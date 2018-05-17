@@ -38,10 +38,10 @@
 ****************************************************************************/
 
 #include <qglobal.h>
-
-#ifndef QT_NO_COLUMNVIEW
-
 #include "qcolumnview.h"
+
+#if QT_CONFIG(columnview)
+
 #include "qcolumnview_p.h"
 #include "qcolumnviewgrip_p.h"
 
@@ -52,8 +52,6 @@
 #include <qdebug.h>
 
 QT_BEGIN_NAMESPACE
-
-#define ANIMATION_DURATION_MSEC 150
 
 /*!
     \since 4.3
@@ -107,7 +105,6 @@ void QColumnViewPrivate::initialize()
     q->setTextElideMode(Qt::ElideMiddle);
 #ifndef QT_NO_ANIMATION
     QObject::connect(&currentAnimation, SIGNAL(finished()), q, SLOT(_q_changeCurrentColumn()));
-    currentAnimation.setDuration(ANIMATION_DURATION_MSEC);
     currentAnimation.setTargetObject(hbar);
     currentAnimation.setPropertyName("value");
     currentAnimation.setEasingCurve(QEasingCurve::InOutQuad);
@@ -330,7 +327,8 @@ void QColumnView::scrollTo(const QModelIndex &index, ScrollHint hint)
     }
 
 #ifndef QT_NO_ANIMATION
-    if (style()->styleHint(QStyle::SH_Widget_Animate, 0, this)) {
+    if (const int animationDuration = style()->styleHint(QStyle::SH_Widget_Animation_Duration, 0, this)) {
+        d->currentAnimation.setDuration(animationDuration);
         d->currentAnimation.setEndValue(newScrollbarValue);
         d->currentAnimation.start();
     } else
@@ -1170,4 +1168,4 @@ QT_END_NAMESPACE
 
 #include "moc_qcolumnview.cpp"
 
-#endif // QT_NO_COLUMNVIEW
+#endif // QT_CONFIG(columnview)

@@ -42,9 +42,6 @@
 
 QT_BEGIN_NAMESPACE
 
-extern bool qt_cancelIo(HANDLE handle, OVERLAPPED *overlapped);     // from qwindowspipereader.cpp
-
-
 QWindowsPipeWriter::Overlapped::Overlapped(QWindowsPipeWriter *pipeWriter)
     : pipeWriter(pipeWriter)
 {
@@ -59,8 +56,7 @@ void QWindowsPipeWriter::Overlapped::clear()
 QWindowsPipeWriter::QWindowsPipeWriter(HANDLE pipeWriteEnd, QObject *parent)
     : QObject(parent),
       handle(pipeWriteEnd),
-      overlapped(this),
-      numberOfBytesToWrite(0),
+      overlapped(nullptr),
       pendingBytesWrittenValue(0),
       stopped(true),
       writeSequenceStarted(false),
@@ -75,6 +71,7 @@ QWindowsPipeWriter::QWindowsPipeWriter(HANDLE pipeWriteEnd, QObject *parent)
 QWindowsPipeWriter::~QWindowsPipeWriter()
 {
     stop();
+    delete overlapped;
 }
 
 bool QWindowsPipeWriter::waitForWrite(int msecs)
@@ -100,7 +97,7 @@ bool QWindowsPipeWriter::waitForWrite(int msecs)
 
 qint64 QWindowsPipeWriter::bytesToWrite() const
 {
-    return numberOfBytesToWrite + pendingBytesWrittenValue;
+    return buffer.size() + pendingBytesWrittenValue;
 }
 
 void QWindowsPipeWriter::emitPendingBytesWrittenValue()
@@ -125,7 +122,10 @@ void QWindowsPipeWriter::writeFileCompleted(DWORD errorCode, DWORD numberOfBytes
                                             OVERLAPPED *overlappedBase)
 {
     Overlapped *overlapped = static_cast<Overlapped *>(overlappedBase);
-    overlapped->pipeWriter->notified(errorCode, numberOfBytesTransfered);
+    if (overlapped->pipeWriter)
+        overlapped->pipeWriter->notified(errorCode, numberOfBytesTransfered);
+    else
+        delete overlapped;
 }
 
 /*!
@@ -136,7 +136,6 @@ void QWindowsPipeWriter::notified(DWORD errorCode, DWORD numberOfBytesWritten)
 {
     notifiedCalled = true;
     writeSequenceStarted = false;
-    numberOfBytesToWrite = 0;
     Q_ASSERT(errorCode != ERROR_SUCCESS || numberOfBytesWritten == DWORD(buffer.size()));
     buffer.clear();
 
@@ -188,17 +187,25 @@ bool QWindowsPipeWriter::write(const QByteArray &ba)
     if (writeSequenceStarted)
         return false;
 
-    overlapped.clear();
+    if (!overlapped)
+        overlapped = new Overlapped(this);
+    overlapped->clear();
     buffer = ba;
-    numberOfBytesToWrite = buffer.size();
     stopped = false;
     writeSequenceStarted = true;
-    if (!WriteFileEx(handle, buffer.constData(), numberOfBytesToWrite,
-                     &overlapped, &writeFileCompleted)) {
+    if (!WriteFileEx(handle, buffer.constData(), buffer.size(),
+                     overlapped, &writeFileCompleted)) {
         writeSequenceStarted = false;
-        numberOfBytesToWrite = 0;
         buffer.clear();
-        qErrnoWarning("QWindowsPipeWriter::write failed.");
+
+        const DWORD errorCode = GetLastError();
+        switch (errorCode) {
+        case ERROR_NO_DATA:     // "The pipe is being closed."
+            // The other end has closed the pipe. This can happen in QLocalSocket. Do not warn.
+            break;
+        default:
+            qErrnoWarning(errorCode, "QWindowsPipeWriter::write failed.");
+        }
         return false;
     }
 
@@ -211,14 +218,16 @@ void QWindowsPipeWriter::stop()
     bytesWrittenPending = false;
     pendingBytesWrittenValue = 0;
     if (writeSequenceStarted) {
-        if (!qt_cancelIo(handle, &overlapped)) {
+        overlapped->pipeWriter = nullptr;
+        if (!CancelIoEx(handle, overlapped)) {
             const DWORD dwError = GetLastError();
             if (dwError != ERROR_NOT_FOUND) {
-                qErrnoWarning(dwError, "QWindowsPipeWriter: qt_cancelIo on handle %x failed.",
+                qErrnoWarning(dwError, "QWindowsPipeWriter: CancelIoEx on handle %p failed.",
                               handle);
             }
         }
-        waitForNotification(-1);
+        overlapped = nullptr;       // The object will be deleted in the I/O callback.
+        writeSequenceStarted = false;
     }
 }
 

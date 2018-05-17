@@ -74,6 +74,7 @@
 #include "qline.h"
 #endif
 
+#include <cmath>
 #include <float.h>
 #include <cstring>
 
@@ -203,7 +204,7 @@ static qlonglong qConvertToNumber(const QVariant::Private *d, bool *ok)
     case QMetaType::QJsonValue:
         if (!v_cast<QJsonValue>(d)->isDouble())
             break;
-        // no break
+        Q_FALLTHROUGH();
 #endif
     case QVariant::Double:
     case QVariant::Int:
@@ -278,7 +279,7 @@ static qulonglong qConvertToUnsignedNumber(const QVariant::Private *d, bool *ok)
     case QMetaType::QJsonValue:
         if (!v_cast<QJsonValue>(d)->isDouble())
             break;
-        // no break
+        Q_FALLTHROUGH();
 #endif
     case QVariant::Double:
     case QVariant::Int:
@@ -319,7 +320,7 @@ template<typename TInput, typename LiteralWrapper>
 inline bool qt_convertToBool(const QVariant::Private *const d)
 {
     TInput str = v_cast<TInput>(d)->toLower();
-    return !(str == LiteralWrapper("0") || str == LiteralWrapper("false") || str.isEmpty());
+    return !(str.isEmpty() || str == LiteralWrapper("0") || str == LiteralWrapper("false"));
 }
 
 /*!
@@ -468,6 +469,9 @@ static bool convert(const QVariant::Private *d, int t, void *result, bool *ok)
 #endif
         case QVariant::Uuid:
             *str = v_cast<QUuid>(d)->toString();
+            break;
+        case QMetaType::Nullptr:
+            *str = QString();
             break;
         default:
 #ifndef QT_NO_QOBJECT
@@ -648,6 +652,12 @@ static bool convert(const QVariant::Private *d, int t, void *result, bool *ok)
         case QVariant::Bool:
             *ba = QByteArray(d->data.b ? "true" : "false");
             break;
+        case QVariant::Uuid:
+            *ba = v_cast<QUuid>(d)->toByteArray();
+            break;
+        case QMetaType::Nullptr:
+            *ba = QByteArray();
+            break;
         default:
 #ifndef QT_NO_QOBJECT
             {
@@ -700,7 +710,7 @@ static bool convert(const QVariant::Private *d, int t, void *result, bool *ok)
         bool *b = static_cast<bool *>(result);
         switch(d->type) {
         case QVariant::ByteArray:
-            *b = qt_convertToBool<QByteArray, QByteArray>(d);
+            *b = qt_convertToBool<QByteArray, const char*>(d);
             break;
         case QVariant::String:
             *b = qt_convertToBool<QString, QLatin1String>(d);
@@ -851,6 +861,12 @@ static bool convert(const QVariant::Private *d, int t, void *result, bool *ok)
         if (qstrcmp(QMetaType::typeName(d->type), "QMap<QString, QVariant>") == 0) {
             *static_cast<QVariantMap *>(result) =
                 *static_cast<QMap<QString, QVariant> *>(d->data.shared->ptr);
+        } else if (d->type == QVariant::Hash) {
+            QVariantMap *map = static_cast<QVariantMap *>(result);
+            const QVariantHash *hash = v_cast<QVariantHash>(d);
+            const auto end = hash->end();
+            for (auto it = hash->begin(); it != end; ++it)
+                map->insertMulti(it.key(), it.value());
 #ifndef QT_BOOTSTRAPPED
         } else if (d->type == QMetaType::QJsonValue) {
             if (!v_cast<QJsonValue>(d)->isObject())
@@ -867,6 +883,12 @@ static bool convert(const QVariant::Private *d, int t, void *result, bool *ok)
         if (qstrcmp(QMetaType::typeName(d->type), "QHash<QString, QVariant>") == 0) {
             *static_cast<QVariantHash *>(result) =
                 *static_cast<QHash<QString, QVariant> *>(d->data.shared->ptr);
+        } else if (d->type == QVariant::Map) {
+            QVariantHash *hash = static_cast<QVariantHash *>(result);
+            const QVariantMap *map = v_cast<QVariantMap>(d);
+            const auto end = map->end();
+            for (auto it = map->begin(); it != end; ++it)
+                hash->insertMulti(it.key(), it.value());
 #ifndef QT_BOOTSTRAPPED
         } else if (d->type == QMetaType::QJsonValue) {
             if (!v_cast<QJsonValue>(d)->isObject())
@@ -915,10 +937,114 @@ static bool convert(const QVariant::Private *d, int t, void *result, bool *ok)
         case QVariant::String:
             *static_cast<QUuid *>(result) = QUuid(*v_cast<QString>(d));
             break;
+        case QVariant::ByteArray:
+            *static_cast<QUuid *>(result) = QUuid(*v_cast<QByteArray>(d));
+            break;
         default:
             return false;
         }
         break;
+#ifndef QT_BOOTSTRAPPED
+    case QMetaType::QJsonValue:
+        switch (d->type) {
+        case QMetaType::Nullptr:
+            *static_cast<QJsonValue *>(result) = QJsonValue(QJsonValue::Null);
+            break;
+        case QVariant::Bool:
+            *static_cast<QJsonValue *>(result) = QJsonValue(d->data.b);
+            break;
+        case QMetaType::Int:
+        case QMetaType::UInt:
+        case QMetaType::Double:
+        case QMetaType::Float:
+        case QMetaType::ULong:
+        case QMetaType::Long:
+        case QMetaType::LongLong:
+        case QMetaType::ULongLong:
+        case QMetaType::UShort:
+        case QMetaType::UChar:
+        case QMetaType::Char:
+        case QMetaType::SChar:
+        case QMetaType::Short:
+            *static_cast<QJsonValue *>(result) = QJsonValue(qConvertToRealNumber(d, ok));
+            Q_ASSERT(ok);
+            break;
+        case QVariant::String:
+            *static_cast<QJsonValue *>(result) = QJsonValue(*v_cast<QString>(d));
+            break;
+        case QVariant::StringList:
+            *static_cast<QJsonValue *>(result) = QJsonValue(QJsonArray::fromStringList(*v_cast<QStringList>(d)));
+            break;
+        case QVariant::List:
+            *static_cast<QJsonValue *>(result) = QJsonValue(QJsonArray::fromVariantList(*v_cast<QVariantList>(d)));
+            break;
+        case QVariant::Map:
+            *static_cast<QJsonValue *>(result) = QJsonValue(QJsonObject::fromVariantMap(*v_cast<QVariantMap>(d)));
+            break;
+        case QVariant::Hash:
+            *static_cast<QJsonValue *>(result) = QJsonValue(QJsonObject::fromVariantHash(*v_cast<QVariantHash>(d)));
+            break;
+        case QMetaType::QJsonObject:
+            *static_cast<QJsonValue *>(result) = *v_cast<QJsonObject>(d);
+            break;
+        case QMetaType::QJsonArray:
+            *static_cast<QJsonValue *>(result) = *v_cast<QJsonArray>(d);
+            break;
+        case QMetaType::QJsonDocument: {
+            QJsonDocument doc = *v_cast<QJsonDocument>(d);
+            *static_cast<QJsonValue *>(result) = doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object());
+            break;
+        }
+        default:
+            *static_cast<QJsonValue *>(result) = QJsonValue(QJsonValue::Undefined);
+            return false;
+        }
+        break;
+    case QMetaType::QJsonArray:
+        switch (d->type) {
+        case QVariant::StringList:
+            *static_cast<QJsonArray *>(result) = QJsonArray::fromStringList(*v_cast<QStringList>(d));
+            break;
+        case QVariant::List:
+            *static_cast<QJsonArray *>(result) = QJsonArray::fromVariantList(*v_cast<QVariantList>(d));
+            break;
+        case QMetaType::QJsonValue:
+            if (!v_cast<QJsonValue>(d)->isArray())
+                return false;
+            *static_cast<QJsonArray *>(result) = v_cast<QJsonValue>(d)->toArray();
+            break;
+        case QMetaType::QJsonDocument:
+            if (!v_cast<QJsonDocument>(d)->isArray())
+                return false;
+            *static_cast<QJsonArray *>(result) = v_cast<QJsonDocument>(d)->array();
+            break;
+        default:
+            return false;
+        }
+        break;
+    case QMetaType::QJsonObject:
+        switch (d->type) {
+        case QVariant::Map:
+            *static_cast<QJsonObject *>(result) = QJsonObject::fromVariantMap(*v_cast<QVariantMap>(d));
+            break;
+        case QVariant::Hash:
+            *static_cast<QJsonObject *>(result) = QJsonObject::fromVariantHash(*v_cast<QVariantHash>(d));
+            break;
+        case QMetaType::QJsonValue:
+            if (!v_cast<QJsonValue>(d)->isObject())
+                return false;
+            *static_cast<QJsonObject *>(result) = v_cast<QJsonValue>(d)->toObject();
+            break;
+        case QMetaType::QJsonDocument:
+            if (v_cast<QJsonDocument>(d)->isArray())
+                return false;
+            *static_cast<QJsonObject *>(result) = v_cast<QJsonDocument>(d)->object();
+            break;
+        default:
+            return false;
+        }
+        break;
+#endif
     default:
 #ifndef QT_NO_QOBJECT
         if (d->type == QVariant::String || d->type == QVariant::ByteArray) {
@@ -1057,7 +1183,17 @@ static void customClear(QVariant::Private *d)
 
 static bool customIsNull(const QVariant::Private *d)
 {
-    return d->is_null;
+    if (d->is_null)
+        return true;
+    const char *const typeName = QMetaType::typeName(d->type);
+    if (Q_UNLIKELY(!typeName) && Q_LIKELY(!QMetaType::isRegistered(d->type)))
+        qFatal("QVariant::isNull: type %d unknown to QVariant.", d->type);
+    uint typeNameLen = qstrlen(typeName);
+    if (typeNameLen > 0 && typeName[typeNameLen - 1] == '*') {
+        const void *d_ptr = d->is_shared ? d->data.shared->ptr : &(d->data.ptr);
+        return *static_cast<void *const *>(d_ptr) == nullptr;
+    }
+    return false;
 }
 
 static bool customCompare(const QVariant::Private *a, const QVariant::Private *b)
@@ -1186,7 +1322,7 @@ Q_CORE_EXPORT void QVariantPrivate::registerHandler(const int /* Modules::Names 
     \snippet code/src_corelib_kernel_qvariant.cpp 1
 
     QVariant can be extended to support other types than those
-    mentioned in the \l Type enum. See the \l QMetaType documentation
+    mentioned in the \l Type enum. See \l{Creating Custom Qt Types}{Creating Custom Qt Types}
     for details.
 
     \section1 A Note on GUI Types
@@ -1339,7 +1475,11 @@ Q_CORE_EXPORT void QVariantPrivate::registerHandler(const int /* Modules::Names 
 /*!
     \fn QVariant::QVariant(Type type)
 
-    Constructs a null variant of type \a type.
+    Constructs an uninitialized variant of type \a type. This will create a
+    variant in a special null state that if accessed will return a default
+    constructed value of the \a type.
+
+    \sa isNull()
 */
 
 
@@ -2063,6 +2203,7 @@ void QVariant::load(QDataStream &s)
         typeId = QMetaType::type(name.constData());
         if (typeId == QMetaType::UnknownType) {
             s.setStatus(QDataStream::ReadCorruptData);
+            qWarning("QVariant::load: unknown user type with name %s.", name.constData());
             return;
         }
     }
@@ -2356,7 +2497,7 @@ QByteArray QVariant::toByteArray() const
     \fn QPoint QVariant::toPoint() const
 
     Returns the variant as a QPoint if the variant has userType()
-    \l QMetaType::QPointF or \l QMetaType::QPointF; otherwise returns a null
+    \l QMetaType::QPoint or \l QMetaType::QPointF; otherwise returns a null
     QPoint.
 
     \sa canConvert(), convert()
@@ -2525,8 +2666,9 @@ QRegularExpression QVariant::toRegularExpression() const
 /*!
     \since 5.0
 
-    Returns the variant as a QUuid if the variant has userType() \l
-    QUuid; otherwise returns a default constructed QUuid.
+    Returns the variant as a QUuid if the variant has type()
+    \l QMetaType::QUuid, \l QMetaType::QByteArray or \l QMetaType::QString;
+    otherwise returns a default-constructed QUuid.
 
     \sa canConvert(), convert()
 */
@@ -2873,7 +3015,8 @@ static const quint32 qCanConvertMatrix[QVariant::LastCoreType + 1] =
 /*QStringList*/   1 << QVariant::List       | 1 << QVariant::String,
 
 /*QByteArray*/    1 << QVariant::String     | 1 << QVariant::Int        | 1 << QVariant::UInt | 1 << QVariant::Bool
-                | 1 << QVariant::Double     | 1 << QVariant::LongLong   | 1 << QVariant::ULongLong,
+                | 1 << QVariant::Double     | 1 << QVariant::LongLong   | 1 << QVariant::ULongLong
+                | 1 << QVariant::Uuid,
 
 /*QBitArray*/     0,
 
@@ -2909,12 +3052,12 @@ static const quint32 qCanConvertMatrix[QVariant::LastCoreType + 1] =
 
 /*QEasingCurve*/  0,
 
-/*QUuid*/         1 << QVariant::String
+/*QUuid*/         1 << QVariant::String     | 1 << QVariant::ByteArray,
 };
 static const size_t qCanConvertMatrixMaximumTargetType = 8 * sizeof(*qCanConvertMatrix);
 
 #ifndef QT_BOOTSTRAPPED
-/*!
+/*
     Returns \c true if from inherits to.
 */
 static bool canConvertMetaObject(const QMetaObject *from, const QMetaObject *to)
@@ -2964,7 +3107,7 @@ static bool canConvertMetaObject(int fromId, int toId, QObject *fromObject)
         \l QMetaType::UInt, \l QMetaType::ULongLong
     \row \li \l QMetaType::QByteArray \li \l QMetaType::Double,
         \l QMetaType::Int, \l QMetaType::LongLong, \l QMetaType::QString,
-        \l QMetaType::UInt, \l QMetaType::ULongLong
+        \l QMetaType::UInt, \l QMetaType::ULongLong, \l QMetaType::QUuid
     \row \li \l QMetaType::QChar \li \l QMetaType::Bool, \l QMetaType::Int,
         \l QMetaType::UInt, \l QMetaType::LongLong, \l QMetaType::ULongLong
     \row \li \l QMetaType::QColor \li \l QMetaType::QString
@@ -2994,7 +3137,7 @@ static bool canConvertMetaObject(int fromId, int toId, QObject *fromObject)
         \l QMetaType::QDate, \l QMetaType::QDateTime, \l QMetaType::Double,
         \l QMetaType::QFont, \l QMetaType::Int, \l QMetaType::QKeySequence,
         \l QMetaType::LongLong, \l QMetaType::QStringList, \l QMetaType::QTime,
-        \l QMetaType::UInt, \l QMetaType::ULongLong
+        \l QMetaType::UInt, \l QMetaType::ULongLong, \l QMetaType::QUuid
     \row \li \l QMetaType::QStringList \li \l QMetaType::QVariantList,
         \l QMetaType::QString (if the list contains exactly one item)
     \row \li \l QMetaType::QTime \li \l QMetaType::QString
@@ -3004,6 +3147,7 @@ static bool canConvertMetaObject(int fromId, int toId, QObject *fromObject)
     \row \li \l QMetaType::ULongLong \li \l QMetaType::Bool,
         \l QMetaType::QChar, \l QMetaType::Double, \l QMetaType::Int,
         \l QMetaType::LongLong, \l QMetaType::QString, \l QMetaType::UInt
+    \row \li \l QMetaType::QUuid \li \l QMetaType::QByteArray, \l QMetaType::QString
     \endtable
 
     A QVariant containing a pointer to a type derived from QObject will also return true for this
@@ -3029,6 +3173,9 @@ static bool canConvertMetaObject(int fromId, int toId, QObject *fromObject)
 */
 bool QVariant::canConvert(int targetTypeId) const
 {
+    if (d.type == targetTypeId)
+        return true;
+
     if ((targetTypeId == QMetaType::QModelIndex && d.type == QMetaType::QPersistentModelIndex)
         || (targetTypeId == QMetaType::QPersistentModelIndex && d.type == QMetaType::QModelIndex))
         return true;
@@ -3083,8 +3230,9 @@ bool QVariant::canConvert(int targetTypeId) const
         }
     }
 
-    if (currentType == QMetaType::QJsonValue) {
-        switch (targetTypeId) {
+    if (currentType == QMetaType::QJsonValue || targetTypeId == QMetaType::QJsonValue) {
+        switch (currentType == QMetaType::QJsonValue ? targetTypeId : currentType) {
+        case QMetaType::Nullptr:
         case QMetaType::QString:
         case QMetaType::Bool:
         case QMetaType::Int:
@@ -3119,7 +3267,7 @@ bool QVariant::canConvert(int targetTypeId) const
         case QVariant::Int:
             if (currentType == QVariant::KeySequence)
                 return true;
-            // fall through
+            Q_FALLTHROUGH();
         case QVariant::UInt:
         case QVariant::LongLong:
         case QVariant::ULongLong:
@@ -3139,11 +3287,11 @@ bool QVariant::canConvert(int targetTypeId) const
         case QVariant::Bitmap:
             return currentType == QVariant::Pixmap || currentType == QVariant::Image;
         case QVariant::ByteArray:
-            return currentType == QVariant::Color
+            return currentType == QVariant::Color || currentType == QMetaType::Nullptr
                               || ((QMetaType::typeFlags(currentType) & QMetaType::IsEnumeration) && QMetaType::metaObjectForType(currentType));
         case QVariant::String:
             return currentType == QVariant::KeySequence || currentType == QVariant::Font
-                              || currentType == QVariant::Color
+                              || currentType == QVariant::Color || currentType == QMetaType::Nullptr
                               || ((QMetaType::typeFlags(currentType) & QMetaType::IsEnumeration) && QMetaType::metaObjectForType(currentType));
         case QVariant::KeySequence:
             return currentType == QVariant::String || currentType == QVariant::Int;
@@ -3180,17 +3328,20 @@ bool QVariant::canConvert(int targetTypeId) const
 
 /*!
     Casts the variant to the requested type, \a targetTypeId. If the cast cannot be
-    done, the variant is cleared. Returns \c true if the current type of
-    the variant was successfully cast; otherwise returns \c false.
+    done, the variant is still changed to the requested type, but is left in a cleared
+    null state similar to that constructed by QVariant(Type).
+
+    Returns \c true if the current type of the variant was successfully cast;
+    otherwise returns \c false.
 
     A QVariant containing a pointer to a type derived from QObject will also convert
     and return true for this function if a qobject_cast to the type described
     by \a targetTypeId would succeed. Note that this only works for QObject subclasses
     which use the Q_OBJECT macro.
 
-    \warning For historical reasons, converting a null QVariant results
-    in a null value of the desired type (e.g., an empty string for
-    QString) and a result of false.
+    \note converting QVariants that are null due to not being initialized or having
+    failed a previous conversion will always fail, changing the type, remaining null,
+    and returning \c false.
 
     \sa canConvert(), clear()
 */
@@ -3207,7 +3358,8 @@ bool QVariant::convert(int targetTypeId)
         return false;
 
     create(targetTypeId, 0);
-    if (oldValue.isNull())
+    // Fail if the value is not initialized or was forced null by a previous failed convert.
+    if (oldValue.d.is_null)
         return false;
 
     if ((QMetaType::typeFlags(oldValue.userType()) & QMetaType::PointerToQObject) && (QMetaType::typeFlags(targetTypeId) & QMetaType::PointerToQObject)) {
@@ -3471,8 +3623,17 @@ static int numericCompare(const QVariant::Private *d1, const QVariant::Private *
     Q_ASSERT(ok);
     qreal r2 = qConvertToRealNumber(d2, &ok);
     Q_ASSERT(ok);
-    if (r1 == r2 || qFuzzyCompare(r1, r2))
+    if (r1 == r2)
         return 0;
+
+    // only do fuzzy comparisons for finite, non-zero numbers
+    int c1 = std::fpclassify(r1);
+    int c2 = std::fpclassify(r2);
+    if ((c1 == FP_NORMAL || c1 == FP_SUBNORMAL) && (c2 == FP_NORMAL || c2 == FP_SUBNORMAL)) {
+        if (qFuzzyCompare(r1, r2))
+            return 0;
+    }
+
     return r1 < r2 ? -1 : 1;
 }
 
@@ -3481,29 +3642,36 @@ static int numericCompare(const QVariant::Private *d1, const QVariant::Private *
  */
 bool QVariant::cmp(const QVariant &v) const
 {
+    auto cmp_helper = [] (const QVariant::Private &d1, const QVariant::Private &d2)
+    {
+        Q_ASSERT(d1.type == d2.type);
+        if (d1.type >= QMetaType::User) {
+            int result;
+            if (QMetaType::equals(QT_PREPEND_NAMESPACE(constData(d1)), QT_PREPEND_NAMESPACE(constData(d2)), d1.type, &result))
+                return result == 0;
+        }
+        return handlerManager[d1.type]->compare(&d1, &d2);
+    };
+
     // try numerics first, with C++ type promotion rules (no conversion)
     if (qIsNumericType(d.type) && qIsNumericType(v.d.type))
         return numericCompare(&d, &v.d) == 0;
 
+    if (d.type == v.d.type)
+        return cmp_helper(d, v.d);
+
     QVariant v1 = *this;
     QVariant v2 = v;
-    if (d.type != v2.d.type) {
-        if (v2.canConvert(v1.d.type)) {
-            if (!v2.convert(v1.d.type))
-                return false;
-        } else {
-            // try the opposite conversion, it might work
-            qSwap(v1, v2);
-            if (!v2.convert(v1.d.type))
-                return false;
-        }
+    if (v2.canConvert(v1.d.type)) {
+        if (!v2.convert(v1.d.type))
+            return false;
+    } else {
+        // try the opposite conversion, it might work
+        qSwap(v1, v2);
+        if (!v2.convert(v1.d.type))
+            return false;
     }
-    if (v1.d.type >= QMetaType::User) {
-        int result;
-        if (QMetaType::equals(QT_PREPEND_NAMESPACE(constData(v1.d)), QT_PREPEND_NAMESPACE(constData(v2.d)), v1.d.type, &result))
-            return result == 0;
-    }
-    return handlerManager[v1.d.type]->compare(&v1.d, &v2.d);
+    return cmp_helper(v1.d, v2.d);
 }
 
 /*!
@@ -3519,51 +3687,53 @@ int QVariant::compare(const QVariant &v) const
     if (cmp(v))
         return 0;
 
-    QVariant v1 = *this;
-    QVariant v2 = v;
+    const QVariant *v1 = this;
+    const QVariant *v2 = &v;
+    QVariant converted1;
+    QVariant converted2;
 
-    if (v1.d.type != v2.d.type) {
+    if (d.type != v.d.type) {
         // if both types differ, try to convert
-        if (v2.canConvert(v1.d.type)) {
-            QVariant temp = v2;
-            if (temp.convert(v1.d.type))
-                v2 = temp;
+        if (v2->canConvert(v1->d.type)) {
+            converted2 = *v2;
+            if (converted2.convert(v1->d.type))
+                v2 = &converted2;
         }
-        if (v1.d.type != v2.d.type && v1.canConvert(v2.d.type)) {
-            QVariant temp = v1;
-            if (temp.convert(v2.d.type))
-                v1 = temp;
+        if (v1->d.type != v2->d.type && v1->canConvert(v2->d.type)) {
+            converted1 = *v1;
+            if (converted1.convert(v2->d.type))
+                v1 = &converted1;
         }
-        if (v1.d.type != v2.d.type) {
+        if (v1->d.type != v2->d.type) {
             // if conversion fails, default to toString
-            int r = v1.toString().compare(v2.toString(), Qt::CaseInsensitive);
+            int r = v1->toString().compare(v2->toString(), Qt::CaseInsensitive);
             if (r == 0) {
                 // cmp(v) returned false, so we should try to agree with it.
-                return (v1.d.type < v2.d.type) ? -1 : 1;
+                return (v1->d.type < v2->d.type) ? -1 : 1;
             }
             return r;
         }
 
         // did we end up with two numerics? If so, restart
-        if (qIsNumericType(v1.d.type) && qIsNumericType(v2.d.type))
-            return v1.compare(v2);
+        if (qIsNumericType(v1->d.type) && qIsNumericType(v2->d.type))
+            return v1->compare(*v2);
     }
-    if (v1.d.type >= QMetaType::User) {
+    if (v1->d.type >= QMetaType::User) {
         int result;
-        if (QMetaType::compare(QT_PREPEND_NAMESPACE(constData(d)), QT_PREPEND_NAMESPACE(constData(v2.d)), d.type, &result))
+        if (QMetaType::compare(QT_PREPEND_NAMESPACE(constData(d)), QT_PREPEND_NAMESPACE(constData(v2->d)), d.type, &result))
             return result;
     }
-    switch (v1.d.type) {
+    switch (v1->d.type) {
     case QVariant::Date:
-        return v1.toDate() < v2.toDate() ? -1 : 1;
+        return v1->toDate() < v2->toDate() ? -1 : 1;
     case QVariant::Time:
-        return v1.toTime() < v2.toTime() ? -1 : 1;
+        return v1->toTime() < v2->toTime() ? -1 : 1;
     case QVariant::DateTime:
-        return v1.toDateTime() < v2.toDateTime() ? -1 : 1;
+        return v1->toDateTime() < v2->toDateTime() ? -1 : 1;
     case QVariant::StringList:
-        return v1.toStringList() < v2.toStringList() ? -1 : 1;
+        return v1->toStringList() < v2->toStringList() ? -1 : 1;
     }
-    int r = v1.toString().compare(v2.toString(), Qt::CaseInsensitive);
+    int r = v1->toString().compare(v2->toString(), Qt::CaseInsensitive);
     if (r == 0) {
         // cmp(v) returned false, so we should try to agree with it.
         return (d.type < v.d.type) ? -1 : 1;
@@ -3598,12 +3768,15 @@ void* QVariant::data()
 
 /*!
     Returns \c true if this is a null variant, false otherwise. A variant is
-    considered null if it contains a default constructed value or a built-in
-    type instance that has an isNull method, in which case the result
-    would be the same as calling isNull on the wrapped object.
+    considered null if it contains no initialized value, or the contained value
+    is a null pointer or is an instance of a built-in type that has an isNull
+    method, in which case the result would be the same as calling isNull on the
+    wrapped object.
 
-    \warning The result of the function doesn't affect == operator, which means
-    that two values can be equal even if one of them is null and another is not.
+    \warning Null variants is not a single state and two null variants may easily
+    return \c false on the == operator if they do not contain similar null values.
+
+    \sa QVariant(Type), convert(int)
 */
 bool QVariant::isNull() const
 {

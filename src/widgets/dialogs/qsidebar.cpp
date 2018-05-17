@@ -40,11 +40,11 @@
 #include "qsidebar_p.h"
 #include "qfilesystemmodel.h"
 
-#ifndef QT_NO_FILEDIALOG
-
 #include <qaction.h>
 #include <qurl.h>
+#if QT_CONFIG(menu)
 #include <qmenu.h>
+#endif
 #include <qmimedata.h>
 #include <qevent.h>
 #include <qdebug.h>
@@ -274,7 +274,7 @@ void QUrlModel::addUrls(const QList<QUrl> &list, int row, bool move)
             continue;
         insertRows(row, 1);
         setUrl(index(row, 0), url, idx);
-        watching.append(qMakePair(idx, cleanUrl));
+        watching.append({idx, cleanUrl});
     }
 }
 
@@ -326,7 +326,7 @@ void QUrlModel::dataChanged(const QModelIndex &topLeft, const QModelIndex &botto
 {
     QModelIndex parent = topLeft.parent();
     for (int i = 0; i < watching.count(); ++i) {
-        QModelIndex index = watching.at(i).first;
+        QModelIndex index = watching.at(i).index;
         if (index.model() && topLeft.model()) {
             Q_ASSERT(index.model() == topLeft.model());
         }
@@ -335,7 +335,7 @@ void QUrlModel::dataChanged(const QModelIndex &topLeft, const QModelIndex &botto
             && index.column() >= topLeft.column()
             && index.column() <= bottomRight.column()
             && index.parent() == parent) {
-                changed(watching.at(i).second);
+                changed(watching.at(i).path);
         }
     }
 }
@@ -349,12 +349,12 @@ void QUrlModel::layoutChanged()
     const int numPaths = watching.count();
     paths.reserve(numPaths);
     for (int i = 0; i < numPaths; ++i)
-        paths.append(watching.at(i).second);
+        paths.append(watching.at(i).path);
     watching.clear();
     for (int i = 0; i < numPaths; ++i) {
         QString path = paths.at(i);
         QModelIndex newIndex = fileSystemModel->index(path);
-        watching.append(QPair<QModelIndex, QString>(newIndex, path));
+        watching.append({newIndex, path});
         if (newIndex.isValid())
             changed(path);
      }
@@ -437,7 +437,7 @@ void QSidebar::selectUrl(const QUrl &url)
             this, SLOT(clicked(QModelIndex)));
 }
 
-#ifndef QT_NO_MENU
+#if QT_CONFIG(menu)
 /*!
     \internal
 
@@ -456,7 +456,7 @@ void QSidebar::showContextMenu(const QPoint &position)
     if (actions.count() > 0)
         QMenu::exec(actions, mapToGlobal(position));
 }
-#endif // QT_NO_MENU
+#endif // QT_CONFIG(menu)
 
 /*!
     \internal
@@ -518,5 +518,3 @@ bool QSidebar::event(QEvent * event)
 QT_END_NAMESPACE
 
 #include "moc_qsidebar_p.cpp"
-
-#endif

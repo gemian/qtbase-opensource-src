@@ -68,10 +68,11 @@ static inline qreal initialGlobalScaleFactor()
         }
     } else {
         if (qEnvironmentVariableIsSet(legacyDevicePixelEnvVar)) {
-            qWarning() << "Warning:" << legacyDevicePixelEnvVar << "is deprecated. Instead use:" << endl
-                       << "   " << autoScreenEnvVar << "to enable platform plugin controlled per-screen factors." << endl
-                       << "   " << screenFactorsEnvVar << "to set per-screen factors." << endl
-                       << "   " << scaleFactorEnvVar << "to set the application global scale factor.";
+            qWarning("Warning: %s is deprecated. Instead use:\n"
+                     "   %s to enable platform plugin controlled per-screen factors.\n"
+                     "   %s to set per-screen factors.\n"
+                     "   %s to set the application global scale factor.",
+                     legacyDevicePixelEnvVar, autoScreenEnvVar, screenFactorsEnvVar, scaleFactorEnvVar);
 
             int dpr = qEnvironmentVariableIntValue(legacyDevicePixelEnvVar);
             if (dpr > 0)
@@ -342,8 +343,10 @@ static const char scaleFactorProperty[] = "_q_scaleFactor";
 */
 void QHighDpiScaling::setScreenFactor(QScreen *screen, qreal factor)
 {
-    m_screenFactorSet = true;
-    m_active = true;
+    if (!qFuzzyCompare(factor, qreal(1))) {
+        m_screenFactorSet = true;
+        m_active = true;
+    }
     screen->setProperty(scaleFactorProperty, QVariant(factor));
 
     // hack to force re-evaluation of screen geometry
@@ -373,8 +376,22 @@ qreal QHighDpiScaling::screenSubfactor(const QPlatformScreen *screen)
 {
     qreal factor = qreal(1.0);
     if (screen) {
-        if (m_usePixelDensity)
-            factor *= screen->pixelDensity();
+        if (m_usePixelDensity) {
+            qreal pixelDensity = screen->pixelDensity();
+
+            // Pixel density reported by the screen is sometimes not precise enough,
+            // so recalculate it: divide px (physical pixels) by dp (device-independent pixels)
+            // for both width and height, and then use the average if it is different from
+            // the one initially reported by the screen
+            QRect screenGeometry = screen->geometry();
+            qreal wFactor = qreal(screenGeometry.width()) / qRound(screenGeometry.width() / pixelDensity);
+            qreal hFactor = qreal(screenGeometry.height()) / qRound(screenGeometry.height() / pixelDensity);
+            qreal averageDensity = (wFactor + hFactor) / 2;
+            if (!qFuzzyCompare(pixelDensity, averageDensity))
+                pixelDensity = averageDensity;
+
+            factor *= pixelDensity;
+        }
         if (m_screenFactorSet) {
             QVariant screenFactor = screen->screen()->property(scaleFactorProperty);
             if (screenFactor.isValid())

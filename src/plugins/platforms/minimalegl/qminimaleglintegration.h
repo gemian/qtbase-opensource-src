@@ -40,8 +40,6 @@
 #ifndef QMINIMALEGLINTEGRATION_H
 #define QMINIMALEGLINTEGRATION_H
 
-#include "qminimaleglscreen.h"
-
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformscreen.h>
 
@@ -57,8 +55,9 @@ public:
 
     QPlatformWindow *createPlatformWindow(QWindow *window) const Q_DECL_OVERRIDE;
     QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const Q_DECL_OVERRIDE;
+#ifndef QT_NO_OPENGL
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const Q_DECL_OVERRIDE;
-
+#endif
     QPlatformFontDatabase *fontDatabase() const Q_DECL_OVERRIDE;
 
     QAbstractEventDispatcher *createEventDispatcher() const Q_DECL_OVERRIDE;

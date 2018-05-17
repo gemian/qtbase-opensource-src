@@ -40,7 +40,10 @@
 #ifndef QABSTRACTSLIDER_H
 #define QABSTRACTSLIDER_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qwidget.h>
+
+QT_REQUIRE_CONFIG(abstractslider);
 
 QT_BEGIN_NAMESPACE
 
@@ -143,7 +146,7 @@ protected:
 
     void keyPressEvent(QKeyEvent *ev) Q_DECL_OVERRIDE;
     void timerEvent(QTimerEvent *) Q_DECL_OVERRIDE;
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     void wheelEvent(QWheelEvent *e) Q_DECL_OVERRIDE;
 #endif
     void changeEvent(QEvent *e) Q_DECL_OVERRIDE;

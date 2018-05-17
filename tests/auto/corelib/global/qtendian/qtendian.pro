@@ -1,8 +1,4 @@
 CONFIG += testcase
 TARGET = tst_qtendian
-QT = core testlib
+QT = core core-private testlib
 SOURCES = tst_qtendian.cpp
-wince* { # QTBUG-37194 , internal compiler errors with MSVC2008 for Windows CE
-    QMAKE_CFLAGS_RELEASE -= -O2
-    QMAKE_CXXFLAGS_RELEASE -= -O2
-}

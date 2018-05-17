@@ -1,11 +1,13 @@
 TARGET = qcocoa
 
-OBJECTIVE_SOURCES += main.mm \
+SOURCES += main.mm \
     qcocoaintegration.mm \
+    qcocoascreen.mm \
     qcocoatheme.mm \
     qcocoabackingstore.mm \
     qcocoawindow.mm \
     qnsview.mm \
+    qnswindow.mm \
     qnsviewaccessibility.mm \
     qnswindowdelegate.mm \
     qcocoanativeinterface.mm \
@@ -20,9 +22,6 @@ OBJECTIVE_SOURCES += main.mm \
     qmultitouch_mac.mm \
     qcocoaaccessibilityelement.mm \
     qcocoaaccessibility.mm \
-    qcocoacolordialoghelper.mm \
-    qcocoafiledialoghelper.mm \
-    qcocoafontdialoghelper.mm \
     qcocoacursor.mm \
     qcocoaclipboard.mm \
     qcocoadrag.mm \
@@ -33,15 +32,16 @@ OBJECTIVE_SOURCES += main.mm \
     qcocoasystemtrayicon.mm \
     qcocoaintrospection.mm \
     qcocoakeymapper.mm \
-    qcocoamimetypes.mm
-
-SOURCES += messages.cpp
+    qcocoamimetypes.mm \
+    messages.cpp
 
 HEADERS += qcocoaintegration.h \
+    qcocoascreen.h \
     qcocoatheme.h \
     qcocoabackingstore.h \
     qcocoawindow.h \
     qnsview.h \
+    qnswindow.h \
     qnswindowdelegate.h \
     qcocoanativeinterface.h \
     qcocoaeventdispatcher.h \
@@ -55,9 +55,6 @@ HEADERS += qcocoaintegration.h \
     qmultitouch_mac_p.h \
     qcocoaaccessibilityelement.h \
     qcocoaaccessibility.h \
-    qcocoacolordialoghelper.h \
-    qcocoafiledialoghelper.h \
-    qcocoafontdialoghelper.h \
     qcocoacursor.h \
     qcocoaclipboard.h \
     qcocoadrag.h \
@@ -71,20 +68,27 @@ HEADERS += qcocoaintegration.h \
     messages.h \
     qcocoamimetypes.h
 
-contains(QT_CONFIG, opengl.*) {
-    OBJECTIVE_SOURCES += qcocoaglcontext.mm
+qtConfig(opengl.*) {
+    SOURCES += qcocoaglcontext.mm
 
     HEADERS += qcocoaglcontext.h
 }
 
 RESOURCES += qcocoaresources.qrc
 
-LIBS += -framework AppKit -framework Carbon -framework IOKit -lcups
+LIBS += -framework AppKit -framework Carbon -framework IOKit -framework QuartzCore -lcups
 
-QT += core-private gui-private platformsupport-private
+QT += \
+    core-private gui-private \
+    accessibility_support-private clipboard_support-private theme_support-private \
+    fontdatabase_support-private graphics_support-private
+
+CONFIG += no_app_extension_api_only
 
 qtHaveModule(widgets) {
-    OBJECTIVE_SOURCES += \
+    QT_FOR_CONFIG += widgets
+
+    SOURCES += \
         qpaintengine_mac.mm \
         qprintengine_mac.mm \
         qcocoaprintersupport.mm \
@@ -95,6 +99,21 @@ qtHaveModule(widgets) {
         qprintengine_mac_p.h \
         qcocoaprintersupport.h \
         qcocoaprintdevice.h \
+
+    qtConfig(colordialog) {
+        SOURCES += qcocoacolordialoghelper.mm
+        HEADERS += qcocoacolordialoghelper.h
+    }
+
+    qtConfig(filedialog) {
+        SOURCES += qcocoafiledialoghelper.mm
+        HEADERS += qcocoafiledialoghelper.h
+    }
+
+    qtConfig(fontdialog) {
+        SOURCES += qcocoafontdialoghelper.mm
+        HEADERS += qcocoafontdialoghelper.h
+    }
 
     QT += widgets-private printsupport-private
 }

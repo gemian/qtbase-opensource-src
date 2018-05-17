@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QGraphicsWidget>
 #include <private/qobject_p.h>
 
@@ -58,7 +59,9 @@
 #include "qgraphicsanchorlayout.h"
 #include "qgraph_p.h"
 #include "qsimplex_p.h"
-#ifndef QT_NO_GRAPHICSVIEW
+
+QT_REQUIRE_CONFIG(graphicsview);
+
 QT_BEGIN_NAMESPACE
 
 /*
@@ -259,7 +262,7 @@ inline QString AnchorVertex::toString() const
 {
     if (m_type == Pair) {
         const AnchorVertexPair *vp = static_cast<const AnchorVertexPair *>(this);
-        return QString::fromLatin1("(%1, %2)").arg(vp->m_first->toString()).arg(vp->m_second->toString());
+        return QString::fromLatin1("(%1, %2)").arg(vp->m_first->toString(), vp->m_second->toString());
     } else if (!m_item) {
         return QString::fromLatin1("NULL_%1").arg(quintptr(this));
     }
@@ -590,6 +593,5 @@ public:
 };
 
 QT_END_NAMESPACE
-#endif //QT_NO_GRAPHICSVIEW
 
 #endif

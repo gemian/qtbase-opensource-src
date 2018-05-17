@@ -41,9 +41,10 @@
 #ifndef QHOSTADDRESS_H
 #define QHOSTADDRESS_H
 
+#include <QtNetwork/qtnetworkglobal.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qstring.h>
-#include <QtCore/qscopedpointer.h>
+#include <QtCore/qshareddata.h>
 #include <QtNetwork/qabstractsocket.h>
 
 struct sockaddr;
@@ -65,7 +66,7 @@ typedef QIPv6Address Q_IPV6ADDR;
 
 class QHostAddress;
 // qHash is a friend, but we can't use default arguments for friends (§8.3.6.4)
-Q_NETWORK_EXPORT uint qHash(const QHostAddress &key, uint seed = 0);
+Q_NETWORK_EXPORT uint qHash(const QHostAddress &key, uint seed = 0) Q_DECL_NOTHROW;
 
 class Q_NETWORK_EXPORT QHostAddress
 {
@@ -79,6 +80,16 @@ public:
         AnyIPv6,
         AnyIPv4
     };
+    enum ConversionModeFlag {
+        ConvertV4MappedToIPv4 = 1,
+        ConvertV4CompatToIPv4 = 2,
+        ConvertUnspecifiedAddress = 4,
+        ConvertLocalHost = 8,
+        TolerantConversion = 0xff,
+
+        StrictConversion = 0
+    };
+    Q_DECLARE_FLAGS(ConversionMode, ConversionModeFlag)
 
     QHostAddress();
     explicit QHostAddress(quint32 ip4Addr);
@@ -97,7 +108,11 @@ public:
 #endif
 
     QHostAddress &operator=(const QHostAddress &other);
+#if QT_DEPRECATED_SINCE(5, 8)
+    QT_DEPRECATED_X("use = QHostAddress(string) instead")
     QHostAddress &operator=(const QString &address);
+#endif
+    QHostAddress &operator=(SpecialAddress address);
 
     void swap(QHostAddress &other) Q_DECL_NOTHROW { d.swap(other.d); }
 
@@ -107,6 +122,7 @@ public:
     void setAddress(const Q_IPV6ADDR &ip6Addr);
     void setAddress(const sockaddr *address);
     bool setAddress(const QString &address);
+    void setAddress(SpecialAddress address);
 
     QAbstractSocket::NetworkLayerProtocol protocol() const;
     quint32 toIPv4Address() const; // ### Qt6: merge with next overload
@@ -118,6 +134,7 @@ public:
     QString scopeId() const;
     void setScopeId(const QString &id);
 
+    bool isEqual(const QHostAddress &address, ConversionMode mode = TolerantConversion) const;
     bool operator ==(const QHostAddress &address) const;
     bool operator ==(SpecialAddress address) const;
     inline bool operator !=(const QHostAddress &address) const
@@ -135,14 +152,17 @@ public:
 
     static QPair<QHostAddress, int> parseSubnet(const QString &subnet);
 
-    friend Q_NETWORK_EXPORT uint qHash(const QHostAddress &key, uint seed);
+    friend Q_NETWORK_EXPORT uint qHash(const QHostAddress &key, uint seed) Q_DECL_NOTHROW;
 protected:
-    QScopedPointer<QHostAddressPrivate> d;
+    QExplicitlySharedDataPointer<QHostAddressPrivate> d;
 };
+Q_DECLARE_OPERATORS_FOR_FLAGS(QHostAddress::ConversionMode)
 Q_DECLARE_SHARED_NOT_MOVABLE_UNTIL_QT6(QHostAddress)
 
 inline bool operator ==(QHostAddress::SpecialAddress address1, const QHostAddress &address2)
 { return address2 == address1; }
+inline bool operator!=(QHostAddress::SpecialAddress lhs, const QHostAddress &rhs)
+{ return rhs != lhs; }
 
 #ifndef QT_NO_DEBUG_STREAM
 Q_NETWORK_EXPORT QDebug operator<<(QDebug, const QHostAddress &);

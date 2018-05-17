@@ -51,7 +51,6 @@
 #include <QtCore/qfile.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qdir.h>
-#include <QtCore/qprocess.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/private/qtools_p.h>
@@ -90,21 +89,25 @@
 #endif
 
 #ifdef Q_OS_WIN
-#ifndef Q_OS_WINCE
 # if !defined(Q_CC_MINGW) || (defined(Q_CC_MINGW) && defined(__MINGW64_VERSION_MAJOR))
 #  include <crtdbg.h>
 # endif
-#endif
 #include <windows.h> // for Sleep
 #endif
 #ifdef Q_OS_UNIX
 #include <errno.h>
 #include <signal.h>
 #include <time.h>
+# if !defined(Q_OS_INTEGRITY)
+#  include <sys/resource.h>
+# endif
 #endif
 
 #if defined(Q_OS_MACX)
 #include <IOKit/pwr_mgt/IOPMLib.h>
+#include <mach/task.h>
+#include <mach/mach_init.h>
+#include <CoreFoundation/CFPreferences.h>
 #endif
 
 #include <vector>
@@ -114,6 +117,86 @@ QT_BEGIN_NAMESPACE
 using QtMiscUtils::toHexUpper;
 using QtMiscUtils::fromHex;
 
+static bool debuggerPresent()
+{
+#if defined(Q_OS_LINUX)
+    int fd = open("/proc/self/status", O_RDONLY);
+    if (fd == -1)
+        return false;
+    char buffer[2048];
+    ssize_t size = read(fd, buffer, sizeof(buffer) - 1);
+    if (size == -1) {
+        close(fd);
+        return false;
+    }
+    buffer[size] = 0;
+    const char tracerPidToken[] = "\nTracerPid:";
+    char *tracerPid = strstr(buffer, tracerPidToken);
+    if (!tracerPid) {
+        close(fd);
+        return false;
+    }
+    tracerPid += sizeof(tracerPidToken);
+    long int pid = strtol(tracerPid, &tracerPid, 10);
+    close(fd);
+    return pid != 0;
+#elif defined(Q_OS_WIN)
+    return IsDebuggerPresent();
+#elif defined(Q_OS_MACOS)
+    auto equals = [](CFStringRef str1, CFStringRef str2) -> bool {
+        return CFStringCompare(str1, str2, kCFCompareCaseInsensitive) == kCFCompareEqualTo;
+    };
+
+    // Check if there is an exception handler for the process:
+    mach_msg_type_number_t portCount = 0;
+    exception_mask_t masks[EXC_TYPES_COUNT];
+    mach_port_t ports[EXC_TYPES_COUNT];
+    exception_behavior_t behaviors[EXC_TYPES_COUNT];
+    thread_state_flavor_t flavors[EXC_TYPES_COUNT];
+    exception_mask_t mask = EXC_MASK_ALL & ~(EXC_MASK_RESOURCE | EXC_MASK_GUARD);
+    kern_return_t result = task_get_exception_ports(mach_task_self(), mask, masks, &portCount,
+                                                    ports, behaviors, flavors);
+    if (result == KERN_SUCCESS) {
+        for (mach_msg_type_number_t portIndex = 0; portIndex < portCount; ++portIndex) {
+            if (MACH_PORT_VALID(ports[portIndex])) {
+                return true;
+            }
+        }
+    }
+
+    // Ok, no debugger attached. So, let's see if CrashReporter will throw up a dialog. If so, we
+    // leave it to the OS to do the stack trace.
+    CFStringRef crashReporterType = static_cast<CFStringRef>(
+                CFPreferencesCopyAppValue(CFSTR("DialogType"), CFSTR("com.apple.CrashReporter")));
+    if (crashReporterType == nullptr)
+        return true;
+
+    const bool createsStackTrace =
+            !equals(crashReporterType, CFSTR("server")) &&
+            !equals(crashReporterType, CFSTR("none"));
+    CFRelease(crashReporterType);
+    return createsStackTrace;
+#else
+    // TODO
+    return false;
+#endif
+}
+
+static void disableCoreDump()
+{
+    bool ok = false;
+    const int disableCoreDump = qEnvironmentVariableIntValue("QTEST_DISABLE_CORE_DUMP", &ok);
+    if (ok && disableCoreDump == 1) {
+#if defined(Q_OS_UNIX) && !defined(Q_OS_INTEGRITY)
+        struct rlimit limit;
+        limit.rlim_cur = 0;
+        limit.rlim_max = 0;
+        if (setrlimit(RLIMIT_CORE, &limit) != 0)
+            qWarning("Failed to disable core dumps: %d", errno);
+#endif
+    }
+}
+Q_CONSTRUCTOR_FUNCTION(disableCoreDump);
 
 static void stackTrace()
 {
@@ -121,6 +204,10 @@ static void stackTrace()
     const int disableStackDump = qEnvironmentVariableIntValue("QTEST_DISABLE_STACK_DUMP", &ok);
     if (ok && disableStackDump == 1)
         return;
+
+    if (debuggerPresent())
+        return;
+
 #ifdef Q_OS_LINUX
     fprintf(stderr, "\n========= Received signal, dumping stack ==============\n");
     char cmd[512];
@@ -187,6 +274,11 @@ namespace QTest
 
     static QObject *currentTestObject = 0;
     static QString mainSourcePath;
+
+#if defined(Q_OS_MACOS)
+    bool macNeedsActivate = false;
+    IOPMAssertionID powerID;
+#endif
 
     class TestMethods {
         Q_DISABLE_COPY(TestMethods)
@@ -490,7 +582,6 @@ Q_TESTLIB_EXPORT void qtest_qParseArgs(int argc, char *argv[], bool qml)
                         " -import dir         : Specify an import directory.\n"
                         " -plugins dir        : Specify a directory where to search for plugins.\n"
                         " -input dir/file     : Specify the root directory for test cases or a single test case file.\n"
-                        " -qtquick1           : Run with QtQuick 1 rather than QtQuick 2.\n"
                         " -translation file   : Specify the translation file.\n"
                         );
             }
@@ -687,7 +778,6 @@ Q_TESTLIB_EXPORT void qtest_qParseArgs(int argc, char *argv[], bool qml)
                                 " -import    : Specify an import directory.\n"
                                 " -plugins   : Specify a directory where to search for plugins.\n"
                                 " -input     : Specify the root directory for test cases.\n"
-                                " -qtquick1  : Run with QtQuick 1 rather than QtQuick 2.\n"
                        );
             }
 
@@ -893,7 +983,7 @@ public:
         waitCondition.wakeAll();
     }
 
-    void run() {
+    void run() override {
         QMutexLocker locker(&mutex);
         waitCondition.wakeAll();
         while (1) {
@@ -1184,6 +1274,16 @@ char *toPrettyCString(const char *p, int length)
     return buffer.take();
 }
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+// this used to be the signature up to and including Qt 5.9
+// keep it for BC reasons:
+Q_TESTLIB_EXPORT
+char *toPrettyUnicode(const ushort *p, int length)
+{
+    return toPrettyUnicode(QStringView(p, length));
+}
+#endif
+
 /*!
     \internal
     Returns the same QString but with only the ASCII characters still shown;
@@ -1191,8 +1291,10 @@ char *toPrettyCString(const char *p, int length)
 
     Similar to QDebug::putString().
 */
-char *toPrettyUnicode(const ushort *p, int length)
+char *toPrettyUnicode(QStringView string)
 {
+    auto p = reinterpret_cast<const ushort *>(string.utf16());
+    auto length = string.size();
     // keep it simple for the vast majority of cases
     bool trimmed = false;
     QScopedArrayPointer<char> buffer(new char[256]);
@@ -1254,44 +1356,11 @@ char *toPrettyUnicode(const ushort *p, int length)
     return buffer.take();
 }
 
-static bool debuggerPresent()
-{
-#if defined(Q_OS_LINUX)
-    int fd = open("/proc/self/status", O_RDONLY);
-    if (fd == -1)
-        return false;
-    char buffer[2048];
-    ssize_t size = read(fd, buffer, sizeof(buffer) - 1);
-    if (size == -1) {
-        close(fd);
-        return false;
-    }
-    buffer[size] = 0;
-    const char tracerPidToken[] = "\nTracerPid:";
-    char *tracerPid = strstr(buffer, tracerPidToken);
-    if (!tracerPid) {
-        close(fd);
-        return false;
-    }
-    tracerPid += sizeof(tracerPidToken);
-    long int pid = strtol(tracerPid, &tracerPid, 10);
-    close(fd);
-    return pid != 0;
-#elif defined(Q_OS_WIN)
-    return IsDebuggerPresent();
-#else
-    // TODO
-    return false;
-#endif
-}
-
 void TestMethods::invokeTests(QObject *testObject) const
 {
     const QMetaObject *metaObject = testObject->metaObject();
     QTEST_ASSERT(metaObject);
-    QTestLog::startLogging();
     QTestResult::setCurrentTestFunction("initTestCase");
-    QTestTable::globalTestTable();
     if (m_initTestCaseDataMethod.isValid())
         m_initTestCaseDataMethod.invoke(testObject, Qt::DirectConnection);
 
@@ -1336,9 +1405,6 @@ void TestMethods::invokeTests(QObject *testObject) const
     }
     QTestResult::finishedCurrentTestFunction();
     QTestResult::setCurrentTestFunction(0);
-    QTestTable::clearGlobalTestTable();
-
-    QTestLog::stopLogging();
 }
 
 #if defined(Q_OS_UNIX)
@@ -1388,7 +1454,9 @@ FatalSignalHandler::FatalSignalHandler()
     act.sa_flags = SA_RESETHAND;
 #endif
 
-#ifdef SA_ONSTACK
+// tvOS/watchOS both define SA_ONSTACK (in sys/signal.h) but mark sigaltstack() as
+// unavailable (__WATCHOS_PROHIBITED __TVOS_PROHIBITED in signal.h)
+#if defined(SA_ONSTACK) && !defined(Q_OS_TVOS) && !defined(Q_OS_WATCHOS)
     // Let the signal handlers use an alternate stack
     // This is necessary if SIGSEGV is to catch a stack overflow
 #  if defined(Q_CC_GNU) && defined(Q_OF_ELF)
@@ -1454,7 +1522,7 @@ FatalSignalHandler::~FatalSignalHandler()
 
 } // namespace
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
 
 // Helper class for resolving symbol names by dynamically loading "dbghelp.dll".
 class DebugSymbolResolver
@@ -1592,11 +1660,17 @@ static LONG WINAPI windowsFaultHandler(struct _EXCEPTION_POINTERS *exInfo)
 
     return EXCEPTION_EXECUTE_HANDLER;
 }
-#endif // Q_OS_WIN) && !Q_OS_WINCE && !Q_OS_WINRT
+#endif // Q_OS_WIN) && !Q_OS_WINRT
+
+static void qputenvIfEmpty(const char *name, const QByteArray &value)
+{
+    if (qEnvironmentVariableIsEmpty(name))
+        qputenv(name, value);
+}
 
 static void initEnvironment()
 {
-    qputenv("QT_LOGGING_TO_CONSOLE", "1");
+    qputenvIfEmpty("QT_LOGGING_TO_CONSOLE", "1");
     qputenv("QT_QTESTLIB_RUNNING", "1");
 }
 
@@ -1640,23 +1714,27 @@ static void initEnvironment()
 
 int QTest::qExec(QObject *testObject, int argc, char **argv)
 {
-    initEnvironment();
-    QBenchmarkGlobalData benchmarkData;
-    QBenchmarkGlobalData::current = &benchmarkData;
+    qInit(testObject, argc, argv);
+    int ret = qRun();
+    qCleanup();
+    return ret;
+}
 
-#ifdef QTESTLIB_USE_VALGRIND
-    int callgrindChildExitCode = 0;
-#endif
+/*! \internal
+ */
+void QTest::qInit(QObject *testObject, int argc, char **argv)
+{
+    initEnvironment();
+    QBenchmarkGlobalData::current = new QBenchmarkGlobalData;
 
 #if defined(Q_OS_MACX)
-    bool macNeedsActivate = qApp && (qstrcmp(qApp->metaObject()->className(), "QApplication") == 0);
-    IOPMAssertionID powerID;
+    macNeedsActivate = qApp && (qstrcmp(qApp->metaObject()->className(), "QApplication") == 0);
 
     // Don't restore saved window state for auto tests.
     QTestPrivate::disableWindowRestore();
-#endif
-#ifndef QT_NO_EXCEPTIONS
-    try {
+
+    // Disable App Nap which may cause tests to stall.
+    QTestPrivate::AppNapDisabler appNapDisabler;
 #endif
 
 #if defined(Q_OS_MACX)
@@ -1687,7 +1765,25 @@ int QTest::qExec(QObject *testObject, int argc, char **argv)
 
     qtest_qParseArgs(argc, argv, false);
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+    QTestTable::globalTestTable();
+    QTestLog::startLogging();
+}
+
+/*! \internal
+ */
+int QTest::qRun()
+{
+    QTEST_ASSERT(currentTestObject);
+
+#ifdef QTESTLIB_USE_VALGRIND
+    int callgrindChildExitCode = 0;
+#endif
+
+#ifndef QT_NO_EXCEPTIONS
+    try {
+#endif
+
+#if defined(Q_OS_WIN)
     if (!noCrashHandler) {
 # ifndef Q_CC_MINGW
         _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_DEBUG);
@@ -1697,7 +1793,7 @@ int QTest::qExec(QObject *testObject, int argc, char **argv)
         SetUnhandledExceptionFilter(windowsFaultHandler);
 # endif
     } // !noCrashHandler
-#endif // Q_OS_WIN) && !Q_OS_WINCE && !Q_OS_WINRT
+#endif // Q_OS_WIN
 
 #ifdef QTESTLIB_USE_VALGRIND
     if (QBenchmarkGlobalData::current->mode() == QBenchmarkGlobalData::CallgrindParentProcess) {
@@ -1722,17 +1818,17 @@ int QTest::qExec(QObject *testObject, int argc, char **argv)
         for (const QString &tf : qAsConst(QTest::testFunctions)) {
                 const QByteArray tfB = tf.toLatin1();
                 const QByteArray signature = tfB + QByteArrayLiteral("()");
-                QMetaMethod m = TestMethods::findMethod(testObject, signature.constData());
+                QMetaMethod m = TestMethods::findMethod(currentTestObject, signature.constData());
                 if (!m.isValid() || !isValidSlot(m)) {
                     fprintf(stderr, "Unknown test function: '%s'. Possible matches:\n", tfB.constData());
                     qPrintTestSlots(stderr, tfB.constData());
-                    fprintf(stderr, "\n%s -functions\nlists all available test functions.\n", argv[0]);
+                    fprintf(stderr, "\n%s -functions\nlists all available test functions.\n", QTestResult::currentAppName());
                     exit(1);
                 }
                 commandLineMethods.push_back(m);
         }
-        TestMethods test(testObject, commandLineMethods);
-        test.invokeTests(testObject);
+        TestMethods test(currentTestObject, commandLineMethods);
+        test.invokeTests(currentTestObject);
     }
 
 #ifndef QT_NO_EXCEPTIONS
@@ -1757,16 +1853,6 @@ int QTest::qExec(QObject *testObject, int argc, char **argv)
      }
 #endif
 
-    currentTestObject = 0;
-
-    QSignalDumper::endDump();
-
-#if defined(Q_OS_MACX)
-     if (macNeedsActivate) {
-         IOPMAssertionRelease(powerID);
-     }
-#endif
-
 #ifdef QTESTLIB_USE_VALGRIND
     if (QBenchmarkGlobalData::current->mode() == QBenchmarkGlobalData::CallgrindParentProcess)
         return callgrindChildExitCode;
@@ -1774,6 +1860,26 @@ int QTest::qExec(QObject *testObject, int argc, char **argv)
     // make sure our exit code is never going above 127
     // since that could wrap and indicate 0 test fails
     return qMin(QTestLog::failCount(), 127);
+}
+
+/*! \internal
+ */
+void QTest::qCleanup()
+{
+    currentTestObject = 0;
+
+    QTestTable::clearGlobalTestTable();
+    QTestLog::stopLogging();
+
+    delete QBenchmarkGlobalData::current;
+    QBenchmarkGlobalData::current = 0;
+
+    QSignalDumper::endDump();
+
+#if defined(Q_OS_MACOS)
+    if (macNeedsActivate)
+        IOPMAssertionRelease(powerID);
+#endif
 }
 
 /*!
@@ -1894,6 +2000,7 @@ static inline bool isWindowsBuildDirectory(const QString &dirName)
 }
 #endif
 
+#if QT_CONFIG(temporaryfile)
 /*!
     Extracts a directory from resources to disk. The content is extracted
     recursively to a temporary folder. The extracted content is removed
@@ -1954,6 +2061,7 @@ QSharedPointer<QTemporaryDir> QTest::qExtractTestData(const QString &dirName)
 
       return result;
 }
+#endif // QT_CONFIG(temporaryfile)
 
 /*! \internal
  */
@@ -2039,7 +2147,7 @@ QString QTest::qFindTestData(const QString& base, const char *file, int line, co
 
     // 5. Try current directory
     if (found.isEmpty()) {
-        QString candidate = QString::fromLatin1("%1/%2").arg(QDir::currentPath()).arg(base);
+        const QString candidate = QDir::currentPath() + QLatin1Char('/') + base;
         if (QFileInfo::exists(candidate))
             found = candidate;
     }
@@ -2138,6 +2246,48 @@ QTestData &QTest::newRow(const char *dataTag)
     return *tbl->newData(dataTag);
 }
 
+/*!
+    \since 5.9
+
+    Appends a new row to the current test data. The function's arguments are passed
+    to qsnprintf() for formatting according to \a format. See the qvsnprintf()
+    documentation for caveats and limitations.
+
+    The formatted string will appear as the name of this test data in the test output.
+
+    Returns a QTestData reference that can be used to stream in data.
+
+    Example:
+    \snippet code/src_qtestlib_qtestcase.cpp addRow
+
+    \b {Note:} This function can only be used in a test's data function
+    that is invoked by the test framework.
+
+    See \l {Chapter 2: Data Driven Testing}{Data Driven Testing} for
+    a more extensive example.
+
+    \sa addColumn(), QFETCH()
+*/
+QTestData &QTest::addRow(const char *format, ...)
+{
+    QTEST_ASSERT_X(format, "QTest::addRow()", "Format string cannot be null");
+    QTestTable *tbl = QTestTable::currentTestTable();
+    QTEST_ASSERT_X(tbl, "QTest::addRow()", "Cannot add testdata outside of a _data slot.");
+    QTEST_ASSERT_X(tbl->elementCount(), "QTest::addRow()", "Must add columns before attempting to add rows.");
+
+    char buf[1024];
+
+    va_list va;
+    va_start(va, format);
+    // we don't care about failures, we accept truncation, as well as trailing garbage.
+    // Names with more than 1K characters are nonsense, anyway.
+    (void)qvsnprintf(buf, sizeof buf, format, va);
+    buf[sizeof buf - 1] = '\0';
+    va_end(va);
+
+    return *tbl->newData(buf);
+}
+
 /*! \fn void QTest::addColumn(const char *name, T *dummy = 0)
 
     Adds a column with type \c{T} to the current test data.
@@ -2225,7 +2375,7 @@ void QTest::qSleep(int ms)
 #elif defined(Q_OS_WIN)
     Sleep(uint(ms));
 #else
-    struct timespec ts = { ms / 1000, (ms % 1000) * 1000 * 1000 };
+    struct timespec ts = { time_t(ms / 1000), (ms % 1000) * 1000 * 1000 };
     nanosleep(&ts, NULL);
 #endif
 }
@@ -2429,6 +2579,14 @@ bool QTest::compare_string_helper(const char *t1, const char *t2, const char *ac
 */
 
 /*! \fn bool QTest::qCompare(const T *t1, const T *t2, const char *actual, const char *expected, const char *file, int line)
+    \internal
+*/
+
+/*! \fn bool QTest::qCompare(T *t, std::nullptr_t, const char *actual, const char *expected, const char *file, int line)
+    \internal
+*/
+
+/*! \fn bool QTest::qCompare(std::nullptr_t, T *t, const char *actual, const char *expected, const char *file, int line)
     \internal
 */
 

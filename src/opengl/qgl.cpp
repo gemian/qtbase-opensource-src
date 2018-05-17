@@ -65,7 +65,6 @@
 #include <private/qimagepixmapcleanuphooks_p.h>
 #include "qcolormap.h"
 #include "qfile.h"
-#include "qlibrary.h"
 #include <qmutex.h>
 
 #include "qsurfaceformat.h"
@@ -1293,14 +1292,19 @@ QGLFormat::OpenGLVersionFlags Q_AUTOTEST_EXPORT qOpenGLVersionFlagsFromString(co
             switch (versionString[2].toLatin1()) {
             case '5':
                 versionFlags |= QGLFormat::OpenGL_Version_1_5;
+                // fall through
             case '4':
                 versionFlags |= QGLFormat::OpenGL_Version_1_4;
+                // fall through
             case '3':
                 versionFlags |= QGLFormat::OpenGL_Version_1_3;
+                // fall through
             case '2':
                 versionFlags |= QGLFormat::OpenGL_Version_1_2;
+                // fall through
             case '1':
                 versionFlags |= QGLFormat::OpenGL_Version_1_1;
+                // fall through
             default:
                 break;
             }
@@ -1325,10 +1329,13 @@ QGLFormat::OpenGLVersionFlags Q_AUTOTEST_EXPORT qOpenGLVersionFlagsFromString(co
             switch (versionString[2].toLatin1()) {
             case '3':
                 versionFlags |= QGLFormat::OpenGL_Version_3_3;
+                // fall through
             case '2':
                 versionFlags |= QGLFormat::OpenGL_Version_3_2;
+                // fall through
             case '1':
                 versionFlags |= QGLFormat::OpenGL_Version_3_1;
+                // fall through
             case '0':
                 break;
             default:
@@ -1353,10 +1360,13 @@ QGLFormat::OpenGLVersionFlags Q_AUTOTEST_EXPORT qOpenGLVersionFlagsFromString(co
             switch (versionString[2].toLatin1()) {
             case '3':
                 versionFlags |= QGLFormat::OpenGL_Version_4_3;
+                // fall through
             case '2':
                 versionFlags |= QGLFormat::OpenGL_Version_4_2;
+                // fall through
             case '1':
                 versionFlags |= QGLFormat::OpenGL_Version_4_1;
+                // fall through
             case '0':
                 break;
             default:
@@ -1918,7 +1928,8 @@ void QGLTextureCache::insert(QGLContext* ctx, qint64 key, QGLTexture* texture, i
 {
     QWriteLocker locker(&m_lock);
     const QGLTextureCacheKey cacheKey = {key, QGLContextPrivate::contextGroup(ctx)};
-    m_cache.insert(cacheKey, texture, cost);
+    const bool inserted = m_cache.insert(cacheKey, texture, cost);
+    Q_UNUSED(inserted) Q_ASSERT(inserted);
 }
 
 void QGLTextureCache::remove(qint64 key)

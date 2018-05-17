@@ -38,11 +38,11 @@
 ****************************************************************************/
 
 #include "qwhatsthis.h"
-#ifndef QT_NO_WHATSTHIS
 #include "qpointer.h"
 #include "qapplication.h"
 #include <private/qguiapplication_p.h>
 #include "qdesktopwidget.h"
+#include <private/qdesktopwidget_p.h>
 #include "qevent.h"
 #include "qpixmap.h"
 #include "qscreen.h"
@@ -54,7 +54,6 @@
 #include "qtextdocument.h"
 #include <qpa/qplatformtheme.h>
 #include "private/qtextdocumentlayout_p.h"
-#include "qtoolbutton.h"
 #include "qdebug.h"
 #ifndef QT_NO_ACCESSIBILITY
 #include "qaccessible.h"
@@ -211,7 +210,7 @@ QWhatsThat::QWhatsThat(const QString& txt, QWidget* parent, QWidget *showTextFor
     }
     else
     {
-        int sw = QApplication::desktop()->width() / 3;
+        int sw = QDesktopWidgetPrivate::width() / 3;
         if (sw < 200)
             sw = 200;
         else if (sw > 300)
@@ -450,8 +449,8 @@ bool QWhatsThisPrivate::eventFilter(QObject *o, QEvent *e)
         QApplication::changeOverrideCursor((!sentEvent || !e.isAccepted())?
                                            Qt::ForbiddenCursor:Qt::WhatsThisCursor);
 #endif
+        Q_FALLTHROUGH();
     }
-    // fall through
     case QEvent::MouseButtonRelease:
     case QEvent::MouseButtonDblClick:
         if (leaveOnMouseRelease && e->type() == QEvent::MouseButtonRelease)
@@ -462,11 +461,13 @@ bool QWhatsThisPrivate::eventFilter(QObject *o, QEvent *e)
     case QEvent::KeyPress:
     {
         QKeyEvent* kev = (QKeyEvent*)e;
-
+#if QT_CONFIG(shortcut)
         if (kev->matches(QKeySequence::Cancel)) {
             QWhatsThis::leaveWhatsThisMode();
             return true;
-        } else if (customWhatsThis) {
+        } else
+#endif
+          if (customWhatsThis) {
             return false;
         } else if (kev->key() == Qt::Key_Menu ||
                     (kev->key() == Qt::Key_F10 &&
@@ -570,7 +571,7 @@ void QWhatsThisPrivate::say(QWidget * widget, const QString &text, int x, int y)
     // make a fresh widget, and set it up
     QWhatsThat *whatsThat = new QWhatsThat(
         text,
-#if defined(Q_DEAD_CODE_FROM_QT4_X11) && !defined(QT_NO_CURSOR)
+#if 0 /* Used to be included in Qt4 for Q_WS_X11 */ && !defined(QT_NO_CURSOR)
         QApplication::desktop()->screen(widget ? widget->x11Info().screen() : QCursor::x11Screen()),
 #else
         0,
@@ -582,14 +583,14 @@ void QWhatsThisPrivate::say(QWidget * widget, const QString &text, int x, int y)
     // okay, now to find a suitable location
 
     int scr = (widget ?
-                QApplication::desktop()->screenNumber(widget) :
-#if defined(Q_DEAD_CODE_FROM_QT4_X11) && !defined(QT_NO_CURSOR)
+                QDesktopWidgetPrivate::screenNumber(widget) :
+#if 0 /* Used to be included in Qt4 for Q_WS_X11 */ && !defined(QT_NO_CURSOR)
                 QCursor::x11Screen()
 #else
-                QApplication::desktop()->screenNumber(QPoint(x,y))
-#endif // Q_DEAD_CODE_FROM_QT4_X11
+                QDesktopWidgetPrivate::screenNumber(QPoint(x,y))
+#endif
                );
-    QRect screen = QApplication::desktop()->screenGeometry(scr);
+    QRect screen = QDesktopWidgetPrivate::screenGeometry(scr);
 
     int w = whatsThat->width();
     int h = whatsThat->height();
@@ -679,5 +680,3 @@ QAction *QWhatsThis::createAction(QObject *parent)
 QT_END_NAMESPACE
 
 #include "qwhatsthis.moc"
-
-#endif // QT_NO_WHATSTHIS

@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QtCore/qstringlist.h>
 
 QT_BEGIN_NAMESPACE
@@ -58,7 +59,7 @@ QT_BEGIN_NAMESPACE
 
 class QPlatformTheme;
 
-class QPlatformThemeFactory
+class Q_GUI_EXPORT QPlatformThemeFactory
 {
 public:
     static QStringList keys(const QString &platformPluginPath = QString());

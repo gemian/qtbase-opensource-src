@@ -51,17 +51,25 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtGui/qtextdocument.h>
 #include <QtGui/qtextoption.h>
 #include <QtGui/qtextcursor.h>
 #include <QtGui/qtextformat.h>
+#if QT_CONFIG(textedit)
 #include <QtWidgets/qtextedit.h>
+#endif
+#if QT_CONFIG(menu)
 #include <QtWidgets/qmenu.h>
+#endif
 #include <QtCore/qrect.h>
 #include <QtGui/qabstracttextdocumentlayout.h>
 #include <QtGui/qtextdocumentfragment.h>
 #include <QtGui/qclipboard.h>
 #include <QtCore/qmimedata.h>
+#include <QtGui/private/qinputcontrol_p.h>
+
+QT_REQUIRE_CONFIG(widgettextcontrol);
 
 QT_BEGIN_NAMESPACE
 
@@ -74,7 +82,7 @@ class QAbstractScrollArea;
 class QEvent;
 class QTimerEvent;
 
-class Q_WIDGETS_EXPORT QWidgetTextControl : public QObject
+class Q_WIDGETS_EXPORT QWidgetTextControl : public QInputControl
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QWidgetTextControl)
@@ -144,7 +152,7 @@ public:
     bool acceptRichText() const;
     void setAcceptRichText(bool accept);
 
-#ifndef QT_NO_TEXTEDIT
+#if QT_CONFIG(textedit)
     void setExtraSelections(const QList<QTextEdit::ExtraSelection> &selections);
     QList<QTextEdit::ExtraSelection> extraSelections() const;
 #endif
@@ -171,6 +179,8 @@ public:
 
     bool isWordSelectionEnabled() const;
     void setWordSelectionEnabled(bool enabled);
+
+    bool isPreediting();
 
     void print(QPagedPaintDevice *printer) const;
 

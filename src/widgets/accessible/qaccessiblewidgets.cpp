@@ -41,30 +41,56 @@
 #include "qabstracttextdocumentlayout.h"
 #include "qapplication.h"
 #include "qclipboard.h"
-#include "qtextedit.h"
-#include "private/qtextedit_p.h"
 #include "qtextdocument.h"
 #include "qtextobject.h"
+#if QT_CONFIG(textedit)
 #include "qplaintextedit.h"
+#include "qtextedit.h"
+#include "private/qtextedit_p.h"
+#endif
 #include "qtextboundaryfinder.h"
+#if QT_CONFIG(scrollbar)
 #include "qscrollbar.h"
+#endif
 #include "qdebug.h"
 #include <QApplication>
+#if QT_CONFIG(stackedwidget)
 #include <QStackedWidget>
+#endif
+#if QT_CONFIG(toolbox)
 #include <QToolBox>
+#endif
+#if QT_CONFIG(mdiarea)
 #include <QMdiArea>
 #include <QMdiSubWindow>
+#endif
+#if QT_CONFIG(dialogbuttonbox)
 #include <QDialogButtonBox>
+#endif
 #include <limits.h>
+#if QT_CONFIG(rubberband)
 #include <QRubberBand>
+#endif
+#if QT_CONFIG(textbrowser)
 #include <QTextBrowser>
+#endif
+#if QT_CONFIG(calendarwidget)
 #include <QCalendarWidget>
+#endif
+#if QT_CONFIG(itemviews)
 #include <QAbstractItemView>
+#endif
+#if QT_CONFIG(dockwidget)
 #include <QDockWidget>
-#include <QMainWindow>
-#include <QAbstractButton>
 #include <private/qdockwidget_p.h>
+#endif
+#if QT_CONFIG(mainwindow)
+#include <QMainWindow>
+#endif
 #include <QFocusFrame>
+#if QT_CONFIG(menu)
+#include <QMenu>
+#endif
 
 #ifndef QT_NO_ACCESSIBILITY
 
@@ -85,7 +111,9 @@ QList<QWidget*> childWidgets(const QWidget *widget)
         QString objectName = w->objectName();
         if (!w->isWindow()
               && !qobject_cast<QFocusFrame*>(w)
+#if QT_CONFIG(menu)
               && !qobject_cast<QMenu*>(w)
+#endif
               && objectName != QLatin1String("qt_rubberband")
               && objectName != QLatin1String("qt_qmainwindow_extended_splitter")) {
             widgets.append(w);
@@ -94,7 +122,7 @@ QList<QWidget*> childWidgets(const QWidget *widget)
     return widgets;
 }
 
-#if !defined(QT_NO_TEXTEDIT) && !defined(QT_NO_CURSOR)
+#if QT_CONFIG(textedit) && !defined(QT_NO_CURSOR)
 
 QAccessiblePlainTextEdit::QAccessiblePlainTextEdit(QWidget* o)
   :QAccessibleTextWidget(o)
@@ -291,9 +319,9 @@ void QAccessibleTextEdit::scrollToSubstring(int startIndex, int endIndex)
         qWarning("AccessibleTextEdit::scrollToSubstring failed!");
 }
 
-#endif // QT_NO_TEXTEDIT && QT_NO_CURSOR
+#endif // QT_CONFIG(textedit) && QT_NO_CURSOR
 
-#ifndef QT_NO_STACKEDWIDGET
+#if QT_CONFIG(stackedwidget)
 // ======================= QAccessibleStackedWidget ======================
 QAccessibleStackedWidget::QAccessibleStackedWidget(QWidget *widget)
     : QAccessibleWidget(widget, QAccessible::LayeredPane)
@@ -339,9 +367,9 @@ QStackedWidget *QAccessibleStackedWidget::stackedWidget() const
 {
     return static_cast<QStackedWidget *>(object());
 }
-#endif // QT_NO_STACKEDWIDGET
+#endif // QT_CONFIG(stackedwidget)
 
-#ifndef QT_NO_TOOLBOX
+#if QT_CONFIG(toolbox)
 // ======================= QAccessibleToolBox ======================
 QAccessibleToolBox::QAccessibleToolBox(QWidget *widget)
     : QAccessibleWidget(widget, QAccessible::LayeredPane)
@@ -353,10 +381,10 @@ QToolBox * QAccessibleToolBox::toolBox() const
 {
     return static_cast<QToolBox *>(object());
 }
-#endif // QT_NO_TOOLBOX
+#endif // QT_CONFIG(toolbox)
 
 // ======================= QAccessibleMdiArea ======================
-#ifndef QT_NO_MDIAREA
+#if QT_CONFIG(mdiarea)
 QAccessibleMdiArea::QAccessibleMdiArea(QWidget *widget)
     : QAccessibleWidget(widget, QAccessible::LayeredPane)
 {
@@ -476,9 +504,9 @@ QMdiSubWindow *QAccessibleMdiSubWindow::mdiSubWindow() const
 {
     return static_cast<QMdiSubWindow *>(object());
 }
-#endif // QT_NO_MDIAREA
+#endif // QT_CONFIG(mdiarea)
 
-#ifndef QT_NO_DIALOGBUTTONBOX
+#if QT_CONFIG(dialogbuttonbox)
 // ======================= QAccessibleDialogButtonBox ======================
 QAccessibleDialogButtonBox::QAccessibleDialogButtonBox(QWidget *widget)
     : QAccessibleWidget(widget, QAccessible::Grouping)
@@ -486,9 +514,9 @@ QAccessibleDialogButtonBox::QAccessibleDialogButtonBox(QWidget *widget)
     Q_ASSERT(qobject_cast<QDialogButtonBox*>(widget));
 }
 
-#endif // QT_NO_DIALOGBUTTONBOX
+#endif // QT_CONFIG(dialogbuttonbox)
 
-#if !defined(QT_NO_TEXTBROWSER) && !defined(QT_NO_CURSOR)
+#if QT_CONFIG(textbrowser) && !defined(QT_NO_CURSOR)
 QAccessibleTextBrowser::QAccessibleTextBrowser(QWidget *widget)
     : QAccessibleTextEdit(widget)
 {
@@ -499,9 +527,9 @@ QAccessible::Role QAccessibleTextBrowser::role() const
 {
     return QAccessible::StaticText;
 }
-#endif // QT_NO_TEXTBROWSER && QT_NO_CURSOR
+#endif // QT_CONFIG(textbrowser) && QT_NO_CURSOR
 
-#ifndef QT_NO_CALENDARWIDGET
+#if QT_CONFIG(calendarwidget)
 // ===================== QAccessibleCalendarWidget ========================
 QAccessibleCalendarWidget::QAccessibleCalendarWidget(QWidget *widget)
     : QAccessibleWidget(widget, QAccessible::Table)
@@ -556,9 +584,9 @@ QWidget *QAccessibleCalendarWidget::navigationBar() const
     }
     return 0;
 }
-#endif // QT_NO_CALENDARWIDGET
+#endif // QT_CONFIG(calendarwidget)
 
-#ifndef QT_NO_DOCKWIDGET
+#if QT_CONFIG(dockwidget)
 
 // Dock Widget - order of children:
 // - Content widget
@@ -639,7 +667,7 @@ QString QAccessibleDockWidget::text(QAccessible::Text t) const
     }
     return QString();
 }
-#endif // QT_NO_DOCKWIDGET
+#endif // QT_CONFIG(dockwidget)
 
 #ifndef QT_NO_CURSOR
 
@@ -830,7 +858,7 @@ QString QAccessibleTextWidget::attributes(int offset, int *startOffset, int *end
         family = family.replace('=', QLatin1String("\\="));
         family = family.replace(';', QLatin1String("\\;"));
         family = family.replace('\"', QLatin1String("\\\""));
-        attrs["font-family"] = QString::fromLatin1("\"%1\"").arg(family);
+        attrs["font-family"] = QLatin1Char('"') + family + QLatin1Char('"');
     }
 
     int fontSize = int(charFormatFont.pointSize());
@@ -1071,7 +1099,7 @@ void QAccessibleTextWidget::replaceText(int startOffset, int endOffset, const QS
 #endif // QT_NO_CURSOR
 
 
-#ifndef QT_NO_MAINWINDOW
+#if QT_CONFIG(mainwindow)
 QAccessibleMainWindow::QAccessibleMainWindow(QWidget *widget)
     : QAccessibleWidget(widget, QAccessible::Window) { }
 
@@ -1120,7 +1148,7 @@ QMainWindow *QAccessibleMainWindow::mainWindow() const
     return qobject_cast<QMainWindow *>(object());
 }
 
-#endif //QT_NO_MAINWINDOW
+#endif // QT_CONFIG(mainwindow)
 
 QT_END_NAMESPACE
 

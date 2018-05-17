@@ -29,16 +29,12 @@
 #include "controllerwidget.h"
 #include <controls.h>
 
-#if QT_VERSION >= 0x050000
-#    include <QtWidgets>
-#    include <QWindow>
-#    include <QBackingStore>
-#    include <QPaintDevice>
-#    include <QPainter>
-#else
-#    include <QtGui>
-#endif
-
+#include <QtWidgets>
+#include <QWindow>
+#include <QBackingStore>
+#include <QPaintDevice>
+#include <QPainter>
+#include <QRandomGenerator>
 #include <QResizeEvent>
 
 CoordinateControl::CoordinateControl(const QString &sep) : m_x(new QSpinBox), m_y(new QSpinBox)
@@ -280,11 +276,11 @@ public:
     explicit Window(QWindow *parent = 0)
         : QWindow(parent)
         , m_backingStore(new QBackingStore(this))
-        , m_color(Qt::GlobalColor(qrand() % 18))
+        , m_color(Qt::GlobalColor(QRandomGenerator::global()->bounded(18)))
     {
         setObjectName(QStringLiteral("window"));
         setTitle(tr("TestWindow"));
-        setFlags(flags() | Qt::MacUseNSWindow);
+        setProperty("_q_platform_MacUseNSWindow", QVariant(true));
     }
 
 protected:
@@ -317,7 +313,7 @@ void Window::mousePressEvent(QMouseEvent * ev)
     m_mouseDownPosition = ev->pos();
 }
 
-void Window::mouseReleaseEvent(QMouseEvent * e)
+void Window::mouseReleaseEvent(QMouseEvent *)
 {
     m_mouseDownPosition = QPoint();
 }
@@ -408,7 +404,6 @@ WindowControl::WindowControl(QWindow *w )
 
 void WindowControl::refresh()
 {
-    const QWindow *w = static_cast<const QWindow *>(m_object);
     BaseWindowControl::refresh();
 }
 

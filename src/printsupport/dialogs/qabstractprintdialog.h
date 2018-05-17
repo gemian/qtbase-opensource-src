@@ -40,13 +40,13 @@
 #ifndef QABSTRACTPRINTDIALOG_H
 #define QABSTRACTPRINTDIALOG_H
 
-#include <QtWidgets/qdialog.h>
 #include <QtPrintSupport/qtprintsupportglobal.h>
 
+#include <QtWidgets/qdialog.h>
+
+QT_REQUIRE_CONFIG(printdialog);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_PRINTER
 
 class QAbstractPrintDialogPrivate;
 class QPrinter;
@@ -76,14 +76,15 @@ public:
         DontUseSheet            = 0x0020,
         PrintCurrentPage        = 0x0040
     };
+    Q_ENUM(PrintDialogOption)
 
     Q_DECLARE_FLAGS(PrintDialogOptions, PrintDialogOption)
+    Q_FLAG(PrintDialogOptions)
 
-#ifndef QT_NO_PRINTDIALOG
-    explicit QAbstractPrintDialog(QPrinter *printer, QWidget *parent = Q_NULLPTR);
+    explicit QAbstractPrintDialog(QPrinter *printer, QWidget *parent = nullptr);
     ~QAbstractPrintDialog();
 
-    virtual int exec() = 0;
+    int exec() override = 0;
 
     // obsolete
     void addEnabledOption(PrintDialogOption option);
@@ -107,17 +108,14 @@ public:
     QPrinter *printer() const;
 
 protected:
-    QAbstractPrintDialog(QAbstractPrintDialogPrivate &ptr, QPrinter *printer, QWidget *parent = Q_NULLPTR);
+    QAbstractPrintDialog(QAbstractPrintDialogPrivate &ptr, QPrinter *printer, QWidget *parent = nullptr);
 
 private:
     Q_DISABLE_COPY(QAbstractPrintDialog)
 
-#endif // QT_NO_PRINTDIALOG
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QAbstractPrintDialog::PrintDialogOptions)
-
-#endif // QT_NO_PRINTER
 
 QT_END_NAMESPACE
 

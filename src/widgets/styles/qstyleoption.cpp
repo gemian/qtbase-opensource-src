@@ -37,11 +37,10 @@
 **
 ****************************************************************************/
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include "private/qstylehelper_p.h"
 #include "qstyleoption.h"
 #include "qapplication.h"
-#ifdef Q_OS_MAC
-# include "qmacstyle_mac_p.h"
-#endif
 #include <qdebug.h>
 #include <QtCore/qmath.h>
 
@@ -199,23 +198,21 @@ void QStyleOption::init(const QWidget *widget)
         state |= QStyle::State_Active;
     if (widget->isWindow())
         state |= QStyle::State_Window;
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     extern bool qt_mac_can_clickThrough(const QWidget *w); //qwidget_mac.cpp
     if (!(state & QStyle::State_Active) && !qt_mac_can_clickThrough(widget))
         state &= ~QStyle::State_Enabled;
 #endif
-#if defined(Q_OS_OSX) && !defined(QT_NO_STYLE_MAC)
-    switch (QMacStyle::widgetSizePolicy(widget)) {
-    case QMacStyle::SizeSmall:
+    switch (QStyleHelper::widgetSizePolicy(widget)) {
+    case QStyleHelper::SizeSmall:
         state |= QStyle::State_Small;
         break;
-    case QMacStyle::SizeMini:
+    case QStyleHelper::SizeMini:
         state |= QStyle::State_Mini;
         break;
     default:
         ;
     }
-#endif
 #ifdef QT_KEYPAD_NAVIGATION
     if (widget->hasEditFocus())
         state |= QStyle::State_HasEditFocus;
@@ -1230,7 +1227,7 @@ QStyleOptionToolBar::QStyleOptionToolBar(int version)
 
 #endif
 
-#ifndef QT_NO_TABBAR
+#if QT_CONFIG(tabbar)
 /*!
     \class QStyleOptionTab
     \brief The QStyleOptionTab class is used to describe the
@@ -1478,7 +1475,7 @@ QStyleOptionTab::QStyleOptionTab(int version)
     The default value is QSize(-1, -1), i.e. an invalid size;
 */
 
-#endif // QT_NO_TABBAR
+#endif // QT_CONFIG(tabbar)
 
 /*!
     \class QStyleOptionProgressBar
@@ -1952,7 +1949,7 @@ QStyleOptionComplex::QStyleOptionComplex(int version, int type)
     \sa QStyle::SubControl
 */
 
-#ifndef QT_NO_SLIDER
+#if QT_CONFIG(slider)
 /*!
     \class QStyleOptionSlider
     \brief The QStyleOptionSlider class is used to describe the
@@ -2149,9 +2146,9 @@ QStyleOptionSlider::QStyleOptionSlider(int version)
 
     \sa QAbstractSlider::pageStep
 */
-#endif // QT_NO_SLIDER
+#endif // QT_CONFIG(slider)
 
-#ifndef QT_NO_SPINBOX
+#if QT_CONFIG(spinbox)
 /*!
     \class QStyleOptionSpinBox
     \brief The QStyleOptionSpinBox class is used to describe the
@@ -2255,7 +2252,7 @@ QStyleOptionSpinBox::QStyleOptionSpinBox(int version)
 
     The default value is false, i.e. the spin box has no frame.
 */
-#endif // QT_NO_SPINBOX
+#endif // QT_CONFIG(spinbox)
 
 /*!
     \class QStyleOptionDockWidget
@@ -2796,7 +2793,7 @@ QStyleOptionToolBox::QStyleOptionToolBox(int version)
     a selected tab nor is it the selected tab.
 */
 
-#ifndef QT_NO_RUBBERBAND
+#if QT_CONFIG(rubberband)
 /*!
     \class QStyleOptionRubberBand
     \brief The QStyleOptionRubberBand class is used to describe the
@@ -2886,7 +2883,7 @@ QStyleOptionRubberBand::QStyleOptionRubberBand(int version)
 
     The default value is true.
 */
-#endif // QT_NO_RUBBERBAND
+#endif // QT_CONFIG(rubberband)
 
 /*!
     \class QStyleOptionTitleBar
@@ -2999,7 +2996,7 @@ QStyleOptionTitleBar::QStyleOptionTitleBar(int version)
     \sa Qt::WindowFlags
 */
 
-#ifndef QT_NO_ITEMVIEWS
+#if QT_CONFIG(itemviews)
 /*!
     \class QStyleOptionViewItem
     \brief The QStyleOptionViewItem class is used to describe the
@@ -3266,7 +3263,7 @@ QStyleOptionViewItem::QStyleOptionViewItem(int version)
                      therefore both at the beginning and the end.
 */
 
-#endif // QT_NO_ITEMVIEWS
+#endif // QT_CONFIG(itemviews)
 /*!
     \fn T qstyleoption_cast<T>(const QStyleOption *option)
     \relates QStyleOption
@@ -3289,7 +3286,7 @@ QStyleOptionViewItem::QStyleOptionViewItem(int version)
     Returns a T or 0 depending on the type of the given \a option.
 */
 
-#ifndef QT_NO_TABWIDGET
+#if QT_CONFIG(tabwidget)
 /*!
     \class QStyleOptionTabWidgetFrame
     \brief The QStyleOptionTabWidgetFrame class is used to describe the
@@ -3433,9 +3430,9 @@ QStyleOptionTabWidgetFrame::QStyleOptionTabWidgetFrame(int version)
     and the height set to 0.
 */
 
-#endif // QT_NO_TABWIDGET
+#endif // QT_CONFIG(tabwidget)
 
-#ifndef QT_NO_TABBAR
+#if QT_CONFIG(tabbar)
 
 /*!
     \class QStyleOptionTabBarBase
@@ -3555,9 +3552,9 @@ QStyleOptionTabBarBase::QStyleOptionTabBarBase(int version)
     The default value is false;
 */
 
-#endif // QT_NO_TABBAR
+#endif // QT_CONFIG(tabbar)
 
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
 /*!
     \class QStyleOptionSizeGrip
     \brief The QStyleOptionSizeGrip class is used to describe the
@@ -3637,7 +3634,7 @@ QStyleOptionSizeGrip::QStyleOptionSizeGrip(int version)
 
     \sa StyleOptionType
 */
-#endif // QT_NO_SIZEGRIP
+#endif // QT_CONFIG(sizegrip)
 
 /*!
     \class QStyleOptionGraphicsItem

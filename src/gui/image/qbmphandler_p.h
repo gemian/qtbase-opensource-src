@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include "QtGui/qimageiohandler.h"
 
 #ifndef QT_NO_IMAGEFORMAT_BMP
@@ -77,6 +78,21 @@ struct BMP_INFOHDR {                     // BMP information header
     qint32  biYPelsPerMeter;             // vertical resolution
     qint32  biClrUsed;                   // number of colors used
     qint32  biClrImportant;              // number of important colors
+    // V4:
+    quint32 biRedMask;
+    quint32 biGreenMask;
+    quint32 biBlueMask;
+    quint32 biAlphaMask;
+    qint32 biCSType;
+    qint32 biEndpoints[9];
+    qint32 biGammaRed;
+    qint32 biGammaGreen;
+    qint32 biGammaBlue;
+    // V5:
+    qint32 biIntent;
+    qint32 biProfileData;
+    qint32 biProfileSize;
+    qint32 biReserved;
 };
 
 // BMP-Handler, which is also able to read and write the DIB
@@ -93,17 +109,17 @@ public:
     };
 
     explicit QBmpHandler(InternalFormat fmt = BmpFormat);
-    bool canRead() const;
-    bool read(QImage *image);
-    bool write(const QImage &image);
+    bool canRead() const override;
+    bool read(QImage *image) override;
+    bool write(const QImage &image) override;
 
-    QByteArray name() const;
+    QByteArray name() const override;
 
     static bool canRead(QIODevice *device);
 
-    QVariant option(ImageOption option) const;
-    void setOption(ImageOption option, const QVariant &value);
-    bool supportsOption(ImageOption option) const;
+    QVariant option(ImageOption option) const override;
+    void setOption(ImageOption option, const QVariant &value) override;
+    bool supportsOption(ImageOption option) const override;
 
 private:
     bool readHeader();
@@ -120,7 +136,7 @@ private:
     State state;
     BMP_FILEHDR fileHeader;
     BMP_INFOHDR infoHeader;
-    int startpos;
+    qint64 startpos;
 };
 
 QT_END_NAMESPACE

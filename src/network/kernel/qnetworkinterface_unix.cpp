@@ -60,11 +60,6 @@
 #  define QT_NO_GETIFADDRS
 #endif
 
-#ifdef Q_OS_ANDROID
-// android lacks if_nameindex
-# define QT_NO_IPV6IFNAME
-#endif
-
 #ifdef Q_OS_HAIKU
 # include <sys/sockio.h>
 # define IFF_RUNNING 0x0001
@@ -491,7 +486,7 @@ static QList<QNetworkInterfacePrivate *> interfaceListing()
     interfaces = createInterfaces(interfaceListing);
     for (ifaddrs *ptr = interfaceListing; ptr; ptr = ptr->ifa_next) {
         // Find the interface
-        QString name = QString::fromLatin1(ptr->ifa_name);
+        QLatin1String name(ptr->ifa_name);
         QNetworkInterfacePrivate *iface = 0;
         QList<QNetworkInterfacePrivate *>::Iterator if_it = interfaces.begin();
         for ( ; if_it != interfaces.end(); ++if_it)

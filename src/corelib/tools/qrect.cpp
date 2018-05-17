@@ -54,7 +54,7 @@ QT_BEGIN_NAMESPACE
     \brief The QRect class defines a rectangle in the plane using
     integer precision.
 
-    A rectangle is normally expressed as an upper-left corner and a
+    A rectangle is normally expressed as a top-left corner and a
     size.  The size (width and height) of a QRect is always equivalent
     to the mathematical rectangle that forms the basis for its
     rendering.
@@ -1317,14 +1317,14 @@ QDebug operator<<(QDebug dbg, const QRect &r)
     \brief The QRectF class defines a rectangle in the plane using floating
     point precision.
 
-    A rectangle is normally expressed as an upper-left corner and a
+    A rectangle is normally expressed as a top-left corner and a
     size.  The size (width and height) of a QRectF is always equivalent
     to the mathematical rectangle that forms the basis for its
     rendering.
 
     A QRectF can be constructed with a set of left, top, width and
-    height integers, or from a QPoint and a QSize.  The following code
-    creates two identical rectangles.
+    height coordinates, or from a QPointF and a QSizeF.  The following
+    code creates two identical rectangles.
 
     \snippet code/src_corelib_tools_qrect.cpp 1
 
@@ -1344,7 +1344,7 @@ QDebug operator<<(QDebug dbg, const QRect &r)
     translated copy of this rectangle.
 
     The size() function returns the rectange's dimensions as a
-    QSize. The dimensions can also be retrieved separately using the
+    QSizeF. The dimensions can also be retrieved separately using the
     width() and height() functions. To manipulate the dimensions use
     the setSize(), setWidth() or setHeight() functions. Alternatively,
     the size can be changed by applying either of the functions

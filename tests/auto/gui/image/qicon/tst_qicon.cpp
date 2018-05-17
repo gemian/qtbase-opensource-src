@@ -83,7 +83,7 @@ bool tst_QIcon::haveImageFormat(QByteArray const& desiredFormat)
 tst_QIcon::tst_QIcon()
     : m_pngImageFileName(QFINDTESTDATA("image.png"))
     , m_pngRectFileName(QFINDTESTDATA("rect.png"))
-    , m_sourceFileName(QFINDTESTDATA(__FILE__))
+    , m_sourceFileName(":/tst_qicon.cpp")
 {
 }
 
@@ -393,7 +393,6 @@ void tst_QIcon::addFile()
     icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-save-32.png"), QSize(), QIcon::Selected);
     icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-save-128.png"), QSize(), QIcon::Selected);
 
-#ifndef Q_OS_WINCE
     QVERIFY(icon.pixmap(16, QIcon::Normal).toImage() ==
             QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-open-16.png")).toImage());
     QVERIFY(icon.pixmap(32, QIcon::Normal).toImage() ==
@@ -406,13 +405,6 @@ void tst_QIcon::addFile()
             QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-save-32.png")).toImage());
     QVERIFY(icon.pixmap(128, QIcon::Selected).toImage() ==
             QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-save-128.png")).toImage());
-#else
-    // WinCE only includes the 16x16 images for size reasons
-    QVERIFY(icon.pixmap(16, QIcon::Normal).toImage() ==
-            QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-open-16.png")).toImage());
-    QVERIFY(icon.pixmap(16, QIcon::Selected).toImage() ==
-            QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-save-16.png")).toImage());
-#endif
 }
 
 static bool sizeLess(const QSize &a, const QSize &b)
@@ -538,16 +530,6 @@ void tst_QIcon::streamAvailableSizes()
     }
 }
 
-
-static inline bool operator<(const QSize &lhs, const QSize &rhs)
-{
-    if (lhs.width() < rhs.width())
-        return true;
-    else if (lhs.width() == lhs.width())
-        return lhs.height() < lhs.height();
-    return false;
-}
-
 #ifndef QT_NO_WIDGETS
 void tst_QIcon::task184901_badCache()
 {
@@ -602,6 +584,7 @@ void tst_QIcon::fromTheme()
     QIcon noIcon = QIcon::fromTheme("broken-icon");
     QVERIFY(noIcon.isNull());
     QVERIFY(!QIcon::hasThemeIcon("broken-icon"));
+    QCOMPARE(noIcon.actualSize(QSize(32, 32), QIcon::Normal, QIcon::On), QSize(0, 0));
 
     // Test non existing icon with fallback
     noIcon = QIcon::fromTheme("broken-icon", abIcon);
@@ -717,7 +700,7 @@ void tst_QIcon::fromThemeCache()
         QIcon::setThemeSearchPaths(QStringList());
         QSKIP("gtk-update-icon-cache not run (binary not found)");
     }
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     QProcess process;
     process.start(gtkUpdateIconCache,
                   QStringList() << QStringLiteral("-f") << QStringLiteral("-t") << (dir.path() + QLatin1String("/testcache")));
@@ -727,7 +710,7 @@ void tst_QIcon::fromThemeCache()
     QVERIFY(process.waitForFinished());
     QCOMPARE(process.exitStatus(), QProcess::NormalExit);
     QCOMPARE(process.exitCode(), 0);
-#endif // QT_NO_PROCESS
+#endif // QT_CONFIG(process)
     QVERIFY(QFileInfo(cacheName).lastModified() >= QFileInfo(dir.path() + QLatin1String("/testcache/16x16/actions")).lastModified());
     QIcon::setThemeSearchPaths(QStringList() << dir.path()); // reload themes
     QVERIFY(!QIcon::fromTheme("button-open").isNull());

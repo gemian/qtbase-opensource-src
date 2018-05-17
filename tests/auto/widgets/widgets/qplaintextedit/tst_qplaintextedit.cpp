@@ -48,8 +48,6 @@
 #include "qplaintextedit.h"
 #include "../../../shared/platformclipboard.h"
 
-#include "../../../qtest-config.h"
-
 //Used in copyAvailable
 typedef QPair<Qt::Key, Qt::KeyboardModifier> keyPairType;
 typedef QList<keyPairType> pairListType;
@@ -64,7 +62,6 @@ public:
     tst_QPlainTextEdit();
 
 public slots:
-    void initTestCase();
     void init();
     void cleanup();
 private slots:
@@ -104,7 +101,7 @@ private slots:
     void shiftDownInLineLastShouldSelectToEnd();
     void undoRedoShouldRepositionTextEditCursor();
     void lineWrapModes();
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
     void mouseCursorShape();
 #endif
     void implicitClear();
@@ -208,16 +205,8 @@ void tst_QPlainTextEdit::getSetCheck()
     QCOMPARE(0, obj1.tabStopWidth());
     obj1.setTabStopWidth(INT_MIN);
     QCOMPARE(0, obj1.tabStopWidth()); // Makes no sense to set a negative tabstop value
-#if defined(Q_OS_WINCE)
-    // due to rounding error in qRound when qreal==float
-    // we cannot use INT_MAX for this check
-    obj1.setTabStopWidth(SHRT_MAX*2);
-    QCOMPARE(SHRT_MAX*2, obj1.tabStopWidth());
-#else
     obj1.setTabStopWidth(INT_MAX);
     QCOMPARE(INT_MAX, obj1.tabStopWidth());
-#endif
-
 }
 
 class QtTestDocumentLayout : public QAbstractTextDocumentLayout
@@ -250,13 +239,6 @@ public:
 
 tst_QPlainTextEdit::tst_QPlainTextEdit()
 {}
-
-void tst_QPlainTextEdit::initTestCase()
-{
-#ifdef Q_OS_WINCE //disable magic for WindowsCE
-    qApp->setAutoMaximizeThreshold(-1);
-#endif
-}
 
 void tst_QPlainTextEdit::init()
 {
@@ -380,7 +362,7 @@ void tst_QPlainTextEdit::emptyAppend()
 {
     ed->appendPlainText("Blah");
     QCOMPARE(blockCount(), 1);
-    ed->appendPlainText(QString::null);
+    ed->appendPlainText(QString());
     QCOMPARE(blockCount(), 2);
     ed->appendPlainText(QString("   "));
     QCOMPARE(blockCount(), 3);
@@ -896,7 +878,7 @@ void tst_QPlainTextEdit::lineWrapModes()
     delete window;
 }
 
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
 void tst_QPlainTextEdit::mouseCursorShape()
 {
     // always show an IBeamCursor, see change 170146

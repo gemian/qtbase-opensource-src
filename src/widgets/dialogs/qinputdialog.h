@@ -40,14 +40,15 @@
 #ifndef QINPUTDIALOG_H
 #define QINPUTDIALOG_H
 
-#include <QtWidgets/qdialog.h>
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qstring.h>
 #include <QtWidgets/qlineedit.h>
 
+#include <QtWidgets/qdialog.h>
+
+QT_REQUIRE_CONFIG(inputdialog);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_INPUTDIALOG
 
 class QInputDialogPrivate;
 
@@ -73,6 +74,7 @@ class Q_WIDGETS_EXPORT QInputDialog : public QDialog
     QDOC_PROPERTY(int doubleDecimals READ doubleDecimals WRITE setDoubleDecimals)
     QDOC_PROPERTY(QString okButtonText READ okButtonText WRITE setOkButtonText)
     QDOC_PROPERTY(QString cancelButtonText READ cancelButtonText WRITE setCancelButtonText)
+    QDOC_PROPERTY(double doubleStep READ doubleStep WRITE setDoubleStep)
 
 public:
     enum InputDialogOption {
@@ -177,6 +179,10 @@ public:
     static double getDouble(QWidget *parent, const QString &title, const QString &label, double value = 0,
                             double minValue = -2147483647, double maxValue = 2147483647,
                             int decimals = 1, bool *ok = Q_NULLPTR, Qt::WindowFlags flags = Qt::WindowFlags());
+    // ### Qt 6: merge overloads
+    static double getDouble(QWidget *parent, const QString &title, const QString &label, double value,
+                            double minValue, double maxValue, int decimals, bool *ok, Qt::WindowFlags flags,
+                            double step);
 
 #if QT_DEPRECATED_SINCE(5, 0)
     QT_DEPRECATED static inline int getInteger(QWidget *parent, const QString &title, const QString &label, int value = 0,
@@ -186,6 +192,9 @@ public:
         return getInt(parent, title, label, value, minValue, maxValue, step, ok, flags);
     }
 #endif
+
+    void setDoubleStep(double step);
+    double doubleStep() const;
 
 Q_SIGNALS:
     // ### emit signals!
@@ -207,8 +216,6 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QInputDialog::InputDialogOptions)
-
-#endif // QT_NO_INPUTDIALOG
 
 QT_END_NAMESPACE
 

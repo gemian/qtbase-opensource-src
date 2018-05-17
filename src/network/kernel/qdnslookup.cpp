@@ -42,7 +42,7 @@
 
 #include <qcoreapplication.h>
 #include <qdatetime.h>
-#include <qthreadstorage.h>
+#include <qrandom.h>
 #include <qurl.h>
 
 #include <algorithm>
@@ -50,7 +50,6 @@
 QT_BEGIN_NAMESPACE
 
 Q_GLOBAL_STATIC(QDnsLookupThreadPool, theDnsLookupThreadPool);
-Q_GLOBAL_STATIC(QThreadStorage<bool *>, theDnsLookupSeedStorage);
 
 static bool qt_qdnsmailexchangerecord_less_than(const QDnsMailExchangeRecord &r1, const QDnsMailExchangeRecord &r2)
 {
@@ -58,7 +57,7 @@ static bool qt_qdnsmailexchangerecord_less_than(const QDnsMailExchangeRecord &r1
     return r1.preference() < r2.preference();
 }
 
-/*!
+/*
     Sorts a list of QDnsMailExchangeRecord objects according to RFC 5321.
 */
 
@@ -85,7 +84,7 @@ static void qt_qdnsmailexchangerecord_sort(QList<QDnsMailExchangeRecord> &record
 
         // Randomize the slice of records.
         while (!slice.isEmpty()) {
-            const unsigned int pos = qrand() % slice.size();
+            const unsigned int pos = QRandomGenerator::global()->bounded(slice.size());
             records[i++] = slice.takeAt(pos);
         }
     }
@@ -100,7 +99,7 @@ static bool qt_qdnsservicerecord_less_than(const QDnsServiceRecord &r1, const QD
         && r1.weight() == 0 && r2.weight() > 0);
 }
 
-/*!
+/*
     Sorts a list of QDnsServiceRecord objects according to RFC 2782.
 */
 
@@ -134,7 +133,7 @@ static void qt_qdnsservicerecord_sort(QList<QDnsServiceRecord> &records)
 
         // Order the slice of records.
         while (!slice.isEmpty()) {
-            const unsigned int weightThreshold = qrand() % (sliceWeight + 1);
+            const unsigned int weightThreshold = QRandomGenerator::global()->bounded(sliceWeight + 1);
             unsigned int summedWeight = 0;
             for (int j = 0; j < slice.size(); ++j) {
                 summedWeight += slice.at(j).weight();
@@ -1011,10 +1010,6 @@ void QDnsLookupRunnable::run()
     query(requestType, requestName, nameserver, &reply);
 
     // Sort results.
-    if (!theDnsLookupSeedStorage()->hasLocalData()) {
-        qsrand(QTime(0,0,0).msecsTo(QTime::currentTime()) ^ reinterpret_cast<quintptr>(this));
-        theDnsLookupSeedStorage()->setLocalData(new bool(true));
-    }
     qt_qdnsmailexchangerecord_sort(reply.mailExchangeRecords);
     qt_qdnsservicerecord_sort(reply.serviceRecords);
 

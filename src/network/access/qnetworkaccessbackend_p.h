@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include "qnetworkreplyimpl_p.h"
 #include "QtCore/qobject.h"
 
@@ -62,7 +63,6 @@ class QNetworkProxyQuery;
 class QNetworkRequest;
 class QStringList;
 class QUrl;
-class QUrlInfo;
 class QSslConfiguration;
 
 class QNetworkAccessManagerPrivate;

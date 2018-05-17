@@ -29,11 +29,46 @@
 #include "msvc_objectmodel.h"
 #include "msvc_vcproj.h"
 #include "msvc_vcxproj.h"
+
+#include <ioutils.h>
+
 #include <qscopedpointer.h>
-#include <qstringlist.h>
 #include <qfileinfo.h>
 
+using namespace QMakeInternal;
+
 QT_BEGIN_NAMESPACE
+
+static DotNET vsVersionFromString(const char *versionString)
+{
+    struct VSVersionMapping
+    {
+        const char *str;
+        DotNET version;
+    };
+    static VSVersionMapping mapping[] = {
+        { "7.0", NET2002 },
+        { "7.1", NET2003 },
+        { "8.0", NET2005 },
+        { "9.0", NET2008 },
+        { "10.0", NET2010 },
+        { "11.0", NET2012 },
+        { "12.0", NET2013 },
+        { "14.0", NET2015 },
+        { "15.0", NET2017 }
+    };
+    DotNET result = NETUnknown;
+    for (const auto entry : mapping) {
+        if (strcmp(entry.str, versionString) == 0)
+            return entry.version;
+    }
+    return result;
+}
+
+DotNET vsVersionFromString(const ProString &versionString)
+{
+    return vsVersionFromString(versionString.toLatin1().constData());
+}
 
 // XML Tags ---------------------------------------------------------
 const char _Configuration[]                     = "Configuration";
@@ -285,7 +320,7 @@ triState operator!(const triState &rhs)
 QStringList VCToolBase::fixCommandLine(const QString &input)
 {
     // The splitting regexp is a bit bizarre for backwards compat reasons (why else ...).
-    return input.split(QRegExp(QLatin1String("\n\t|\r\\\\h|\r\n")));
+    return input.split(QRegExp(QLatin1String("(\n\t|\r\\\\h|\r\n)\\s*")));
 }
 
 static QString vcCommandSeparator()
@@ -915,12 +950,8 @@ bool VCCLCompilerTool::parseOption(const char* option)
                     ForceConformanceInForLoopScope = ((*c) == '-' ? _False : _True);
                 else if(fourth == 'w')
                     TreatWChar_tAsBuiltInType = ((*c) == '-' ? _False : _True);
-                else if (config->CompilerVersion >= NET2013 && strncmp(option + 4, "strictStrings", 13) == 0)
-                    AdditionalOptions += option;
-                else if (config->CompilerVersion >= NET2015 && strncmp(option + 4, "throwingNew", 11) == 0)
-                    AdditionalOptions += option;
                 else
-                    found = false;
+                    AdditionalOptions += option;
             } else {
                 found = false; break;
             }
@@ -1118,7 +1149,12 @@ bool VCCLCompilerTool::parseOption(const char* option)
         }
         found = false; break;
     case 'u':
-        UndefineAllPreprocessorDefinitions = _True;
+        if (!second)
+            UndefineAllPreprocessorDefinitions = _True;
+        else if (strcmp(option + 2, "tf-8") == 0)
+            AdditionalOptions += option;
+        else
+            found = false;
         break;
     case 'v':
         if(second == 'd' || second == 'm') {
@@ -1176,6 +1212,7 @@ VCLinkerTool::VCLinkerTool()
     :   DataExecutionPrevention(unset),
         EnableCOMDATFolding(optFoldingDefault),
         GenerateDebugInformation(unset),
+        DebugInfoOption(linkerDebugOptionNone),
         GenerateMapFile(unset),
         HeapCommitSize(-1),
         HeapReserveSize(-1),
@@ -1425,8 +1462,10 @@ bool VCLinkerTool::parseOption(const char* option)
         }else
             EnableUAC = _True;
         break;
-    case 0x3389797: // /DEBUG
+    case 0x3389797: // /DEBUG[:FASTLINK]
         GenerateDebugInformation = _True;
+        if (config->CompilerVersion >= NET2015 && strcmp(option + 7, "FASTLINK") == 0)
+            DebugInfoOption = linkerDebugOptionFastLink;
         break;
     case 0x0033896: // /DEF:filename
         ModuleDefinitionFile = option+5;
@@ -2129,7 +2168,6 @@ VCPreLinkEventTool::VCPreLinkEventTool()
 
 VCConfiguration::VCConfiguration()
     :   WinRT(false),
-        WinPhone(false),
         ATLMinimizesCRunTimeLibraryUsage(unset),
         BuildBrowserInformation(unset),
         CharacterSet(charSetNotSet),
@@ -2142,7 +2180,6 @@ VCConfiguration::VCConfiguration()
     compiler.config = this;
     linker.config = this;
     idl.config = this;
-    custom.config = this;
 }
 
 // VCFilter ---------------------------------------------------------
@@ -2258,10 +2295,14 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
     QString inFile = info.file;
 
     // is the extracompiler rule on a file with a built in compiler?
-    const QStringList &objectMappedFile = Project->extraCompilerOutputs[inFile];
+    const QString objectMappedFile = Project->extraCompilerOutputs.value(inFile);
     bool hasBuiltIn = false;
     if (!objectMappedFile.isEmpty()) {
-        hasBuiltIn = Project->hasBuiltinCompiler(objectMappedFile.at(0));
+        hasBuiltIn = Project->hasBuiltinCompiler(objectMappedFile);
+
+        // Remove the fake file suffix we've added initially to generate correct command lines.
+        inFile.chop(Project->customBuildToolFilterFileSuffix.length());
+
 //        qDebug("*** Extra compiler file has object mapped file '%s' => '%s'", qPrintable(inFile), qPrintable(objectMappedFile.join(' ')));
     }
 
@@ -2303,7 +2344,7 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
         // compiler, too bad..
         if (hasBuiltIn) {
             out = inFile;
-            inFile = objectMappedFile.at(0);
+            inFile = objectMappedFile;
         }
 
         // Dependency for the output
@@ -2316,7 +2357,7 @@ bool VCFilter::addExtraCompiler(const VCFilterFile &info)
                         tmp_dep_cmd, inFile, out, MakefileGenerator::LocalShell);
             if(Project->canExecute(dep_cmd)) {
                 dep_cmd.prepend(QLatin1String("cd ")
-                                + Project->escapeFilePath(Option::fixPathToLocalOS(Option::output_dir, false))
+                                + IoUtils::shellQuote(Option::fixPathToLocalOS(Option::output_dir, false))
                                 + QLatin1String(" && "));
                 if (FILE *proc = QT_POPEN(dep_cmd.toLatin1().constData(), QT_POPEN_READ)) {
                     QString indeps;
@@ -2865,7 +2906,6 @@ void VCProjectWriter::write(XmlOutput &xml, const VCConfiguration &tool)
             << attrE(_UseOfMfc, tool.UseOfMfc)
             << attrT(_WholeProgramOptimization, tool.WholeProgramOptimization);
     write(xml, tool.compiler);
-    write(xml, tool.custom);
     if (tool.ConfigurationType == typeStaticLibrary)
         write(xml, tool.librarian);
     else

@@ -230,9 +230,7 @@ QString QNetworkManagerInterface::version() const
 
 void QNetworkManagerInterface::propertiesSwap(QMap<QString,QVariant> map)
 {
-    QMapIterator<QString, QVariant> i(map);
-    while (i.hasNext()) {
-        i.next();
+    for (auto i = map.cbegin(), end = map.cend(); i != end; ++i) {
         propertyMap.insert(i.key(),i.value());
 
         if (i.key() == QLatin1String("State")) {
@@ -327,11 +325,8 @@ quint32 QNetworkManagerInterfaceAccessPoint::strength() const
 
 void QNetworkManagerInterfaceAccessPoint::propertiesSwap(QMap<QString,QVariant> map)
 {
-    QMapIterator<QString, QVariant> i(map);
-    while (i.hasNext()) {
-        i.next();
+    for (auto i = map.cbegin(), end = map.cend(); i != end; ++i)
         propertyMap.insert(i.key(),i.value());
-    }
 }
 
 QNetworkManagerInterfaceDevice::QNetworkManagerInterfaceDevice(const QString &deviceObjectPath, QObject *parent)
@@ -419,9 +414,7 @@ QDBusObjectPath QNetworkManagerInterfaceDevice::ip4config() const
 
 void QNetworkManagerInterfaceDevice::propertiesSwap(QMap<QString,QVariant> map)
 {
-    QMapIterator<QString, QVariant> i(map);
-    while (i.hasNext()) {
-        i.next();
+    for (auto i = map.cbegin(), end = map.cend(); i != end; ++i) {
         if (i.key() == QLatin1String("AvailableConnections")) { //Device
             const QDBusArgument &dbusArgs = i.value().value<QDBusArgument>();
             QDBusObjectPath path;
@@ -519,9 +512,7 @@ QStringList QNetworkManagerInterfaceDeviceWired::availableConnections()
 
 void QNetworkManagerInterfaceDeviceWired::propertiesSwap(QMap<QString,QVariant> map)
 {
-    QMapIterator<QString, QVariant> i(map);
-    while (i.hasNext()) {
-        i.next();
+    for (auto i = map.cbegin(), end = map.cend(); i != end; ++i) {
         propertyMap.insert(i.key(),i.value());
         if (i.key() == QLatin1String("Carrier"))
             Q_EMIT carrierChanged(i.value().toBool());
@@ -635,9 +626,7 @@ void QNetworkManagerInterfaceDeviceWireless::requestScan()
 
 void QNetworkManagerInterfaceDeviceWireless::propertiesSwap(QMap<QString,QVariant> map)
 {
-    QMapIterator<QString, QVariant> i(map);
-    while (i.hasNext()) {
-        i.next();
+    for (auto i = map.cbegin(), end = map.cend(); i != end; ++i) {
         propertyMap.insert(i.key(),i.value());
         if (i.key() == QLatin1String("ActiveAccessPoint")) //DeviceWireless
             Q_EMIT propertiesChanged(map);
@@ -700,11 +689,8 @@ QNetworkManagerInterfaceDeviceModem::ModemCapabilities QNetworkManagerInterfaceD
 
 void QNetworkManagerInterfaceDeviceModem::propertiesSwap(QMap<QString,QVariant> map)
 {
-    QMapIterator<QString, QVariant> i(map);
-    while (i.hasNext()) {
-        i.next();
+    for (auto i = map.cbegin(), end = map.cend(); i != end; ++i)
         propertyMap.insert(i.key(),i.value());
-    }
     Q_EMIT propertiesChanged(map);
 }
 
@@ -1013,9 +999,7 @@ bool QNetworkManagerConnectionActive::default6Route() const
 
 void QNetworkManagerConnectionActive::propertiesSwap(QMap<QString,QVariant> map)
 {
-    QMapIterator<QString, QVariant> i(map);
-    while (i.hasNext()) {
-        i.next();
+    for (auto i = map.cbegin(), end = map.cend(); i != end; ++i) {
         propertyMap.insert(i.key(),i.value());
         if (i.key() == QLatin1String("State")) {
             quint32 state = i.value().toUInt();

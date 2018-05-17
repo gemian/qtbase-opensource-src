@@ -96,7 +96,7 @@ void QHttpNetworkReply::setRedirectUrl(const QUrl &url)
 bool QHttpNetworkReply::isHttpRedirect(int statusCode)
 {
     return (statusCode == 301 || statusCode == 302 || statusCode == 303
-            || statusCode == 305 || statusCode == 307);
+            || statusCode == 305 || statusCode == 307 || statusCode == 308);
 }
 
 qint64 QHttpNetworkReply::contentLength() const
@@ -299,6 +299,11 @@ void QHttpNetworkReply::setSpdyWasUsed(bool spdy)
     d_func()->spdyUsed = spdy;
 }
 
+qint64 QHttpNetworkReply::removedContentLength() const
+{
+    return d_func()->removedContentLength;
+}
+
 bool QHttpNetworkReply::isRedirecting() const
 {
     return d_func()->isRedirecting();
@@ -326,6 +331,7 @@ QHttpNetworkReplyPrivate::QHttpNetworkReplyPrivate(const QUrl &newUrl)
       currentlyReceivedDataInWindow(0),
       currentlyUploadedDataInWindow(0),
       totallyUploadedData(0),
+      removedContentLength(-1),
       connection(0),
       autoDecompress(false), responseData(), requestIsPrepared(false)
       ,pipeliningUsed(false), spdyUsed(false), downstreamLimited(false)
@@ -398,12 +404,12 @@ void QHttpNetworkReplyPrivate::removeAutoDecompressHeader()
                                                    end = fields.end();
     while (it != end) {
         if (qstricmp(name.constData(), it->first.constData()) == 0) {
+            removedContentLength = strtoull(it->second.constData(), nullptr, 0);
             fields.erase(it);
             break;
         }
         ++it;
     }
-
 }
 
 bool QHttpNetworkReplyPrivate::findChallenge(bool forProxy, QByteArray &challenge) const
@@ -484,8 +490,7 @@ qint64 QHttpNetworkReplyPrivate::readStatus(QAbstractSocket *socket)
         }
 
         // is this a valid reply?
-        if (fragment.length() >= 5 && !fragment.startsWith("HTTP/"))
-        {
+        if (fragment.length() == 5 && !fragment.startsWith("HTTP/")) {
             fragment.clear();
             return -1;
         }
@@ -739,6 +744,8 @@ qint64 QHttpNetworkReplyPrivate::readBody(QAbstractSocket *socket, QByteDataBuff
 #ifndef QT_NO_COMPRESS
 int QHttpNetworkReplyPrivate::initializeInflateStream()
 {
+    Q_ASSERT(inflateStrm);
+
     inflateStrm->zalloc = Z_NULL;
     inflateStrm->zfree = Z_NULL;
     inflateStrm->opaque = Z_NULL;

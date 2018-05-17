@@ -51,11 +51,15 @@ QT_BEGIN_NAMESPACE
 
 extern QMarginsF qt_convertMargins(const QMarginsF &margins, QPageLayout::Unit fromUnits, QPageLayout::Unit toUnits);
 
-QMacPrintEngine::QMacPrintEngine(QPrinter::PrinterMode mode) : QPaintEngine(*(new QMacPrintEnginePrivate))
+QMacPrintEngine::QMacPrintEngine(QPrinter::PrinterMode mode, const QString &deviceId)
+    : QPaintEngine(*(new QMacPrintEnginePrivate))
 {
     Q_D(QMacPrintEngine);
     d->mode = mode;
-    d->m_printDevice.reset(new QCocoaPrintDevice(QCocoaPrinterSupport().defaultPrintDeviceId()));
+    QString id = deviceId;
+    if (id.isEmpty())
+        id = QCocoaPrinterSupport().defaultPrintDeviceId();
+    d->m_printDevice.reset(new QCocoaPrintDevice(id));
     d->m_pageLayout.setPageSize(d->m_printDevice->defaultPageSize());
     d->initialize();
 }
@@ -200,7 +204,7 @@ int QMacPrintEngine::metric(QPaintDevice::PaintDeviceMetric m) const
             val = (int)resolution.vRes;
             break;
         }
-        //otherwise fall through
+        Q_FALLTHROUGH();
     }
     case QPaintDevice::PdmDpiY:
         val = (int)d->resolution.vRes;
@@ -673,7 +677,7 @@ QVariant QMacPrintEngine::property(PrintEnginePropertyKey key) const
     case PPK_DocumentName: {
         CFStringRef name;
         PMPrintSettingsGetJobName(d->settings(), &name);
-        ret = QCFString::toQString(name);
+        ret = QString::fromCFString(name);
         break;
     }
     case PPK_Duplex: {

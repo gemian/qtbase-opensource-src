@@ -40,14 +40,15 @@
 #ifndef QFONTDIALOG_H
 #define QFONTDIALOG_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtGui/qwindowdefs.h>
-#include <QtWidgets/qdialog.h>
 #include <QtGui/qfont.h>
 
+#include <QtWidgets/qdialog.h>
+
+QT_REQUIRE_CONFIG(fontdialog);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_FONTDIALOG
 
 class QFontDialogPrivate;
 
@@ -115,8 +116,6 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QFontDialog::FontDialogOptions)
-
-#endif // QT_NO_FONTDIALOG
 
 QT_END_NAMESPACE
 

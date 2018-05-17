@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtCore/private/qglobal_p.h>
 #include <qelapsedtimer.h>
 #include <qobject.h>
 #include <qbytearray.h>
@@ -142,9 +143,8 @@ private:
     };
 
     HANDLE handle;
-    Overlapped overlapped;
+    Overlapped *overlapped;
     QByteArray buffer;
-    qint64 numberOfBytesToWrite;
     qint64 pendingBytesWrittenValue;
     bool stopped;
     bool writeSequenceStarted;
@@ -155,4 +155,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QT_NO_PROCESS
+#endif // QWINDOWSPIPEWRITER_P_H

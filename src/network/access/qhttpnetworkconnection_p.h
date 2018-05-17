@@ -50,6 +50,8 @@
 //
 // We mean it.
 //
+
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include <QtNetwork/qnetworkrequest.h>
 #include <QtNetwork/qnetworkreply.h>
 #include <QtNetwork/qabstractsocket.h>
@@ -65,21 +67,11 @@
 #include <private/qhttpnetworkheader_p.h>
 #include <private/qhttpnetworkrequest_p.h>
 #include <private/qhttpnetworkreply_p.h>
+#include <private/http2protocol_p.h>
 
 #include <private/qhttpnetworkconnectionchannel_p.h>
 
 #ifndef QT_NO_HTTP
-
-#ifndef QT_NO_SSL
-#ifndef QT_NO_OPENSSL
-#    include <private/qsslcontext_openssl_p.h>
-#endif
-#    include <private/qsslsocket_p.h>
-#    include <QtNetwork/qsslsocket.h>
-#    include <QtNetwork/qsslerror.h>
-#else
-#   include <QtNetwork/qtcpsocket.h>
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -88,6 +80,10 @@ class QHttpNetworkReply;
 class QHttpThreadDelegate;
 class QByteArray;
 class QHostInfo;
+#ifndef QT_NO_SSL
+class QSslConfiguration;
+class QSslContext;
+#endif // !QT_NO_SSL
 
 class QHttpNetworkConnectionPrivate;
 class Q_AUTOTEST_EXPORT QHttpNetworkConnection : public QObject
@@ -97,7 +93,8 @@ public:
 
     enum ConnectionType {
         ConnectionTypeHTTP,
-        ConnectionTypeSPDY
+        ConnectionTypeSPDY,
+        ConnectionTypeHTTP2
     };
 
 #ifndef QT_NO_BEARERMANAGEMENT
@@ -126,6 +123,7 @@ public:
 
     //add a new HTTP request through this connection
     QHttpNetworkReply* sendRequest(const QHttpNetworkRequest &request);
+    void fillHttp2Queue();
 
 #ifndef QT_NO_NETWORKPROXY
     //set the proxy for this connection
@@ -141,6 +139,9 @@ public:
 
     ConnectionType connectionType();
     void setConnectionType(ConnectionType type);
+
+    Http2::ProtocolParameters http2Parameters() const;
+    void setHttp2Parameters(const Http2::ProtocolParameters &params);
 
 #ifndef QT_NO_SSL
     void setSslConfiguration(const QSslConfiguration &config);
@@ -159,6 +160,7 @@ private:
     friend class QHttpNetworkReply;
     friend class QHttpNetworkReplyPrivate;
     friend class QHttpNetworkConnectionChannel;
+    friend class QHttp2ProtocolHandler;
     friend class QHttpProtocolHandler;
     friend class QSpdyProtocolHandler;
 
@@ -211,8 +213,10 @@ public:
 
     QHttpNetworkReply *queueRequest(const QHttpNetworkRequest &request);
     void requeueRequest(const HttpMessagePair &pair); // e.g. after pipeline broke
+    void fillHttp2Queue();
     bool dequeueRequest(QAbstractSocket *socket);
     void prepareRequest(HttpMessagePair &request);
+    void updateChannel(int i, const HttpMessagePair &messagePair);
     QHttpNetworkRequest predictNextRequest() const;
 
     void fillPipeline(QAbstractSocket *socket);
@@ -245,6 +249,9 @@ public:
     bool encrypt;
     bool delayIpv4;
 
+    // Number of channels we are trying to use at the moment:
+    int activeChannelCount;
+    // The total number of channels we reserved:
     const int channelCount;
     QTimer delayedConnectionTimer;
     QHttpNetworkConnectionChannel *channels; // parallel connections to the server
@@ -278,6 +285,8 @@ public:
 #ifndef QT_NO_BEARERMANAGEMENT
     QSharedPointer<QNetworkSession> networkSession;
 #endif
+
+    Http2::ProtocolParameters http2Parameters;
 
     friend class QHttpNetworkConnectionChannel;
 };

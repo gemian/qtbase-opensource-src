@@ -40,6 +40,7 @@
 #ifndef QPLAINTEXTEDIT_H
 #define QPLAINTEXTEDIT_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qtextedit.h>
 
 #include <QtWidgets/qabstractscrollarea.h>
@@ -49,10 +50,9 @@
 #include <QtGui/qtextformat.h>
 #include <QtGui/qabstracttextdocumentlayout.h>
 
-#ifndef QT_NO_TEXTEDIT
+QT_REQUIRE_CONFIG(textedit);
 
 QT_BEGIN_NAMESPACE
-
 
 class QStyleSheet;
 class QTextDocument;
@@ -73,7 +73,10 @@ class Q_WIDGETS_EXPORT QPlainTextEdit : public QAbstractScrollArea
     Q_PROPERTY(bool readOnly READ isReadOnly WRITE setReadOnly)
     Q_PROPERTY(QString plainText READ toPlainText WRITE setPlainText NOTIFY textChanged USER true)
     Q_PROPERTY(bool overwriteMode READ overwriteMode WRITE setOverwriteMode)
+#if QT_DEPRECATED_SINCE(5, 10)
     Q_PROPERTY(int tabStopWidth READ tabStopWidth WRITE setTabStopWidth)
+#endif
+    Q_PROPERTY(qreal tabStopDistance READ tabStopDistance WRITE setTabStopDistance)
     Q_PROPERTY(int cursorWidth READ cursorWidth WRITE setCursorWidth)
     Q_PROPERTY(Qt::TextInteractionFlags textInteractionFlags READ textInteractionFlags WRITE setTextInteractionFlags)
     Q_PROPERTY(int blockCount READ blockCount)
@@ -167,8 +170,13 @@ public:
     bool overwriteMode() const;
     void setOverwriteMode(bool overwrite);
 
-    int tabStopWidth() const;
-    void setTabStopWidth(int width);
+#if QT_DEPRECATED_SINCE(5, 10)
+    QT_DEPRECATED int tabStopWidth() const;
+    QT_DEPRECATED void setTabStopWidth(int width);
+#endif
+
+    qreal tabStopDistance() const;
+    void setTabStopDistance(qreal distance);
 
     int cursorWidth() const;
     void setCursorWidth(int width);
@@ -249,7 +257,7 @@ protected:
     virtual void focusOutEvent(QFocusEvent *e) Q_DECL_OVERRIDE;
     virtual void showEvent(QShowEvent *) Q_DECL_OVERRIDE;
     virtual void changeEvent(QEvent *e) Q_DECL_OVERRIDE;
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     virtual void wheelEvent(QWheelEvent *e) Q_DECL_OVERRIDE;
 #endif
 
@@ -327,8 +335,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-
-#endif // QT_NO_TEXTEDIT
 
 #endif // QPLAINTEXTEDIT_H

@@ -42,14 +42,14 @@
 #include "qoffscreencommon.h"
 
 #if defined(Q_OS_UNIX)
-#include <QtPlatformSupport/private/qgenericunixeventdispatcher_p.h>
+#include <QtEventDispatcherSupport/private/qgenericunixeventdispatcher_p.h>
 #if defined(Q_OS_MAC)
 #include <qpa/qplatformfontdatabase.h>
 #else
-#include <QtPlatformSupport/private/qgenericunixfontdatabase_p.h>
+#include <QtFontDatabaseSupport/private/qgenericunixfontdatabase_p.h>
 #endif
 #elif defined(Q_OS_WIN)
-#include <QtPlatformSupport/private/qbasicfontdatabase_p.h>
+#include <QtFontDatabaseSupport/private/qfreetypefontdatabase_p.h>
 #ifndef Q_OS_WINRT
 #include <QtCore/private/qeventdispatcher_win_p.h>
 #else
@@ -59,6 +59,9 @@
 
 #include <QtGui/private/qpixmap_raster_p.h>
 #include <QtGui/private/qguiapplication_p.h>
+#include <qpa/qplatforminputcontextfactory_p.h>
+#include <qpa/qplatforminputcontext.h>
+#include <qpa/qplatformtheme.h>
 
 #include <qpa/qplatformservices.h>
 
@@ -103,7 +106,7 @@ QOffscreenIntegration::QOffscreenIntegration()
     m_fontDatabase.reset(new QGenericUnixFontDatabase());
 #endif
 #elif defined(Q_OS_WIN)
-    m_fontDatabase.reset(new QBasicFontDatabase());
+    m_fontDatabase.reset(new QFreeTypeFontDatabase());
 #endif
 
 #ifndef QT_NO_DRAGANDDROP
@@ -116,6 +119,16 @@ QOffscreenIntegration::QOffscreenIntegration()
 
 QOffscreenIntegration::~QOffscreenIntegration()
 {
+}
+
+void QOffscreenIntegration::initialize()
+{
+    m_inputContext.reset(QPlatformInputContextFactory::create());
+}
+
+QPlatformInputContext *QOffscreenIntegration::inputContext() const
+{
+    return m_inputContext.data();
 }
 
 bool QOffscreenIntegration::hasCapability(QPlatformIntegration::Capability cap) const
@@ -153,6 +166,37 @@ QAbstractEventDispatcher *QOffscreenIntegration::createEventDispatcher() const
 #else
     return 0;
 #endif
+}
+
+static QString themeName() { return QStringLiteral("offscreen"); }
+
+QStringList QOffscreenIntegration::themeNames() const
+{
+    return QStringList(themeName());
+}
+
+// Restrict the styles to "fusion" to prevent native styles requiring native
+// window handles (eg Windows Vista style) from being used.
+class OffscreenTheme : public QPlatformTheme
+{
+public:
+    OffscreenTheme() {}
+
+    QVariant themeHint(ThemeHint h) const override
+    {
+        switch (h) {
+        case StyleNames:
+            return QVariant(QStringList(QStringLiteral("fusion")));
+        default:
+            break;
+        }
+        return QPlatformTheme::themeHint(h);
+    }
+};
+
+QPlatformTheme *QOffscreenIntegration::createPlatformTheme(const QString &name) const
+{
+    return name == themeName() ? new OffscreenTheme() : nullptr;
 }
 
 QPlatformFontDatabase *QOffscreenIntegration::fontDatabase() const

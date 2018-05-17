@@ -38,7 +38,7 @@
 ****************************************************************************/
 
 #include "qprogressbar.h"
-#ifndef QT_NO_PROGRESSBAR
+
 #include <qlocale.h>
 #include <qevent.h>
 #include <qpainter.h>
@@ -144,16 +144,17 @@ bool QProgressBarPrivate::repaintRequired() const
     if (value == lastPaintedValue)
         return false;
 
-    int valueDifference = qAbs(value - lastPaintedValue);
-
+    const auto valueDifference = qAbs(qint64(value) - lastPaintedValue);
     // Check if the text needs to be repainted
     if (value == minimum || value == maximum)
         return true;
+
+    const auto totalSteps = qint64(maximum) - minimum;
     if (textVisible) {
         if ((format.contains(QLatin1String("%v"))))
             return true;
         if ((format.contains(QLatin1String("%p"))
-             && valueDifference >= qAbs((maximum - minimum) / 100)))
+             && valueDifference >= qAbs(totalSteps / 100)))
             return true;
     }
 
@@ -166,7 +167,7 @@ bool QProgressBarPrivate::repaintRequired() const
     // (valueDifference / (maximum - minimum) > cw / groove.width())
     // transformed to avoid integer division.
     int grooveBlock = (q->orientation() == Qt::Horizontal) ? groove.width() : groove.height();
-    return (valueDifference * grooveBlock > cw * (maximum - minimum));
+    return valueDifference * grooveBlock > cw * totalSteps;
 }
 
 /*!
@@ -175,6 +176,8 @@ bool QProgressBarPrivate::repaintRequired() const
 
     \ingroup basicwidgets
     \inmodule QtWidgets
+
+    \image windows-progressbar.png
 
     A progress bar is used to give the user an indication of the
     progress of an operation and to reassure them that the application
@@ -197,15 +200,6 @@ bool QProgressBarPrivate::repaintRequired() const
     example, when using QNetworkAccessManager to download items when
     they are unable to determine the size of the item being downloaded.
 
-    \table
-    \row \li \inlineimage macintosh-progressbar.png Screenshot of a Macintosh style progress bar
-         \li A progress bar shown in the Macintosh widget style.
-    \row \li \inlineimage windowsvista-progressbar.png Screenshot of a Windows Vista style progress bar
-         \li A progress bar shown in the Windows Vista widget style.
-    \row \li \inlineimage fusion-progressbar.png Screenshot of a Fusion style progress bar
-         \li A progress bar shown in the Fusion widget style.
-    \endtable
-
     \sa QProgressDialog, {fowler}{GUI Design Handbook: Progress Indicator}
 */
 
@@ -219,7 +213,7 @@ bool QProgressBarPrivate::repaintRequired() const
 
     Note that whether or not the text is drawn is dependent on the style.
     Currently CleanLooks and Plastique draw the text. Mac, Windows
-    and WindowsXP style do not.
+    and WindowsVista style do not.
 
     \sa textDirection
 */
@@ -260,9 +254,10 @@ QProgressBar::~QProgressBar()
 void QProgressBar::reset()
 {
     Q_D(QProgressBar);
-    d->value = d->minimum - 1;
     if (d->minimum == INT_MIN)
         d->value = INT_MIN;
+    else
+        d->value = d->minimum - 1;
     repaint();
 }
 
@@ -358,7 +353,7 @@ void QProgressBar::setRange(int minimum, int maximum)
         d->minimum = minimum;
         d->maximum = qMax(minimum, maximum);
 
-        if (d->value < (d->minimum - 1) || d->value > d->maximum)
+        if (d->value < qint64(d->minimum) - 1 || d->value > d->maximum)
             reset();
         else
             update();
@@ -479,11 +474,11 @@ QString QProgressBar::text() const
     // progress bar has one step and that we are on that step. Return
     // 100% here in order to avoid division by zero further down.
     if (totalSteps == 0) {
-        result.replace(QLatin1String("%p"), locale.toString(int(100)));
+        result.replace(QLatin1String("%p"), locale.toString(100));
         return result;
     }
 
-    int progress = (qreal(d->value) - d->minimum) * 100.0 / totalSteps;
+    const auto progress = static_cast<int>((qint64(d->value) - d->minimum) * 100.0 / totalSteps);
     result.replace(QLatin1String("%p"), locale.toString(progress));
     return result;
 }
@@ -506,9 +501,7 @@ void QProgressBar::setOrientation(Qt::Orientation orientation)
         return;
     d->orientation = orientation;
     if (!testAttribute(Qt::WA_WState_OwnSizePolicy)) {
-        QSizePolicy sp = sizePolicy();
-        sp.transpose();
-        setSizePolicy(sp);
+        setSizePolicy(sizePolicy().transposed());
         setAttribute(Qt::WA_WState_OwnSizePolicy, false);
     }
     d->resetLayoutItemMargins();
@@ -630,5 +623,3 @@ QString QProgressBar::format() const
 QT_END_NAMESPACE
 
 #include "moc_qprogressbar.cpp"
-
-#endif // QT_NO_PROGRESSBAR

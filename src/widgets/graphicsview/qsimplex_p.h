@@ -51,9 +51,12 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qstring.h>
+
+QT_REQUIRE_CONFIG(graphicsview);
 
 QT_BEGIN_NAMESPACE
 

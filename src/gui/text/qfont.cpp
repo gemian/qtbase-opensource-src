@@ -727,11 +727,9 @@ void QFont::setFamily(const QString &family)
 /*!
     \since 4.8
 
-    Returns the requested font style name, it will be used to match the
+    Returns the requested font style name. This can be used to match the
     font with irregular styles (that can't be normalized in other style
-    properties). It depends on system font support, thus only works for
-    \macos and X11 so far. On Windows irregular styles will be added
-    as separate font families so there is no need for this.
+    properties).
 
     \sa setFamily(), setStyle()
 */
@@ -744,7 +742,12 @@ QString QFont::styleName() const
     \since 4.8
 
     Sets the style name of the font to \a styleName. When set, other style properties
-    like \l style() and \l weight() will be ignored for font matching.
+    like \l style() and \l weight() will be ignored for font matching, though they may be
+    simulated afterwards if supported by the platform's font engine.
+
+    Due to the lower quality of artificially simulated styles, and the lack of full cross
+    platform support, it is not recommended to use matching by style name together with
+    matching by style properties
 
     \sa styleName()
 */
@@ -985,6 +988,10 @@ int QFont::pixelSize() const
   Sets the style() of the font to QFont::StyleItalic if \a enable is true;
   otherwise the style is set to QFont::StyleNormal.
 
+  \note If styleName() is set, this value may be ignored, or if supported
+  on the platform, the font may be rendered tilted instead of picking a
+  designed italic font-variant.
+
   \sa italic(), QFontInfo
 */
 
@@ -1050,6 +1057,8 @@ int QFont::weight() const
     Sets the weight of the font to \a weight, using the scale defined by
     \l QFont::Weight enumeration.
 
+    \note If styleName() is set, this value may be ignored for font selection.
+
     \sa weight(), QFontInfo
 */
 void QFont::setWeight(int weight)
@@ -1082,6 +1091,9 @@ void QFont::setWeight(int weight)
     otherwise sets the weight to \l{Weight}{QFont::Normal}.
 
     For finer boldness control use setWeight().
+
+    \note If styleName() is set, this value may be ignored, or if supported
+    on the platform, the font artificially embolded.
 
     \sa bold(), setWeight()
 */
@@ -1312,6 +1324,11 @@ QFont::StyleHint QFont::styleHint() const
            looking font that contains the character. The NoFontMerging flag disables this feature.
            Please note that enabling this flag will not prevent Qt from automatically picking a
            suitable font when the selected font does not support the writing system of the text.
+    \value PreferNoShaping Sometimes, a font will apply complex rules to a set of characters in
+           order to display them correctly. In some writing systems, such as Brahmic scripts, this is
+           required in order for the text to be legible, but in e.g. Latin script, it is merely
+           a cosmetic feature. The PreferNoShaping flag will disable all such features when they
+           are not required, which will improve performance in most cases.
 
     Any of these may be OR-ed with one of these flags:
 
@@ -1376,6 +1393,7 @@ void QFont::setStyleStrategy(StyleStrategy s)
     Predefined stretch values that follow the CSS naming convention. The higher
     the value, the more stretched the text is.
 
+    \value AnyStretch 0 Accept any stretch matched using the other QFont properties (added in Qt 5.8)
     \value UltraCondensed 50
     \value ExtraCondensed 62
     \value Condensed 75
@@ -1402,20 +1420,25 @@ int QFont::stretch() const
 /*!
     Sets the stretch factor for the font.
 
-    The stretch factor changes the width of all characters in the font
-    by \a factor percent.  For example, setting \a factor to 150
+    The stretch factor matches a condensed or expanded version of the font or
+    applies a stretch transform that changes the width of all characters
+    in the font by \a factor percent.  For example, setting \a factor to 150
     results in all characters in the font being 1.5 times (ie. 150%)
-    wider.  The default stretch factor is 100.  The minimum stretch
-    factor is 1, and the maximum stretch factor is 4000.
+    wider.  The minimum stretch factor is 1, and the maximum stretch factor
+    is 4000.  The default stretch factor is \c AnyStretch, which will accept
+    any stretch factor and not apply any transform on the font.
 
     The stretch factor is only applied to outline fonts.  The stretch
     factor is ignored for bitmap fonts.
+
+    \note When matching a font with a native non-default stretch factor,
+    requesting a stretch of 100 will stretch it back to a medium width font.
 
     \sa stretch(), QFont::Stretch
 */
 void QFont::setStretch(int factor)
 {
-    if (factor < 1 || factor > 4000) {
+    if (factor < 0 || factor > 4000) {
         qWarning("QFont::setStretch: Parameter '%d' out of range", factor);
         return;
     }
@@ -2001,7 +2024,7 @@ QString QFont::key() const
 QString QFont::toString() const
 {
     const QChar comma(QLatin1Char(','));
-    return family() + comma +
+    QString fontDescription = family() + comma +
         QString::number(     pointSizeF()) + comma +
         QString::number(      pixelSize()) + comma +
         QString::number((int) styleHint()) + comma +
@@ -2011,6 +2034,12 @@ QString QFont::toString() const
         QString::number((int) strikeOut()) + comma +
         QString::number((int)fixedPitch()) + comma +
         QString::number((int)   false);
+
+    QString fontStyle = styleName();
+    if (!fontStyle.isEmpty())
+        fontDescription += comma + fontStyle;
+
+    return fontDescription;
 }
 
 /*!
@@ -2054,7 +2083,7 @@ bool QFont::fromString(const QString &descrip)
         setUnderline(l[5].toInt());
         setStrikeOut(l[6].toInt());
         setFixedPitch(l[7].toInt());
-    } else if (count == 10) {
+    } else if (count >= 10) {
         if (l[2].toInt() > 0)
             setPixelSize(l[2].toInt());
         setStyleHint((StyleHint) l[3].toInt());
@@ -2063,7 +2092,12 @@ bool QFont::fromString(const QString &descrip)
         setUnderline(l[6].toInt());
         setStrikeOut(l[7].toInt());
         setFixedPitch(l[8].toInt());
+        if (count == 11)
+            d->request.styleName = l[10].toString();
+        else
+            d->request.styleName.clear();
     }
+
     if (count >= 9 && !d->request.fixedPitch) // assume 'false' fixedPitch equals default
         d->request.ignorePitch = true;
 

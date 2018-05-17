@@ -38,19 +38,21 @@
 ****************************************************************************/
 
 #include "qwindowsnativeinterface.h"
+#include "qwindowsclipboard.h"
 #include "qwindowswindow.h"
 #include "qwindowscontext.h"
 #include "qwindowscursor.h"
-#include "qwindowsfontdatabase.h"
 #include "qwindowsopenglcontext.h"
 #include "qwindowsopengltester.h"
 #include "qwindowsintegration.h"
 #include "qwindowsmime.h"
+#include "qwin10helpers.h"
 
 #include <QtGui/QWindow>
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QScreen>
 #include <qpa/qplatformscreen.h>
+#include <QtFontDatabaseSupport/private/qwindowsfontdatabase_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -62,7 +64,8 @@ enum ResourceType {
     HandleType,
     GlHandleType,
     GetDCType,
-    ReleaseDCType
+    ReleaseDCType,
+    VkSurface
 };
 
 static int resourceType(const QByteArray &key)
@@ -75,7 +78,8 @@ static int resourceType(const QByteArray &key)
         "handle",
         "glhandle",
         "getdc",
-        "releasedc"
+        "releasedc",
+        "vkSurface"
     };
     const char ** const end = names + sizeof(names) / sizeof(names[0]);
     const char **result = std::find(names, end, key);
@@ -108,6 +112,13 @@ void *QWindowsNativeInterface::nativeResourceForWindow(const QByteArray &resourc
         }
         break;
     case QWindow::OpenGLSurface:
+    case QWindow::OpenVGSurface:
+        break;
+    case QWindow::VulkanSurface:
+#if QT_CONFIG(vulkan)
+        if (type == VkSurface)
+            return bw->surface(nullptr, nullptr); // returns the address of the VkSurfaceKHR, not the value, as expected
+#endif
         break;
     }
     qWarning("%s: Invalid key '%s' requested.", __FUNCTION__, resource.constData());
@@ -252,14 +263,23 @@ QFont QWindowsNativeInterface::logFontToQFont(const void *logFont, int verticalD
     return QWindowsFontDatabase::LOGFONT_to_QFont(*reinterpret_cast<const LOGFONT *>(logFont), verticalDpi);
 }
 
+bool QWindowsNativeInterface::isTabletMode()
+{
+#if QT_CONFIG(clipboard)
+    if (const QWindowsClipboard *clipboard = QWindowsClipboard::instance())
+        return qt_windowsIsTabletMode(clipboard->clipboardViewer());
+#endif
+    return false;
+}
+
 QFunctionPointer QWindowsNativeInterface::platformFunction(const QByteArray &function) const
 {
     if (function == QWindowsWindowFunctions::setTouchWindowTouchTypeIdentifier())
         return QFunctionPointer(QWindowsWindow::setTouchWindowTouchTypeStatic);
     else if (function == QWindowsWindowFunctions::setHasBorderInFullScreenIdentifier())
         return QFunctionPointer(QWindowsWindow::setHasBorderInFullScreenStatic);
-    else if (function == QWindowsWindowFunctions::setWindowActivationBehaviorIdentifier())
-        return QFunctionPointer(QWindowsNativeInterface::setWindowActivationBehavior);
+    else if (function == QWindowsWindowFunctions::isTabletModeIdentifier())
+        return QFunctionPointer(QWindowsNativeInterface::isTabletMode);
     return Q_NULLPTR;
 }
 

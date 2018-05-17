@@ -51,9 +51,11 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include "qnetworkconfigmanager.h"
 #include "qnetworkconfiguration_p.h"
 
+#include <QtCore/private/qfactoryloader_p.h>
 #include <QtCore/qmutex.h>
 #include <QtCore/qset.h>
 
@@ -117,6 +119,7 @@ private:
 private:
     mutable QMutex mutex;
 
+    QFactoryLoader loader;
     QList<QBearerEngine *> sessionEngines;
 
     QSet<QString> onlineConfigurations;

@@ -520,17 +520,8 @@ void tst_QPushButton::sizeHint_data()
 #if !defined(QT_NO_STYLE_FUSION)
     QTest::newRow("fusion") << QString::fromLatin1("fusion");
 #endif
-#if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSXP)
-    QTest::newRow("windowsxp") << QString::fromLatin1("windowsxp");
-#endif
 #if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSVISTA)
     QTest::newRow("windowsvista") << QString::fromLatin1("windowsvista");
-#endif
-#if defined(Q_OS_WINCE) && !defined(QT_NO_STYLE_WINDOWSCE)
-    QTest::newRow("windowsce") << QString::fromLatin1("windowsce");
-#endif
-#if defined(Q_OS_WINCE_WM) && !defined(QT_NO_STYLE_WINDOWSCE)
-    QTest::newRow("windowsmobile") << QString::fromLatin1("windowsmobile");
 #endif
 }
 
@@ -603,7 +594,7 @@ void tst_QPushButton::taskQTBUG_20191_shortcutWithKeypadModifer()
     QDialog dialog;
     dialog.setLayout(layout);
     dialog.show();
-    QTest::qWaitForWindowExposed(&dialog);
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
     QApplication::setActiveWindow(&dialog);
 
     // add shortcut '5' to button1 and test with keyboard and keypad '5' keys
@@ -648,7 +639,7 @@ void tst_QPushButton::emitReleasedAfterChange()
     QDialog dialog;
     dialog.setLayout(layout);
     dialog.show();
-    QTest::qWaitForWindowExposed(&dialog);
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
     QApplication::setActiveWindow(&dialog);
     button1->setFocus();
 

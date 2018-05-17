@@ -52,6 +52,7 @@
 #ifndef QDBUSABSTRACTADAPTOR_P_H
 #define QDBUSABSTRACTADAPTOR_P_H
 
+#include <QtDBus/private/qtdbusglobal_p.h>
 #include <qdbusabstractadaptor.h>
 
 #include <QtCore/qobject.h>
@@ -65,6 +66,10 @@
 #define QCLASSINFO_DBUS_INTROSPECTION   "D-Bus Introspection"
 
 #ifndef QT_NO_DBUS
+
+#ifdef interface
+#  undef interface
+#endif
 
 QT_BEGIN_NAMESPACE
 

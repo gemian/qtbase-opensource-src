@@ -63,10 +63,12 @@
 #include <QtCore/qvector.h>
 #include <private/qfreelist_p.h>
 
+QT_REQUIRE_CONFIG(statemachine);
+
 QT_BEGIN_NAMESPACE
 
 class QEvent;
-#ifndef QT_NO_STATEMACHINE_EVENTFILTER
+#if QT_CONFIG(qeventtransition)
 class QEventTransition;
 #endif
 class QSignalEventGenerator;
@@ -77,7 +79,7 @@ class QFinalState;
 class QHistoryState;
 class QState;
 
-#ifndef QT_NO_ANIMATION
+#if QT_CONFIG(animation)
 class QAbstractAnimation;
 #endif
 
@@ -121,7 +123,7 @@ public:
     // private slots
     void _q_start();
     void _q_process();
-#ifndef QT_NO_ANIMATION
+#if QT_CONFIG(animation)
     void _q_animationFinished();
 #endif
     void _q_startDelayedEventTimer(int id, int delay);
@@ -150,7 +152,7 @@ public:
                              const QList<QAbstractState*> &statesToEnter_sorted,
                              const QSet<QAbstractState*> &statesForDefaultEntry,
                              QHash<QAbstractState *, QVector<QPropertyAssignment> > &propertyAssignmentsForState
-#ifndef QT_NO_ANIMATION
+#if QT_CONFIG(animation)
                      , const QList<QAbstractAnimation*> &selectedAnimations
 #endif
                      );
@@ -186,7 +188,7 @@ public:
     void registerSignalTransition(QSignalTransition *transition);
     void unregisterSignalTransition(QSignalTransition *transition);
     void registerMultiThreadedSignalTransitions();
-#ifndef QT_NO_STATEMACHINE_EVENTFILTER
+#if QT_CONFIG(qeventtransition)
     void maybeRegisterEventTransition(QEventTransition *transition);
     void registerEventTransition(QEventTransition *transition);
     void unregisterEventTransition(QEventTransition *transition);
@@ -262,7 +264,7 @@ public:
     QSet<QAbstractState *> pendingErrorStates;
     QSet<QAbstractState *> pendingErrorStatesForDefaultEntry;
 
-#ifndef QT_NO_ANIMATION
+#if QT_CONFIG(animation)
     bool animated;
 
     struct InitializeAnimationResult {
@@ -301,7 +303,7 @@ public:
 
     QHash<const QObject*, QVector<int> > connections;
     QMutex connectionsMutex;
-#ifndef QT_NO_STATEMACHINE_EVENTFILTER
+#if QT_CONFIG(qeventtransition)
     QHash<QObject*, QHash<QEvent::Type, int> > qobjectEvents;
 #endif
     QFreeList<void> delayedEventIdFreeList;
@@ -324,7 +326,9 @@ public:
 
     static const Handler *handler;
 };
+#if QT_CONFIG(animation)
 Q_DECLARE_SHARED(QStateMachinePrivate::InitializeAnimationResult)
+#endif
 
 Q_CORE_EXPORT const QStateMachinePrivate::Handler *qcoreStateMachineHandler();
 

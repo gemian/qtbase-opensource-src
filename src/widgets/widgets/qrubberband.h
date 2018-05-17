@@ -40,12 +40,12 @@
 #ifndef QRUBBERBAND_H
 #define QRUBBERBAND_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qwidget.h>
 
+QT_REQUIRE_CONFIG(rubberband);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_RUBBERBAND
 
 class QRubberBandPrivate;
 class QStyleOptionRubberBand;
@@ -89,8 +89,6 @@ inline void QRubberBand::setGeometry(int ax, int ay, int aw, int ah)
 { setGeometry(QRect(ax, ay, aw, ah)); }
 inline void QRubberBand::move(int ax, int ay)
 { setGeometry(ax, ay, width(), height()); }
-
-#endif // QT_NO_RUBBERBAND
 
 QT_END_NAMESPACE
 

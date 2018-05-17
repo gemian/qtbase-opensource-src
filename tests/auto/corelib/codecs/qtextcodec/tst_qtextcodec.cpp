@@ -33,7 +33,9 @@
 #include <qtextcodec.h>
 #include <qfile.h>
 #include <time.h>
-#include <qprocess.h>
+#if QT_CONFIG(process)
+# include <qprocess.h>
+#endif
 #include <QThreadPool>
 
 class tst_QTextCodec : public QObject
@@ -124,6 +126,7 @@ void tst_QTextCodec::toUnicode()
         }
         QVERIFY(!uniString.isEmpty());
         QCOMPARE( ba, c->fromUnicode( uniString ) );
+        QCOMPARE(ba, c->fromUnicode(QStringView(uniString)) );
 
         char ch = '\0';
         QVERIFY(c->toUnicode(&ch, 1).length() == 1);
@@ -260,7 +263,7 @@ void tst_QTextCodec::fromUnicode()
         If the encoding is a superset of ASCII, test that the byte
         array is correct (no off by one, no trailing '\0').
     */
-    QByteArray result = codec->fromUnicode(QString("abc"));
+    QByteArray result = codec->fromUnicode(QStringViewLiteral("abc"));
     if (result.startsWith('a')) {
         QCOMPARE(result.size(), 3);
         QCOMPARE(result, QByteArray("abc"));
@@ -332,7 +335,8 @@ void tst_QTextCodec::codecForLocale()
 
     // find a codec that is not the codecForLocale()
     QTextCodec *codec2 = 0;
-    foreach (int mib, QTextCodec::availableMibs()) {
+    const auto availableMibs = QTextCodec::availableMibs();
+    for (int mib : availableMibs ) {
         if (mib != codec->mibEnum()) {
             codec2 = QTextCodec::codecForMib(mib);
             if (codec2)
@@ -394,6 +398,7 @@ void tst_QTextCodec::asciiToIscii() const
 
         QVERIFY2(textCodec->canEncode(ascii), qPrintable(QString::fromLatin1("Failed for full string with encoding %1")
                                                          .arg(QString::fromLatin1(textCodec->name().constData()))));
+        QVERIFY(textCodec->canEncode(QStringView(ascii)));
     }
 }
 
@@ -401,12 +406,11 @@ void tst_QTextCodec::nonFlaggedCodepointFFFF() const
 {
     //Check that the code point 0xFFFF (=non-character code 0xEFBFBF) is not flagged
     const QChar ch(0xFFFF);
-    QString input(ch);
 
     QTextCodec *const codec = QTextCodec::codecForMib(106); // UTF-8
     QVERIFY(codec);
 
-    const QByteArray asDecoded(codec->fromUnicode(input));
+    const QByteArray asDecoded = codec->fromUnicode(QStringView(&ch, 1));
     QCOMPARE(asDecoded, QByteArray("\357\277\277"));
 
     QByteArray ffff("\357\277\277");
@@ -2084,7 +2088,7 @@ void tst_QTextCodec::codecForUtfText()
 #if defined(Q_OS_UNIX)
 void tst_QTextCodec::toLocal8Bit()
 {
-#ifdef QT_NO_PROCESS
+#if !QT_CONFIG(process)
     QSKIP("No qprocess support", SkipAll);
 #else
     QProcess process;
@@ -2148,7 +2152,7 @@ public:
 void tst_QTextCodec::threadSafety()
 {
     QList<QByteArray> codecList = QTextCodec::availableCodecs();
-    QList<int> mibList = QTextCodec::availableMibs();
+    const QVector<int> mibList = QTextCodec::availableMibs().toVector();
     QThreadPool::globalInstance()->setMaxThreadCount(12);
 
     QVector<QByteArray> res;
@@ -2167,7 +2171,7 @@ void tst_QTextCodec::threadSafety()
     QThreadPool::globalInstance()->waitForDone();
 
     QCOMPARE(res.toList(), codecList);
-    QCOMPARE(res2.toList(), mibList);
+    QCOMPARE(res2, mibList);
 }
 
 void tst_QTextCodec::invalidNames()
@@ -2189,10 +2193,9 @@ void tst_QTextCodec::invalidNames()
 void tst_QTextCodec::checkAliases_data()
 {
     QTest::addColumn<QByteArray>("codecName");
-    QList<QByteArray> codecList = QTextCodec::availableCodecs();
-    foreach (const QByteArray &a, codecList) {
+    const QList<QByteArray> codecList = QTextCodec::availableCodecs();
+    for (const QByteArray &a : codecList)
         QTest::newRow( a.constData() ) << a;
-    }
 }
 
 void tst_QTextCodec::checkAliases()
@@ -2203,7 +2206,8 @@ void tst_QTextCodec::checkAliases()
     QCOMPARE(QTextCodec::codecForName(codecName), c);
     QCOMPARE(QTextCodec::codecForName(c->name()), c);
 
-    foreach(const QByteArray &a, c->aliases()) {
+    const auto aliases = c->aliases();
+    for (const QByteArray &a : aliases) {
         QCOMPARE(QTextCodec::codecForName(a), c);
     }
 }

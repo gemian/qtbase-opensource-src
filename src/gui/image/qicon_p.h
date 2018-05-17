@@ -51,7 +51,7 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qlist.h>
 #include <QtGui/qpixmap.h>
@@ -64,7 +64,7 @@ QT_BEGIN_NAMESPACE
 class QIconPrivate
 {
 public:
-    QIconPrivate();
+    explicit QIconPrivate(QIconEngine *e);
 
     ~QIconPrivate() {
         delete engine;

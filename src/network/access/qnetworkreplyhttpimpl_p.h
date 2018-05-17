@@ -51,12 +51,14 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include "qnetworkrequest.h"
 #include "qnetworkreply.h"
 
 #include "QtCore/qpointer.h"
 #include "QtCore/qdatetime.h"
 #include "QtCore/qsharedpointer.h"
+#include "QtCore/qscopedpointer.h"
 #include "qatomic.h"
 
 #include <QtNetwork/QNetworkCacheMetaData>
@@ -113,7 +115,7 @@ public:
     Q_PRIVATE_SLOT(d_func(), void replyFinished())
     Q_PRIVATE_SLOT(d_func(), void replyDownloadMetaData(QList<QPair<QByteArray,QByteArray> >,
                                                         int, QString, bool, QSharedPointer<char>,
-                                                        qint64, bool))
+                                                        qint64, qint64, bool))
     Q_PRIVATE_SLOT(d_func(), void replyDownloadProgressSlot(qint64,qint64))
     Q_PRIVATE_SLOT(d_func(), void httpAuthenticationRequired(const QHttpNetworkRequest &, QAuthenticator *))
     Q_PRIVATE_SLOT(d_func(), void httpError(QNetworkReply::NetworkError, const QString &))
@@ -135,6 +137,7 @@ public:
     Q_PRIVATE_SLOT(d_func(), void _q_cacheSaveDeviceAboutToClose())
     Q_PRIVATE_SLOT(d_func(), void _q_metaDataChanged())
     Q_PRIVATE_SLOT(d_func(), void onRedirected(const QUrl &, int, int))
+    Q_PRIVATE_SLOT(d_func(), void followRedirect())
 
 #ifndef QT_NO_SSL
 protected:
@@ -158,6 +161,10 @@ signals:
 
 class QNetworkReplyHttpImplPrivate: public QNetworkReplyPrivate
 {
+#if QT_CONFIG(bearermanagement)
+    bool startWaitForSession(QSharedPointer<QNetworkSession> &session);
+#endif
+
 public:
 
     static QHttpNetworkRequest::Priority convert(const QNetworkRequest::Priority& prio);
@@ -211,6 +218,7 @@ public:
     QSharedPointer<QRingBuffer> outgoingDataBuffer;
     void emitReplyUploadProgress(qint64 bytesSent, qint64 bytesTotal); // dup?
     void onRedirected(const QUrl &redirectUrl, int httpStatus, int maxRedirectsRemainig);
+    void followRedirect();
     qint64 bytesUploaded;
 
 
@@ -257,11 +265,12 @@ public:
 
 
 #ifndef QT_NO_SSL
-    QSslConfiguration sslConfiguration;
+    QScopedPointer<QSslConfiguration> sslConfiguration;
     bool pendingIgnoreAllSslErrors;
     QList<QSslError> pendingIgnoreSslErrorsList;
 #endif
 
+    QNetworkRequest redirectRequest;
 
     bool loadFromCacheIfAllowed(QHttpNetworkRequest &httpRequest);
     void invalidateCache();
@@ -279,14 +288,14 @@ public:
     void replyDownloadData(QByteArray);
     void replyFinished();
     void replyDownloadMetaData(const QList<QPair<QByteArray,QByteArray> > &, int, const QString &,
-                               bool, QSharedPointer<char>, qint64, bool);
+                               bool, QSharedPointer<char>, qint64, qint64, bool);
     void replyDownloadProgressSlot(qint64,qint64);
     void httpAuthenticationRequired(const QHttpNetworkRequest &request, QAuthenticator *auth);
     void httpError(QNetworkReply::NetworkError error, const QString &errorString);
 #ifndef QT_NO_SSL
     void replyEncrypted();
     void replySslErrors(const QList<QSslError> &, bool *, QList<QSslError> *);
-    void replySslConfigurationChanged(const QSslConfiguration&);
+    void replySslConfigurationChanged(const QSslConfiguration &newSslConfiguration);
     void replyPreSharedKeyAuthenticationRequiredSlot(QSslPreSharedKeyAuthenticator *);
 #endif
 #ifndef QT_NO_NETWORKPROXY

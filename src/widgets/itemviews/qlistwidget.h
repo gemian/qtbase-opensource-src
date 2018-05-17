@@ -40,15 +40,15 @@
 #ifndef QLISTWIDGET_H
 #define QLISTWIDGET_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qlistview.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qvector.h>
 #include <QtCore/qitemselectionmodel.h>
 
+QT_REQUIRE_CONFIG(listwidget);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_LISTWIDGET
 
 class QListWidget;
 class QListModel;
@@ -99,7 +99,7 @@ public:
     inline void setToolTip(const QString &toolTip);
 #endif
 
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
     inline QString whatsThis() const
         { return data(Qt::WhatsThisRole).toString(); }
     inline void setWhatsThis(const QString &whatsThis);
@@ -179,7 +179,7 @@ inline void QListWidgetItem::setToolTip(const QString &atoolTip)
 { setData(Qt::ToolTipRole, atoolTip); }
 #endif
 
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
 inline void QListWidgetItem::setWhatsThis(const QString &awhatsThis)
 { setData(Qt::WhatsThisRole, awhatsThis); }
 #endif
@@ -239,6 +239,8 @@ public:
     void editItem(QListWidgetItem *item);
     void openPersistentEditor(QListWidgetItem *item);
     void closePersistentEditor(QListWidgetItem *item);
+    using QAbstractItemView::isPersistentEditorOpen;
+    bool isPersistentEditorOpen(QListWidgetItem *item) const;
 
     QWidget *itemWidget(QListWidgetItem *item) const;
     void setItemWidget(QListWidgetItem *item, QWidget *widget);
@@ -251,8 +253,12 @@ public:
 
     bool isItemHidden(const QListWidgetItem *item) const;
     void setItemHidden(const QListWidgetItem *item, bool hide);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+protected:
+#endif
+#if QT_CONFIG(draganddrop)
     void dropEvent(QDropEvent *event) Q_DECL_OVERRIDE;
-
+#endif
 public Q_SLOTS:
     void scrollToItem(const QListWidgetItem *item, QAbstractItemView::ScrollHint hint = EnsureVisible);
     void clear();
@@ -282,6 +288,12 @@ protected:
 #ifndef QT_NO_DRAGANDDROP
     virtual bool dropMimeData(int index, const QMimeData *data, Qt::DropAction action);
     virtual Qt::DropActions supportedDropActions() const;
+#endif
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+public:
+#else
+protected:
 #endif
     QList<QListWidgetItem*> items(const QMimeData *data) const;
 
@@ -326,8 +338,6 @@ inline void QListWidgetItem::setHidden(bool ahide)
 
 inline bool QListWidgetItem::isHidden() const
 { return (view ? view->isItemHidden(this) : false); }
-
-#endif // QT_NO_LISTWIDGET
 
 QT_END_NAMESPACE
 

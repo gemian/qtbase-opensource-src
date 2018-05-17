@@ -46,7 +46,7 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
-#include <QtPlatformSupport/private/qeglstreamconvenience_p.h>
+#include <QtEglSupport/private/qeglstreamconvenience_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -55,28 +55,27 @@ class QEglFSKmsEglDeviceIntegration : public QEglFSKmsIntegration
 public:
     QEglFSKmsEglDeviceIntegration();
 
-    EGLint surfaceType() const Q_DECL_OVERRIDE;
-    EGLDisplay createDisplay(EGLNativeDisplayType nativeDisplay) Q_DECL_OVERRIDE;
-    bool supportsSurfacelessContexts() const Q_DECL_OVERRIDE;
-    bool supportsPBuffers() const Q_DECL_OVERRIDE;
-    QEglFSWindow *createWindow(QWindow *window) const Q_DECL_OVERRIDE;
-
-    virtual bool separateScreens() const Q_DECL_OVERRIDE;
+    QSurfaceFormat surfaceFormatFor(const QSurfaceFormat &inputFormat) const override;
+    EGLint surfaceType() const override;
+    EGLDisplay createDisplay(EGLNativeDisplayType nativeDisplay) override;
+    bool supportsSurfacelessContexts() const override;
+    bool supportsPBuffers() const override;
+    QEglFSWindow *createWindow(QWindow *window) const override;
 
     EGLDeviceEXT eglDevice() const { return m_egl_device; }
 
 protected:
-    QEglFSKmsDevice *createDevice(const QString &devicePath) Q_DECL_OVERRIDE;
+    QKmsDevice *createDevice() override;
+    QPlatformCursor *createCursor(QPlatformScreen *screen) const override;
 
 private:
     bool setup_kms();
     bool query_egl_device();
 
     EGLDeviceEXT m_egl_device;
-
-    friend class QEglJetsonTK1Window;
-    // EGLStream infrastructure
     QEGLStreamConvenience *m_funcs;
+
+    friend class QEglFSKmsEglDeviceWindow;
 };
 
 QT_END_NAMESPACE

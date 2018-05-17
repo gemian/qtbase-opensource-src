@@ -44,9 +44,9 @@
 //  W A R N I N G
 //  -------------
 //
-// This file is not part of the Qt API.  It exists for the convenience
-// of the QLibrary class.  This header file may change from
-// version to version without notice, or even be removed.
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
 //
 // We mean it.
 //
@@ -71,14 +71,11 @@ public:
     QEventLoop::ProcessEventsFlags m_flags;
 };
 
-struct GUserEventSource;
-
 class QPAEventDispatcherGlibPrivate : public QEventDispatcherGlibPrivate
 {
     Q_DECLARE_PUBLIC(QPAEventDispatcherGlib)
 public:
     QPAEventDispatcherGlibPrivate(GMainContext *context = 0);
-    GUserEventSource *userEventSource;
 };
 
 

@@ -66,7 +66,7 @@ public class QtActivityLoader extends QtLoader {
             @Override
             public void onClick(DialogInterface dialogInterface, int i) {
                 try {
-                    Uri uri = Uri.parse("market://search?q=pname:org.kde.necessitas.ministro");
+                    Uri uri = Uri.parse("market://details?id=org.kde.necessitas.ministro");
                     Intent intent = new Intent(Intent.ACTION_VIEW, uri);
                     m_activity.startActivityForResult(intent, MINISTRO_INSTALL_REQUEST_CODE);
                 } catch (Exception e) {
@@ -118,10 +118,12 @@ public class QtActivityLoader extends QtLoader {
     public void onCreate(Bundle savedInstanceState) {
         try {
             m_contextInfo = m_activity.getPackageManager().getActivityInfo(m_activity.getComponentName(), PackageManager.GET_META_DATA);
+            int theme = ((ActivityInfo)m_contextInfo).getThemeResource();
             for (Field f : Class.forName("android.R$style").getDeclaredFields()) {
-                if (f.getInt(null) == ((ActivityInfo)m_contextInfo).getThemeResource()) {
+                if (f.getInt(null) == theme) {
                     QT_ANDROID_THEMES = new String[] {f.getName()};
                     QT_ANDROID_DEFAULT_THEME = f.getName();
+                    break;
                 }
             }
         } catch (Exception e) {

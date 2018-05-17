@@ -39,7 +39,10 @@
 
 #include "qdnslookup_p.h"
 
+#if QT_CONFIG(library)
 #include <qlibrary.h>
+#endif
+#include <qvarlengtharray.h>
 #include <qscopedpointer.h>
 #include <qurl.h>
 #include <private/qnativesocketengine_p.h>
@@ -56,9 +59,11 @@
 #  include <gnu/lib-names.h>
 #endif
 
+#include <cstring>
+
 QT_BEGIN_NAMESPACE
 
-#ifndef QT_NO_LIBRARY
+#if QT_CONFIG(library)
 
 #if defined(Q_OS_OPENBSD)
 typedef struct __res_state* res_state;
@@ -135,7 +140,7 @@ void QDnsLookupRunnable::query(const int requestType, const QByteArray &requestN
 
     // Initialize state.
     struct __res_state state;
-    memset(&state, 0, sizeof(state));
+    std::memset(&state, 0, sizeof(state));
     if (local_res_ninit(&state) < 0) {
         reply->error = QDnsLookup::ResolverError;
         reply->errorString = tr("Resolver initialization failed");
@@ -187,11 +192,25 @@ void QDnsLookupRunnable::query(const int requestType, const QByteArray &requestN
     QScopedPointer<struct __res_state, QDnsLookupStateDeleter> state_ptr(&state);
 
     // Perform DNS query.
-    unsigned char response[PACKETSZ];
-    memset(response, 0, sizeof(response));
-    const int responseLength = local_res_nquery(&state, requestName, C_IN, requestType, response, sizeof(response));
+    QVarLengthArray<unsigned char, PACKETSZ> buffer(PACKETSZ);
+    std::memset(buffer.data(), 0, buffer.size());
+    int responseLength = local_res_nquery(&state, requestName, C_IN, requestType, buffer.data(), buffer.size());
+    if (Q_UNLIKELY(responseLength > PACKETSZ)) {
+        buffer.resize(responseLength);
+        std::memset(buffer.data(), 0, buffer.size());
+        responseLength = local_res_nquery(&state, requestName, C_IN, requestType, buffer.data(), buffer.size());
+        if (Q_UNLIKELY(responseLength > buffer.size())) {
+            // Ok, we give up.
+            reply->error = QDnsLookup::ResolverError;
+            reply->errorString.clear(); // We cannot be more specific, alas.
+            return;
+        }
+    }
 
-    // Check the response header.
+    unsigned char *response = buffer.data();
+    // Check the response header. Though res_nquery returns -1 as a
+    // responseLength in case of error, we still can extract the
+    // exact error code from the response.
     HEADER *header = (HEADER*)response;
     const int answerCount = ntohs(header->ancount);
     switch (header->rcode) {
@@ -382,6 +401,6 @@ void QDnsLookupRunnable::query(const int requestType, const QByteArray &requestN
     return;
 }
 
-#endif /* ifndef QT_NO_LIBRARY */
+#endif /* QT_CONFIG(library) */
 
 QT_END_NAMESPACE

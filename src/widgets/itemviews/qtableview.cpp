@@ -39,7 +39,6 @@
 
 #include "qtableview.h"
 
-#ifndef QT_NO_TABLEVIEW
 #include <qheaderview.h>
 #include <qitemdelegate.h>
 #include <qapplication.h>
@@ -49,7 +48,9 @@
 #include <qevent.h>
 #include <qbitarray.h>
 #include <qscrollbar.h>
+#if QT_CONFIG(abstractbutton)
 #include <qabstractbutton.h>
+#endif
 #include <private/qtableview_p.h>
 #include <private/qheaderview_p.h>
 #include <private/qscrollbar_p.h>
@@ -578,6 +579,7 @@ bool QSpanCollection::checkConsistency() const
 }
 #endif
 
+#if QT_CONFIG(abstractbutton)
 class QTableCornerButton : public QAbstractButton
 {
     Q_OBJECT
@@ -600,6 +602,7 @@ public:
         style()->drawControl(QStyle::CE_Header, &opt, &painter, this);
     }
 };
+#endif
 
 void QTableViewPrivate::init()
 {
@@ -619,9 +622,11 @@ void QTableViewPrivate::init()
 
     tabKeyNavigation = true;
 
+#if QT_CONFIG(abstractbutton)
     cornerWidget = new QTableCornerButton(q);
     cornerWidget->setFocusPolicy(Qt::NoFocus);
     QObject::connect(cornerWidget, SIGNAL(clicked()), q, SLOT(selectAll()));
+#endif
 }
 
 /*!
@@ -982,6 +987,8 @@ int QTableViewPrivate::heightHintForIndex(const QModelIndex &index, int hint, QS
     \ingroup advanced
     \inmodule QtWidgets
 
+    \image windows-tableview.png
+
     A QTableView implements a table view that displays items from a
     model. This class is used to provide standard tables that were
     previously provided by the QTable class, but using the more
@@ -1045,21 +1052,6 @@ int QTableViewPrivate::heightHintForIndex(const QModelIndex &index, int hint, QS
     y-coordinate with rowViewportPosition(). The columnAt() and
     columnViewportPosition() functions provide the equivalent conversion
     operations between x-coordinates and column indexes.
-
-    \section1 Styles
-
-    QTableView is styled appropriately for each platform. The following images show
-    how it looks on three different platforms. Go to the \l{Qt Widget Gallery} to see
-    its appearance in other styles.
-
-    \table 100%
-    \row \li \inlineimage windowsvista-tableview.png Screenshot of a Windows Vista style table view
-         \li \inlineimage macintosh-tableview.png Screenshot of a Macintosh style table view
-         \li \inlineimage fusion-tableview.png Screenshot of a Fusion style table view
-    \row \li A \l{Windows Vista Style Widget Gallery}{Windows Vista style} table view.
-         \li A \l{Macintosh Style Widget Gallery}{Macintosh style} table view.
-         \li A \l{Fusion Style Widget Gallery}{Fusion style} table view.
-    \endtable
 
     \sa QTableWidget, {View Classes}, QAbstractItemModel, QAbstractItemView,
         {Chart Example}, {Pixelator Example}, {Table Model Example}
@@ -1398,14 +1390,16 @@ void QTableView::paintEvent(QPaintEvent *event)
                              firstVisualRow, lastVisualRow, firstVisualColumn, lastVisualColumn);
     }
 
-    const QVector<QRect> rects = region.rects();
-    for (auto dirtyArea : rects) {
+    for (QRect dirtyArea : region) {
         dirtyArea.setBottom(qMin(dirtyArea.bottom(), int(y)));
         if (rightToLeft) {
             dirtyArea.setLeft(qMax(dirtyArea.left(), d->viewport->width() - int(x)));
         } else {
             dirtyArea.setRight(qMin(dirtyArea.right(), int(x)));
         }
+        // dirtyArea may be invalid when the horizontal header is not stretched
+        if (!dirtyArea.isValid())
+            continue;
 
         // get the horizontal start and end visual sections
         int left = horizontalHeader->visualIndexAt(dirtyArea.left());
@@ -2122,6 +2116,7 @@ void QTableView::updateGeometries()
     if (d->horizontalHeader->isHidden())
         QMetaObject::invokeMethod(d->horizontalHeader, "updateGeometries");
 
+#if QT_CONFIG(abstractbutton)
     // update cornerWidget
     if (d->horizontalHeader->isHidden() || d->verticalHeader->isHidden()) {
         d->cornerWidget->setHidden(true);
@@ -2129,6 +2124,7 @@ void QTableView::updateGeometries()
         d->cornerWidget->setHidden(false);
         d->cornerWidget->setGeometry(verticalLeft, horizontalTop, width, height);
     }
+#endif
 
     // update scroll bars
 
@@ -2643,6 +2639,7 @@ bool QTableView::wordWrap() const
     return d->wrapItemText;
 }
 
+#if QT_CONFIG(abstractbutton)
 /*!
     \property QTableView::cornerButtonEnabled
     \brief whether the button in the top-left corner is enabled
@@ -2665,6 +2662,7 @@ bool QTableView::isCornerButtonEnabled() const
     Q_D(const QTableView);
     return d->cornerWidget->isEnabled();
 }
+#endif
 
 /*!
     \internal
@@ -3356,5 +3354,3 @@ QT_END_NAMESPACE
 #include "qtableview.moc"
 
 #include "moc_qtableview.cpp"
-
-#endif // QT_NO_TABLEVIEW

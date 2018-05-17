@@ -39,8 +39,6 @@
 
 #include "qglobal.h"
 
-#ifndef QT_NO_GRAPHICSVIEW
-
 #include "qgraphicswidget.h"
 #include "qgraphicswidget_p.h"
 #include "qgraphicslayout.h"
@@ -274,6 +272,11 @@ QGraphicsWidget::~QGraphicsWidget()
 
     // Remove this graphics widget from widgetStyles
     widgetStyles()->setStyleForWidget(this, 0);
+
+    // Unset the parent here, when we're still a QGraphicsWidget.
+    // It is otherwise done in ~QGraphicsItem() where we'd be
+    // calling QGraphicsWidget members on an ex-QGraphicsWidget object
+    setParentItem(Q_NULLPTR);
 }
 
 /*!
@@ -703,7 +706,7 @@ void QGraphicsWidget::initStyleOption(QStyleOption *option) const
         option->state |= QStyle::State_Window;
     /*
       ###
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     extern bool qt_mac_can_clickThrough(const QGraphicsWidget *w); //qwidget_mac.cpp
     if (!(option->state & QStyle::State_Active) && !qt_mac_can_clickThrough(widget))
         option->state &= ~QStyle::State_Enabled;
@@ -1451,6 +1454,7 @@ bool QGraphicsWidget::event(QEvent *event)
     case QEvent::GraphicsSceneMousePress:
         if (d->hasDecoration() && windowFrameEvent(event))
             return true;
+        break;
     case QEvent::GraphicsSceneMouseMove:
     case QEvent::GraphicsSceneMouseRelease:
     case QEvent::GraphicsSceneMouseDoubleClick:
@@ -1494,6 +1498,7 @@ void QGraphicsWidget::changeEvent(QEvent *event)
         unsetWindowFrameMargins();
         if (d->layout)
             d->layout->invalidate();
+        Q_FALLTHROUGH();
     case QEvent::FontChange:
         update();
         updateGeometry();
@@ -2418,5 +2423,3 @@ void QGraphicsWidget::dumpFocusChain()
 QT_END_NAMESPACE
 
 #include "moc_qgraphicswidget.cpp"
-
-#endif //QT_NO_GRAPHICSVIEW

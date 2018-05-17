@@ -47,13 +47,14 @@
 //  W A R N I N G
 //  -------------
 //
-// This file is not part of the Qt API.  It exists for the convenience
-// of the QLibrary class.  This header file may change from
-// version to version without notice, or even be removed.
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
 //
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include <private/qtcpsocket_p.h>
 #include "qsslkey.h"
 #include "qsslconfiguration_p.h"
@@ -89,11 +90,7 @@ QT_BEGIN_NAMESPACE
 #endif
 
 #if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
-#if defined(Q_OS_WINCE)
-    typedef HCERTSTORE (WINAPI *PtrCertOpenSystemStoreW)(LPCSTR, DWORD, HCRYPTPROV_LEGACY, DWORD, const void*);
-#else
     typedef HCERTSTORE (WINAPI *PtrCertOpenSystemStoreW)(HCRYPTPROV_LEGACY, LPCWSTR);
-#endif
     typedef PCCERT_CONTEXT (WINAPI *PtrCertFindCertificateInStore)(HCERTSTORE, DWORD, DWORD, DWORD, const void*, PCCERT_CONTEXT);
     typedef BOOL (WINAPI *PtrCertCloseStore)(HCERTSTORE, DWORD);
 #endif // Q_OS_WIN && !Q_OS_WINRT
@@ -154,7 +151,8 @@ public:
                                          QRegExp::PatternSyntax syntax);
     static void addDefaultCaCertificate(const QSslCertificate &cert);
     static void addDefaultCaCertificates(const QList<QSslCertificate> &certs);
-    static bool isMatchingHostname(const QSslCertificate &cert, const QString &peerName);
+    Q_AUTOTEST_EXPORT static bool isMatchingHostname(const QSslCertificate &cert,
+                                                     const QString &peerName);
     Q_AUTOTEST_EXPORT static bool isMatchingHostname(const QString &cn, const QString &hostname);
 
 #if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
@@ -182,6 +180,7 @@ public:
     void _q_channelReadyReadSlot(int);
     void _q_bytesWrittenSlot(qint64);
     void _q_channelBytesWrittenSlot(int, qint64);
+    void _q_readChannelFinishedSlot();
     void _q_flushWriteBuffer();
     void _q_flushReadBuffer();
     void _q_resumeImplementation();
@@ -193,6 +192,7 @@ public:
 
     virtual qint64 peek(char *data, qint64 maxSize) Q_DECL_OVERRIDE;
     virtual QByteArray peek(qint64 maxSize) Q_DECL_OVERRIDE;
+    bool flush() Q_DECL_OVERRIDE;
 
     // Platform specific functions
     virtual void startClientEncryption() = 0;
@@ -209,7 +209,7 @@ public:
 private:
     static bool ensureLibraryLoaded();
     static void ensureCiphersAndCertsLoaded();
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
     static QList<QByteArray> fetchSslCertificateData();
 #endif
 
@@ -218,6 +218,7 @@ private:
 protected:
     bool verifyErrorsHaveBeenIgnored();
     bool paused;
+    bool flushTriggered;
 };
 
 QT_END_NAMESPACE

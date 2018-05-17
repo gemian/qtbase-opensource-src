@@ -47,7 +47,11 @@
 #include <QLoggingCategory>
 #include <QtCore/private/qcore_unix_p.h>
 
+#ifdef Q_OS_FREEBSD
+#include <dev/evdev/input.h>
+#else
 #include <linux/input.h>
+#endif
 #include <fcntl.h>
 
 /* android (and perhaps some other linux-derived stuff) don't define everything
@@ -101,7 +105,8 @@ QStringList QDeviceDiscoveryStatic::scanConnectedDevices()
     // check for input devices
     if (m_types & Device_InputMask) {
         dir.setPath(QString::fromLatin1(QT_EVDEV_DEVICE_PATH));
-        foreach (const QString &deviceFile, dir.entryList()) {
+        const auto deviceFiles = dir.entryList();
+        for (const QString &deviceFile : deviceFiles) {
             QString absoluteFilePath = dir.absolutePath() + QLatin1Char('/') + deviceFile;
             if (checkDeviceType(absoluteFilePath))
                 devices << absoluteFilePath;
@@ -111,7 +116,8 @@ QStringList QDeviceDiscoveryStatic::scanConnectedDevices()
     // check for drm devices
     if (m_types & Device_VideoMask) {
         dir.setPath(QString::fromLatin1(QT_DRM_DEVICE_PATH));
-        foreach (const QString &deviceFile, dir.entryList()) {
+        const auto deviceFiles = dir.entryList();
+        for (const QString &deviceFile : deviceFiles) {
             QString absoluteFilePath = dir.absolutePath() + QLatin1Char('/') + deviceFile;
             if (checkDeviceType(absoluteFilePath))
                 devices << absoluteFilePath;
@@ -133,7 +139,7 @@ bool QDeviceDiscoveryStatic::checkDeviceType(const QString &device)
 
     qCDebug(lcDD) << "doing static device discovery for " << device;
 
-    if ((m_types & Device_DRM) && device.contains(QString::fromLatin1(QT_DRM_DEVICE_PREFIX))) {
+    if ((m_types & Device_DRM) && device.contains(QLatin1String(QT_DRM_DEVICE_PREFIX))) {
         QT_CLOSE(fd);
         return true;
     }

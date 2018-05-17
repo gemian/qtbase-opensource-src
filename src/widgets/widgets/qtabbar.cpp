@@ -38,7 +38,9 @@
 ****************************************************************************/
 
 #include "private/qlayoutengine_p.h"
+#if QT_CONFIG(itemviews)
 #include "qabstractitemdelegate.h"
+#endif
 #include "qapplication.h"
 #include "qbitmap.h"
 #include "qcursor.h"
@@ -47,9 +49,13 @@
 #include "qstyle.h"
 #include "qstyleoption.h"
 #include "qstylepainter.h"
+#if QT_CONFIG(tabwidget)
 #include "qtabwidget.h"
+#endif
 #include "qtooltip.h"
+#if QT_CONFIG(whatsthis)
 #include "qwhatsthis.h"
+#endif
 #include "private/qtextengine_p.h"
 #ifndef QT_NO_ACCESSIBILITY
 #include "qaccessible.h"
@@ -61,9 +67,7 @@
 #include "qdebug.h"
 #include "private/qtabbar_p.h"
 
-#ifndef QT_NO_TABBAR
-
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
 #include <private/qt_mac_p.h>
 #include <private/qt_cocoa_helpers_mac_p.h>
 #endif
@@ -176,7 +180,6 @@ void QTabBarPrivate::initBasicStyleOption(QStyleOptionTab *option, int tabIndex)
 
     if (tab.textColor.isValid())
         option->palette.setColor(q->foregroundRole(), tab.textColor);
-
     option->icon = tab.icon;
     option->iconSize = q->iconSize();  // Will get the default value then.
 
@@ -204,7 +207,7 @@ void QTabBarPrivate::initBasicStyleOption(QStyleOptionTab *option, int tabIndex)
         option->position = QStyleOptionTab::Middle;
     }
 
-#ifndef QT_NO_TABWIDGET
+#if QT_CONFIG(tabwidget)
     if (const QTabWidget *tw = qobject_cast<const QTabWidget *>(q->parentWidget())) {
         option->features |= QStyleOptionTab::HasFrame;
         if (tw->cornerWidget(Qt::TopLeftCorner) || tw->cornerWidget(Qt::BottomLeftCorner))
@@ -299,7 +302,7 @@ void QTabBar::initStyleOption(QStyleOptionTab *option, int tabIndex) const
 
     \table 100%
     \row \li \inlineimage fusion-tabbar.png Screenshot of a Fusion style tab bar
-         \li A tab bar shown in the Fusion widget style.
+         \li A tab bar shown in the \l{Qt Widget Gallery}{Fusion widget style}.
     \row \li \inlineimage fusion-tabbar-truncated.png Screenshot of a truncated Fusion tab bar
          \li A truncated tab bar shown in the Fusion widget style.
     \endtable
@@ -448,9 +451,10 @@ void QTabBarPrivate::layoutTabs()
     QVector<QLayoutStruct> tabChain(tabList.count() + 2);
 
     // We put an empty item at the front and back and set its expansive attribute
-    // depending on tabAlignment.
+    // depending on tabAlignment and expanding.
     tabChain[tabChainIndex].init();
-    tabChain[tabChainIndex].expansive = (tabAlignment != Qt::AlignLeft)
+    tabChain[tabChainIndex].expansive = (!expanding)
+                                        && (tabAlignment != Qt::AlignLeft)
                                         && (tabAlignment != Qt::AlignJustify);
     tabChain[tabChainIndex].empty = true;
     ++tabChainIndex;
@@ -515,12 +519,13 @@ void QTabBarPrivate::layoutTabs()
         maxExtent = maxWidth;
     }
 
-    Q_ASSERT(tabChainIndex == tabChain.count() - 1); // add an assert just to make sure.
     // Mirror our front item.
     tabChain[tabChainIndex].init();
-    tabChain[tabChainIndex].expansive = (tabAlignment != Qt::AlignRight)
+    tabChain[tabChainIndex].expansive = (!expanding)
+                                        && (tabAlignment != Qt::AlignRight)
                                         && (tabAlignment != Qt::AlignJustify);
     tabChain[tabChainIndex].empty = true;
+    Q_ASSERT(tabChainIndex == tabChain.count() - 1); // add an assert just to make sure.
 
     // Do the calculation
     qGeomCalc(tabChain, 0, tabChain.count(), 0, qMax(available, last), 0);
@@ -658,6 +663,15 @@ QRect QTabBarPrivate::normalizedScrollRect(int index)
 
         return QRect(leftEdge, 0, rightEdge - leftEdge, q->height());
     }
+}
+
+int QTabBarPrivate::hoveredTabIndex() const
+{
+    if (dragInProgress)
+        return currentIndex;
+    if (hoverIndex >= 0)
+        return hoverIndex;
+    return -1;
 }
 
 void QTabBarPrivate::makeVisible(int index)
@@ -1049,6 +1063,17 @@ void QTabBar::removeTab(int index)
         }
         d->refresh();
         d->autoHideTabs();
+        if (!d->hoverRect.isEmpty()) {
+            for (int i = 0; i < d->tabList.count(); ++i) {
+                const QRect area = tabRect(i);
+                if (area.contains(mapFromGlobal(QCursor::pos()))) {
+                    d->hoverIndex = i;
+                    d->hoverRect = area;
+                    break;
+                }
+            }
+            update(d->hoverRect);
+        }
         tabRemoved(index);
     }
 }
@@ -1199,7 +1224,7 @@ QString QTabBar::tabToolTip(int index) const
 }
 #endif // QT_NO_TOOLTIP
 
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
 /*!
     \since 4.1
 
@@ -1227,7 +1252,7 @@ QString QTabBar::tabWhatsThis(int index) const
     return QString();
 }
 
-#endif // QT_NO_WHATSTHIS
+#endif // QT_CONFIG(whatsthis)
 
 /*!
     Sets the data of the tab at position \a index to \a data.
@@ -1443,7 +1468,7 @@ static QString computeElidedText(Qt::TextElideMode mode, const QString &text)
 
 /*!
     Returns the minimum tab size hint for the tab at position \a index.
-    \since Qt 5.0
+    \since 5.0
 */
 
 QSize QTabBar::minimumTabSizeHint(int index) const
@@ -1573,20 +1598,28 @@ bool QTabBar::event(QEvent *event)
         QHoverEvent *he = static_cast<QHoverEvent *>(event);
         if (!d->hoverRect.contains(he->pos())) {
             QRect oldHoverRect = d->hoverRect;
+            bool cursorOverTabs = false;
             for (int i = 0; i < d->tabList.count(); ++i) {
                 QRect area = tabRect(i);
                 if (area.contains(he->pos())) {
+                    d->hoverIndex = i;
                     d->hoverRect = area;
+                    cursorOverTabs = true;
                     break;
                 }
+            }
+            if (!cursorOverTabs) {
+                d->hoverIndex = -1;
+                d->hoverRect = QRect();
             }
             if (he->oldPos() != QPoint(-1, -1))
                 update(oldHoverRect);
             update(d->hoverRect);
         }
         return true;
-    } else if (event->type() == QEvent::HoverLeave ) {
+    } else if (event->type() == QEvent::HoverLeave) {
         QRect oldHoverRect = d->hoverRect;
+        d->hoverIndex = -1;
         d->hoverRect = QRect();
         update(oldHoverRect);
         return true;
@@ -1599,7 +1632,7 @@ bool QTabBar::event(QEvent *event)
             }
         }
 #endif // QT_NO_TOOLTIP
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
     } else if (event->type() == QEvent::QueryWhatsThis) {
         const QTabBarPrivate::Tab *tab = d->at(d->indexAtPos(static_cast<QHelpEvent*>(event)->pos()));
         if (!tab || tab->whatsThis.isEmpty())
@@ -1613,7 +1646,7 @@ bool QTabBar::event(QEvent *event)
                 return true;
             }
         }
-#endif // QT_NO_WHATSTHIS
+#endif // QT_CONFIG(whatsthis)
 #ifndef QT_NO_SHORTCUT
     } else if (event->type() == QEvent::Shortcut) {
         QShortcutEvent *se = static_cast<QShortcutEvent *>(event);
@@ -1752,7 +1785,10 @@ void QTabBar::paintEvent(QPaintEvent *)
             p.drawControl(QStyle::CE_TabBarTab, tab);
         else {
             int taboverlap = style()->pixelMetric(QStyle::PM_TabBarTabOverlap, 0, this);
-            d->movingTab->setGeometry(tab.rect.adjusted(-taboverlap, 0, taboverlap, 0));
+            if (verticalTabs(d->shape))
+                d->movingTab->setGeometry(tab.rect.adjusted(0, -taboverlap, 0, taboverlap));
+            else
+                d->movingTab->setGeometry(tab.rect.adjusted(-taboverlap, 0, taboverlap, 0));
         }
     }
 
@@ -1922,7 +1958,7 @@ void QTabBar::mousePressEvent(QMouseEvent *event)
         d->moveTabFinished(d->pressedIndex);
 
     d->pressedIndex = d->indexAtPos(event->pos());
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     d->previousPressedIndex = d->pressedIndex;
 #endif
     if (d->validIndex(d->pressedIndex)) {
@@ -2004,7 +2040,7 @@ void QTabBar::mouseMoveEvent(QMouseEvent *event)
 
             update();
         }
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     } else if (!d->documentMode && event->buttons() == Qt::LeftButton && d->previousPressedIndex != -1) {
         int newPressedIndex = d->indexAtPos(event->pos());
         if (d->pressedIndex == -1 && d->previousPressedIndex == newPressedIndex) {
@@ -2031,7 +2067,10 @@ void QTabBarPrivate::setupMovableTab()
 
     int taboverlap = q->style()->pixelMetric(QStyle::PM_TabBarTabOverlap, 0 ,q);
     QRect grabRect = q->tabRect(pressedIndex);
-    grabRect.adjust(-taboverlap, 0, taboverlap, 0);
+    if (verticalTabs(shape))
+        grabRect.adjust(0, -taboverlap, 0, taboverlap);
+    else
+        grabRect.adjust(-taboverlap, 0, taboverlap, 0);
 
     QPixmap grabImage(grabRect.size() * q->devicePixelRatioF());
     grabImage.setDevicePixelRatio(q->devicePixelRatioF());
@@ -2041,7 +2080,11 @@ void QTabBarPrivate::setupMovableTab()
 
     QStyleOptionTab tab;
     q->initStyleOption(&tab, pressedIndex);
-    tab.rect.moveTopLeft(QPoint(taboverlap, 0));
+    tab.position = QStyleOptionTab::OnlyOneTab;
+    if (verticalTabs(shape))
+        tab.rect.moveTopLeft(QPoint(0, taboverlap));
+    else
+        tab.rect.moveTopLeft(QPoint(taboverlap, 0));
     p.drawControl(QStyle::CE_TabBarTab, tab);
     p.end();
 
@@ -2102,7 +2145,7 @@ void QTabBar::mouseReleaseEvent(QMouseEvent *event)
         event->ignore();
         return;
     }
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     d->previousPressedIndex = -1;
 #endif
     if (d->movable && d->dragInProgress && d->validIndex(d->pressedIndex)) {
@@ -2142,7 +2185,7 @@ void QTabBar::keyPressEvent(QKeyEvent *event)
 
 /*!\reimp
  */
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 void QTabBar::wheelEvent(QWheelEvent *event)
 {
 #ifndef Q_OS_MAC
@@ -2154,7 +2197,7 @@ void QTabBar::wheelEvent(QWheelEvent *event)
     Q_UNUSED(event)
 #endif
 }
-#endif //QT_NO_WHEELEVENT
+#endif // QT_CONFIG(wheelevent)
 
 void QTabBarPrivate::setCurrentNextEnabledIndex(int offset)
 {
@@ -2421,7 +2464,7 @@ void QTabBar::setMovable(bool movable)
 
     This property is used as a hint for styles to draw the tabs in a different
     way then they would normally look in a tab widget.  On \macos this will
-    look similar to the tabs in Safari or Leopard's Terminal.app.
+    look similar to the tabs in Safari or Sierra's Terminal.app.
 
     \sa QTabWidget::documentMode
 */
@@ -2547,6 +2590,34 @@ QWidget *QTabBar::tabButton(int index, ButtonPosition position) const
         return d->tabList.at(index).rightWidget;
 }
 
+#ifndef QT_NO_ACCESSIBILITY
+/*!
+    Sets the accessibleName of the tab at position \a index to \a name.
+*/
+void QTabBar::setAccessibleTabName(int index, const QString &name)
+{
+    Q_D(QTabBar);
+    if (QTabBarPrivate::Tab *tab = d->at(index)) {
+        tab->accessibleName = name;
+        QAccessibleEvent event(this, QAccessible::NameChanged);
+        event.setChild(index);
+        QAccessible::updateAccessibility(&event);
+    }
+}
+
+/*!
+    Returns the accessibleName of the tab at position \a index, or an empty
+    string if \a index is out of range.
+*/
+QString QTabBar::accessibleTabName(int index) const
+{
+    Q_D(const QTabBar);
+    if (const QTabBarPrivate::Tab *tab = d->at(index))
+        return tab->accessibleName;
+    return QString();
+}
+#endif // QT_NO_ACCESSIBILITY
+
 CloseButton::CloseButton(QWidget *parent)
     : QAbstractButton(parent)
 {
@@ -2620,7 +2691,5 @@ void QTabBarPrivate::Tab::TabBarAnimation::updateState(QAbstractAnimation::State
 QT_END_NAMESPACE
 
 #include "moc_qtabbar.cpp"
-
-#endif // QT_NO_TABBAR
 
 #include "moc_qtabbar_p.cpp"

@@ -220,6 +220,7 @@
 #ifndef QOPENGLENGINE_SHADER_MANAGER_H
 #define QOPENGLENGINE_SHADER_MANAGER_H
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QOpenGLShader>
 #include <QOpenGLShaderProgram>
 #include <QPainter>
@@ -365,7 +366,6 @@ private:
     QOpenGLShaderProgram *blitShaderProg;
     QOpenGLShaderProgram *simpleShaderProg;
     QList<QOpenGLEngineShaderProg*> cachedPrograms;
-    QList<QOpenGLShader *> shaders;
 
     static const char* qShaderSnippets[TotalSnippetCount];
 };

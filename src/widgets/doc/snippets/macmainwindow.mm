@@ -41,9 +41,7 @@
 #include <QtGui>
 
 
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
-
-#include <Carbon/Carbon.h>
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
 
 //![0]
 SearchWidget::SearchWidget(QWidget *parent)
@@ -289,4 +287,4 @@ QAbstractItemModel *MacMainWindow::createDocumentModel()
     return model;
 }
 
-#endif // Q_DEAD_CODE_FROM_QT4_MAC
+#endif

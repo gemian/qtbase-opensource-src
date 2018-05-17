@@ -38,7 +38,6 @@
 ****************************************************************************/
 
 #include "qslider.h"
-#ifndef QT_NO_SLIDER
 #ifndef QT_NO_ACCESSIBILITY
 #include "qaccessible.h"
 #endif
@@ -203,6 +202,8 @@ QStyle::SubControl QSliderPrivate::newHoverControl(const QPoint &pos)
     \ingroup basicwidgets
     \inmodule QtWidgets
 
+    \image windows-slider.png
+
     The slider is the classic widget for controlling a bounded value.
     It lets the user move a slider handle along a horizontal or vertical
     groove and translates the handle's position into an integer value
@@ -252,15 +253,6 @@ QStyle::SubControl QSliderPrivate::newHoverControl(const QPoint &pos)
         \li End moves to the end (maximum).
     \endlist
 
-    \table 100%
-    \row \li \inlineimage macintosh-slider.png Screenshot of a Macintosh slider
-         \li A slider shown in the \l{Macintosh Style Widget Gallery}{Macintosh widget style}.
-    \row \li \inlineimage windowsvista-slider.png Screenshot of a Windows Vista slider
-         \li A slider shown in the \l{Windows Vista Style Widget Gallery}{Windows Vista widget style}.
-    \row \li \inlineimage fusion-slider.png Screenshot of a Fusion slider
-         \li A slider shown in the \l{Fusion Style Widget Gallery}{Fusion widget style}.
-    \endtable
-
     \sa QScrollBar, QSpinBox, QDial, {fowler}{GUI Design Handbook: Slider}, {Sliders Example}
 */
 
@@ -284,10 +276,8 @@ QStyle::SubControl QSliderPrivate::newHoverControl(const QPoint &pos)
     Constructs a vertical slider with the given \a parent.
 */
 QSlider::QSlider(QWidget *parent)
-    : QAbstractSlider(*new QSliderPrivate, parent)
+    : QSlider(Qt::Vertical, parent)
 {
-    d_func()->orientation = Qt::Vertical;
-    d_func()->init();
 }
 
 /*!
@@ -555,8 +545,6 @@ Q_WIDGETS_EXPORT QStyleOptionSlider qt_qsliderStyleOption(QSlider *slider)
     slider->initStyleOption(&sliderOption);
     return sliderOption;
 }
-
-#endif
 
 QT_END_NAMESPACE
 

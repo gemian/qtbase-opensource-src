@@ -44,27 +44,8 @@
 
 #include "qapplication.h"
 #include "qwindowsstyle_p.h"
-#ifndef QT_NO_STYLE_FUSION
+#if QT_CONFIG(style_fusion)
 #include "qfusionstyle_p.h"
-#ifndef QT_NO_STYLE_ANDROID
-#include "qandroidstyle_p.h"
-#endif
-#endif
-#ifndef QT_NO_STYLE_WINDOWSXP
-#include "qwindowsxpstyle_p.h"
-#endif
-#ifndef QT_NO_STYLE_WINDOWSVISTA
-#include "qwindowsvistastyle_p.h"
-#endif
-#ifndef QT_NO_STYLE_WINDOWSCE
-#include "qwindowscestyle_p.h"
-#endif
-#ifndef QT_NO_STYLE_WINDOWSMOBILE
-#include "qwindowsmobilestyle_p.h"
-#endif
-
-#if !defined(QT_NO_STYLE_MAC) && defined(Q_OS_MAC)
-#  include "qmacstyle_mac_p.h"
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -87,7 +68,7 @@ Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
 
     The valid keys can be retrieved using the keys()
     function. Typically they include "windows" and "fusion".
-    Depending on the platform, "windowsxp", "windowsvista"
+    Depending on the platform, "windowsvista"
     and "macintosh" may be available.
     Note that keys are case insensitive.
 
@@ -109,49 +90,15 @@ QStyle *QStyleFactory::create(const QString& key)
 {
     QStyle *ret = 0;
     QString style = key.toLower();
-#ifndef QT_NO_STYLE_WINDOWS
+#if QT_CONFIG(style_windows)
     if (style == QLatin1String("windows"))
         ret = new QWindowsStyle;
     else
 #endif
-#ifndef QT_NO_STYLE_WINDOWSCE
-    if (style == QLatin1String("windowsce"))
-        ret = new QWindowsCEStyle;
-    else
-#endif
-#ifndef QT_NO_STYLE_WINDOWSMOBILE
-    if (style == QLatin1String("windowsmobile"))
-        ret = new QWindowsMobileStyle;
-    else
-#endif
-#ifndef QT_NO_STYLE_WINDOWSXP
-    if (style == QLatin1String("windowsxp"))
-        ret = new QWindowsXPStyle;
-    else
-#endif
-#ifndef QT_NO_STYLE_WINDOWSVISTA
-    if (style == QLatin1String("windowsvista"))
-        ret = new QWindowsVistaStyle;
-    else
-#endif
-#ifndef QT_NO_STYLE_FUSION
+#if QT_CONFIG(style_fusion)
     if (style == QLatin1String("fusion"))
         ret = new QFusionStyle;
     else
-#endif
-#ifndef QT_NO_STYLE_ANDROID
-    if (style == QLatin1String("android"))
-        ret = new QAndroidStyle;
-    else
-#endif
-#ifndef QT_NO_STYLE_MAC
-    if (style.startsWith(QLatin1String("macintosh"))) {
-        ret = new QMacStyle;
-#  ifdef Q_DEAD_CODE_FROM_QT4_MAC
-        if (style == QLatin1String("macintosh"))
-            style += QLatin1String(" (aqua)");
-#  endif
-    } else
 #endif
     { } // Keep these here - they make the #ifdefery above work
     if (!ret)
@@ -176,43 +123,13 @@ QStringList QStyleFactory::keys()
     const PluginKeyMap::const_iterator cend = keyMap.constEnd();
     for (PluginKeyMap::const_iterator it = keyMap.constBegin(); it != cend; ++it)
         list.append(it.value());
-#ifndef QT_NO_STYLE_WINDOWS
+#if QT_CONFIG(style_windows)
     if (!list.contains(QLatin1String("Windows")))
         list << QLatin1String("Windows");
 #endif
-#ifndef QT_NO_STYLE_WINDOWSCE
-    if (!list.contains(QLatin1String("WindowsCE")))
-        list << QLatin1String("WindowsCE");
-#endif
-#ifndef QT_NO_STYLE_WINDOWSMOBILE
-    if (!list.contains(QLatin1String("WindowsMobile")))
-        list << QLatin1String("WindowsMobile");
-#endif
-#ifndef QT_NO_STYLE_WINDOWSXP
-    if (!list.contains(QLatin1String("WindowsXP")) &&
-        (QSysInfo::WindowsVersion >= QSysInfo::WV_XP && (QSysInfo::WindowsVersion & QSysInfo::WV_NT_based)))
-        list << QLatin1String("WindowsXP");
-#endif
-#ifndef QT_NO_STYLE_WINDOWSVISTA
-    if (!list.contains(QLatin1String("WindowsVista")) &&
-        (QSysInfo::WindowsVersion >= QSysInfo::WV_VISTA && (QSysInfo::WindowsVersion & QSysInfo::WV_NT_based)))
-        list << QLatin1String("WindowsVista");
-#endif
-#ifndef QT_NO_STYLE_ANDROID
-    if (!list.contains(QLatin1String("Android")))
-        list << QLatin1String("Android");
-#endif
-#ifndef QT_NO_STYLE_FUSION
+#if QT_CONFIG(style_fusion)
     if (!list.contains(QLatin1String("Fusion")))
         list << QLatin1String("Fusion");
-#endif
-#ifndef QT_NO_STYLE_MAC
-    QString mstyle = QLatin1String("Macintosh");
-# ifdef Q_DEAD_CODE_FROM_QT4_MAC
-    mstyle += QLatin1String(" (aqua)");
-# endif
-    if (!list.contains(mstyle))
-        list << mstyle;
 #endif
     return list;
 }

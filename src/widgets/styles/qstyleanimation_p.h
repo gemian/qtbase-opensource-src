@@ -40,6 +40,7 @@
 #ifndef QSTYLEANIMATION_P_H
 #define QSTYLEANIMATION_P_H
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qabstractanimation.h"
 #include "qdatetime.h"
 #include "qimage.h"
@@ -59,7 +60,7 @@ QT_BEGIN_NAMESPACE
 // We mean it.
 //
 
-class QStyleAnimation : public QAbstractAnimation
+class Q_WIDGETS_EXPORT QStyleAnimation : public QAbstractAnimation
 {
     Q_OBJECT
 
@@ -82,7 +83,8 @@ public:
         DefaultFps,
         SixtyFps,
         ThirtyFps,
-        TwentyFps
+        TwentyFps,
+        FifteenFps
     };
 
     FrameRate frameRate() const;
@@ -105,7 +107,7 @@ private:
     int _skip;
 };
 
-class QProgressStyleAnimation : public QStyleAnimation
+class Q_WIDGETS_EXPORT QProgressStyleAnimation : public QStyleAnimation
 {
     Q_OBJECT
 
@@ -126,7 +128,7 @@ private:
     mutable int _step;
 };
 
-class QNumberStyleAnimation : public QStyleAnimation
+class Q_WIDGETS_EXPORT QNumberStyleAnimation : public QStyleAnimation
 {
     Q_OBJECT
 
@@ -150,7 +152,7 @@ private:
     mutable qreal _prev;
 };
 
-class QBlendStyleAnimation : public QStyleAnimation
+class Q_WIDGETS_EXPORT QBlendStyleAnimation : public QStyleAnimation
 {
     Q_OBJECT
 
@@ -177,7 +179,7 @@ private:
     QImage _current;
 };
 
-class QScrollbarStyleAnimation : public QNumberStyleAnimation
+class Q_WIDGETS_EXPORT QScrollbarStyleAnimation : public QNumberStyleAnimation
 {
     Q_OBJECT
 

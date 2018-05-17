@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qgraphicseffect.h"
 
 #include <QPixmapCache>
@@ -58,7 +59,8 @@
 #include <private/qobject_p.h>
 #include <private/qpixmapfilter_p.h>
 
-#ifndef QT_NO_GRAPHICSEFFECT
+QT_REQUIRE_CONFIG(graphicseffect);
+
 QT_BEGIN_NAMESPACE
 
 class QGraphicsEffectSourcePrivate;
@@ -225,6 +227,4 @@ public:
 
 QT_END_NAMESPACE
 
-#endif //QT_NO_GRAPHICSEFFECT
 #endif // QGRAPHICSEFFECT_P_H
-

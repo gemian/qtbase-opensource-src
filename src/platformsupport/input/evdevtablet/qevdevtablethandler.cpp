@@ -45,7 +45,11 @@
 #include <QLoggingCategory>
 #include <QtCore/private/qcore_unix_p.h>
 #include <qpa/qwindowsysteminterface.h>
+#ifdef Q_OS_FREEBSD
+#include <dev/evdev/input.h>
+#else
 #include <linux/input.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -145,9 +149,11 @@ void QEvdevTabletData::report()
     qreal pressure = pressureRange ? (state.p - minValues.p) / qreal(pressureRange) : qreal(1);
 
     if (state.down || state.lastReportDown) {
-        QWindowSystemInterface::handleTabletEvent(0, state.down, QPointF(), globalPos,
+        QWindowSystemInterface::handleTabletEvent(0, QPointF(), globalPos,
                                                   QTabletEvent::Stylus, pointer,
-                                                  pressure, 0, 0, 0, 0, 0, q->deviceId(), qGuiApp->keyboardModifiers());
+                                                  state.down ? Qt::LeftButton : Qt::NoButton,
+                                                  pressure, 0, 0, 0, 0, 0, q->deviceId(),
+                                                  qGuiApp->keyboardModifiers());
     }
 
     if (state.lastReportTool && !state.tool)
@@ -242,7 +248,7 @@ bool QEvdevTabletHandler::queryLimits()
 
 void QEvdevTabletHandler::readData()
 {
-    static input_event buffer[32];
+    input_event buffer[32];
     int n = 0;
     for (; ;) {
         int result = QT_READ(m_fd, reinterpret_cast<char*>(buffer) + n, sizeof(buffer) - n);

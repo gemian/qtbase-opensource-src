@@ -43,7 +43,9 @@
 #include <private/qmath_p.h>
 #include <private/qstyle_p.h>
 #include <qmath.h>
+#if QT_CONFIG(scrollbar)
 #include <qscrollbar.h>
+#endif
 #include <qabstractscrollarea.h>
 #include <qwindow.h>
 
@@ -66,13 +68,14 @@ QString uniqueName(const QString &key, const QStyleOption *option, const QSize &
                       % HexString<uint>(size.width())
                       % HexString<uint>(size.height());
 
-#ifndef QT_NO_SPINBOX
+#if QT_CONFIG(spinbox)
     if (const QStyleOptionSpinBox *spinBox = qstyleoption_cast<const QStyleOptionSpinBox *>(option)) {
         tmp = tmp % HexString<uint>(spinBox->buttonSymbols)
                   % HexString<uint>(spinBox->stepEnabled)
                   % QLatin1Char(spinBox->frame ? '1' : '0'); ;
     }
-#endif // QT_NO_SPINBOX
+#endif // QT_CONFIG(spinbox)
+
     return tmp;
 }
 
@@ -111,7 +114,7 @@ bool hasAncestor(QObject *obj, QAccessible::Role role)
 #endif // QT_NO_ACCESSIBILITY
 
 
-#ifndef QT_NO_DIAL
+#if QT_CONFIG(dial)
 
 int calcBigLineSize(int radius)
 {
@@ -256,7 +259,6 @@ void drawDial(const QStyleOptionSlider *option, QPainter *painter)
     buttonColor.setHsv(buttonColor .hue(),
                        qMin(140, buttonColor .saturation()),
                        qMax(180, buttonColor.value()));
-    QColor shadowColor(0, 0, 0, 20);
 
     if (enabled) {
         // Drop shadow
@@ -330,7 +332,7 @@ void drawDial(const QStyleOptionSlider *option, QPainter *painter)
     painter->drawEllipse(dialRect);
     painter->restore();
 }
-#endif //QT_NO_DIAL
+#endif //QT_CONFIG(dial)
 
 void drawBorderPixmap(const QPixmap &pixmap, QPainter *painter, const QRect &rect,
                      int left, int top, int right,
@@ -391,9 +393,13 @@ void drawBorderPixmap(const QPixmap &pixmap, QPainter *painter, const QRect &rec
 
 QColor backgroundColor(const QPalette &pal, const QWidget* widget)
 {
+#if QT_CONFIG(scrollarea)
     if (qobject_cast<const QScrollBar *>(widget) && widget->parent() &&
             qobject_cast<const QAbstractScrollArea *>(widget->parent()->parent()))
         return widget->parentWidget()->parentWidget()->palette().color(QPalette::Base);
+#else
+    Q_UNUSED(widget);
+#endif
     return pal.color(QPalette::Base);
 }
 
@@ -403,6 +409,35 @@ QWindow *styleObjectWindow(QObject *so)
         return so->property("_q_styleObjectWindow").value<QWindow *>();
 
     return 0;
+}
+
+void setWidgetSizePolicy(const QWidget *widget, WidgetSizePolicy policy)
+{
+    QWidget *wadget = const_cast<QWidget *>(widget);
+    wadget->setAttribute(Qt::WA_MacNormalSize, policy == SizeLarge);
+    wadget->setAttribute(Qt::WA_MacSmallSize, policy == SizeSmall);
+    wadget->setAttribute(Qt::WA_MacMiniSize, policy == SizeMini);
+}
+
+WidgetSizePolicy widgetSizePolicy(const QWidget *widget, const QStyleOption *opt)
+{
+    while (widget) {
+        if (widget->testAttribute(Qt::WA_MacMiniSize)) {
+            return SizeMini;
+        } else if (widget->testAttribute(Qt::WA_MacSmallSize)) {
+            return SizeSmall;
+        } else if (widget->testAttribute(Qt::WA_MacNormalSize)) {
+            return SizeLarge;
+        }
+        widget = widget->parentWidget();
+    }
+
+    if (opt && opt->state & QStyle::State_Mini)
+        return SizeMini;
+    else if (opt && opt->state & QStyle::State_Small)
+        return SizeSmall;
+
+    return SizeDefault;
 }
 
 }

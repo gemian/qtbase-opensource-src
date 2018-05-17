@@ -166,15 +166,8 @@ Q_CORE_EXPORT QLocale qt_localeFromLCID(LCID id); // from qlocale_win.cpp
 
 HIMC QWindowsInputContext::m_defaultContext = 0;
 
-QWindowsInputContext::CompositionContext::CompositionContext() :
-    hwnd(0), haveCaret(false), position(0), isComposing(false),
-    factor(1)
-{
-}
-
 QWindowsInputContext::QWindowsInputContext() :
     m_WM_MSIME_MOUSE(RegisterWindowMessage(L"MSIMEMouseOperation")),
-    m_endCompositionRecursionGuard(false),
     m_languageId(currentInputLanguageId()),
     m_locale(qt_localeFromLCID(m_languageId))
 {
@@ -190,11 +183,7 @@ bool QWindowsInputContext::hasCapability(Capability capability) const
 {
     switch (capability) {
     case QPlatformInputContext::HiddenTextCapability:
-#ifndef Q_OS_WINCE
         return false; // QTBUG-40691, do not show IME on desktop for password entry fields.
-#else
-        break; // Windows CE: Show software keyboard.
-#endif
     default:
         break;
     }
@@ -240,7 +229,7 @@ void QWindowsInputContext::updateEnabled()
         const bool accepted = inputMethodAccepted();
         if (QWindowsContext::verbose > 1)
             qCDebug(lcQpaInputMethods) << __FUNCTION__ << platformWindow->window() << "accepted=" << accepted;
-            QWindowsInputContext::setWindowsImeEnabled(platformWindow, accepted);
+        QWindowsInputContext::setWindowsImeEnabled(platformWindow, accepted);
     }
 }
 

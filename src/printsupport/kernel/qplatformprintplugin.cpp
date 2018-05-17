@@ -42,6 +42,9 @@
 #include "qprinterinfo.h"
 #include "private/qfactoryloader_p.h"
 #include <qcoreapplication.h>
+#include <qdebug.h>
+
+#ifndef QT_NO_PRINTER
 
 QT_BEGIN_NAMESPACE
 
@@ -57,12 +60,12 @@ QPlatformPrinterSupportPlugin::~QPlatformPrinterSupportPlugin()
 {
 }
 
-static QPlatformPrinterSupport *printerSupport = 0;
+static QPlatformPrinterSupport *printerSupport = nullptr;
 
 static void cleanupPrinterSupport()
 {
     delete printerSupport;
-    printerSupport = 0;
+    printerSupport = nullptr;
 }
 
 /*!
@@ -77,8 +80,17 @@ QPlatformPrinterSupport *QPlatformPrinterSupportPlugin::get()
 {
     if (!printerSupport) {
         const QMultiMap<int, QString> keyMap = loader()->keyMap();
-        if (!keyMap.isEmpty())
-            printerSupport = qLoadPlugin<QPlatformPrinterSupport, QPlatformPrinterSupportPlugin>(loader(), keyMap.constBegin().value());
+        QMultiMap<int, QString>::const_iterator it = keyMap.cbegin();
+        if (!qEnvironmentVariableIsEmpty("QT_PRINTER_MODULE")) {
+            QString module = QString::fromLocal8Bit(qgetenv("QT_PRINTER_MODULE"));
+            QMultiMap<int, QString>::const_iterator it2 = std::find_if(keyMap.cbegin(), keyMap.cend(), [module](const QString &value){ return value == module; });
+            if (it2 == keyMap.cend())
+                qWarning() << "Unable to load printer plugin" << module;
+            else
+                it = it2;
+        }
+        if (it != keyMap.cend())
+            printerSupport = qLoadPlugin<QPlatformPrinterSupport, QPlatformPrinterSupportPlugin>(loader(), it.value());
         if (printerSupport)
             qAddPostRoutine(cleanupPrinterSupport);
     }
@@ -86,3 +98,5 @@ QPlatformPrinterSupport *QPlatformPrinterSupportPlugin::get()
 }
 
 QT_END_NAMESPACE
+
+#endif

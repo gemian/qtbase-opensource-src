@@ -90,9 +90,13 @@ private slots:
     void rawFontFromInvalidData();
 
     void kernedAdvances();
+
+    void fallbackFontsOrder();
+
 private:
     QString testFont;
     QString testFontBoldItalic;
+    QString testFontOs2V1;
 #endif // QT_NO_RAWFONT
 };
 
@@ -110,6 +114,7 @@ void tst_QRawFont::initTestCase()
 {
     testFont = QFINDTESTDATA("testfont.ttf");
     testFontBoldItalic = QFINDTESTDATA("testfont_bold_italic.ttf");
+    testFontOs2V1 = QFINDTESTDATA("testfont_os2_v1.ttf");
     if (testFont.isEmpty() || testFontBoldItalic.isEmpty())
         QFAIL("qrawfont unittest font files not found!");
 
@@ -184,6 +189,7 @@ void tst_QRawFont::correctFontData_data()
     QTest::addColumn<QFont::HintingPreference>("hintingPreference");
     QTest::addColumn<qreal>("unitsPerEm");
     QTest::addColumn<qreal>("pixelSize");
+    QTest::addColumn<int>("capHeight");
 
     int hintingPreferences[] = {
         int(QFont::PreferDefaultHinting),
@@ -207,7 +213,8 @@ void tst_QRawFont::correctFontData_data()
                 << QFont::Normal
                 << QFont::HintingPreference(*hintingPreference)
                 << qreal(1000.0)
-                << qreal(10.0);
+                << qreal(10.0)
+                << 7;
 
         fileName = testFontBoldItalic;
         title = fileName
@@ -221,7 +228,23 @@ void tst_QRawFont::correctFontData_data()
                 << QFont::Bold
                 << QFont::HintingPreference(*hintingPreference)
                 << qreal(1000.0)
-                << qreal(10.0);
+                << qreal(10.0)
+                << 7;
+
+        fileName = testFontOs2V1;
+        title = fileName
+              + QLatin1String(": hintingPreference=")
+              + QString::number(*hintingPreference);
+
+        QTest::newRow(qPrintable(title))
+                << fileName
+                << QString::fromLatin1("QtBidiTestFont")
+                << QFont::StyleNormal
+                << QFont::Normal
+                << QFont::HintingPreference(*hintingPreference)
+                << qreal(1000.0)
+                << qreal(10.0)
+                << 7;
 
         ++hintingPreference;
     }
@@ -236,6 +259,7 @@ void tst_QRawFont::correctFontData()
     QFETCH(QFont::HintingPreference, hintingPreference);
     QFETCH(qreal, unitsPerEm);
     QFETCH(qreal, pixelSize);
+    QFETCH(int, capHeight);
 
     QRawFont font(fileName, 10, hintingPreference);
     QVERIFY(font.isValid());
@@ -246,6 +270,11 @@ void tst_QRawFont::correctFontData()
     QCOMPARE(font.hintingPreference(), hintingPreference);
     QCOMPARE(font.unitsPerEm(), unitsPerEm);
     QCOMPARE(font.pixelSize(), pixelSize);
+
+    // Some platforms return the actual fractional height of the
+    // H character when the value is missing from the OS/2 table,
+    // so we ceil it off to match (any touched pixel counts).
+    QCOMPARE(qCeil(font.capHeight()), capHeight);
 }
 
 void tst_QRawFont::glyphIndices()
@@ -861,7 +890,7 @@ void tst_QRawFont::unsupportedWritingSystem()
     QCOMPARE(rawFont.familyName(), QString::fromLatin1("QtBidiTestFont"));
     QCOMPARE(rawFont.pixelSize(), 12.0);
 
-    QString arabicText = QFontDatabase::writingSystemSample(QFontDatabase::Arabic);
+    QString arabicText = QFontDatabase::writingSystemSample(QFontDatabase::Arabic).simplified().remove(QLatin1Char(' '));
 
     QTextLayout layout;
     layout.setFont(font);
@@ -981,6 +1010,38 @@ void tst_QRawFont::kernedAdvances()
 
     expectedAdvanceWidth = pixelSize * (underScoreAW + underscoreTwoKerning) / emSquareSize;
     QVERIFY(FUZZY_LTEQ(qAbs(advances.at(0).x() - expectedAdvanceWidth), errorMargin));
+}
+
+void tst_QRawFont::fallbackFontsOrder()
+{
+    QFontDatabase fontDatabase;
+    int id = fontDatabase.addApplicationFont(testFont);
+
+    QFont font("QtBidiTestFont");
+    font.setPixelSize(12.0);
+
+    QString arabicText = QFontDatabase::writingSystemSample(QFontDatabase::Arabic);
+
+    // If this fails, then the writing system sample has changed and we need to create
+    // a new text containing both a space and Arabic characters.
+    QVERIFY(arabicText.contains(QLatin1Char(' ')));
+
+    QTextLayout layout;
+    layout.setFont(font);
+    layout.setText(arabicText);
+    layout.setCacheEnabled(true);
+    layout.beginLayout();
+    layout.createLine();
+    layout.endLayout();
+
+    QList<QGlyphRun> glyphRuns = layout.glyphRuns();
+
+    // Since QtBidiTestFont does not support Arabic nor the space, both should map to
+    // the same font. If this fails, it is an indication that the list of fallbacks fonts
+    // is not sorted by writing system support.
+    QCOMPARE(glyphRuns.size(), 1);
+
+    fontDatabase.removeApplicationFont(id);
 }
 
 #endif // QT_NO_RAWFONT

@@ -51,9 +51,8 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qgraphicsview.h"
-
-#if !defined(QT_NO_GRAPHICSVIEW)
 
 #include <QtGui/qevent.h>
 #include <QtCore/qcoreapplication.h>
@@ -61,6 +60,8 @@
 #include <QtWidgets/qstyleoption.h>
 #include <private/qabstractscrollarea_p.h>
 #include <private/qapplication_p.h>
+
+QT_REQUIRE_CONFIG(graphicsview);
 
 QT_BEGIN_NAMESPACE
 
@@ -135,7 +136,7 @@ public:
     QGraphicsView::OptimizationFlags optimizationFlags;
 
     QPointer<QGraphicsScene> scene;
-#ifndef QT_NO_RUBBERBAND
+#if QT_CONFIG(rubberband)
     QRect rubberBandRect;
     QRegion rubberBandRegion(const QWidget *widget, const QRect &rect) const;
     void updateRubberBand(const QMouseEvent *event);
@@ -183,7 +184,7 @@ public:
 
     inline void dispatchPendingUpdateRequests()
     {
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
         // QWidget::update() works slightly different on the Mac without the raster engine;
         // it's not part of our backing store so it needs special threatment.
         if (QApplicationPrivate::graphics_system_name != QLatin1String("raster")) {
@@ -194,7 +195,7 @@ public:
             extern void qt_mac_dispatchPendingUpdateRequests(QWidget *);
             qt_mac_dispatchPendingUpdateRequests(viewport->window());
         } else
-#endif // !Q_DEAD_CODE_FROM_QT4_MAC
+#endif
         {
             if (qt_widget_private(viewport)->paintOnScreen())
                 QCoreApplication::sendPostedEvents(viewport, QEvent::UpdateRequest);
@@ -229,7 +230,5 @@ public:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_GRAPHICSVIEW
 
 #endif

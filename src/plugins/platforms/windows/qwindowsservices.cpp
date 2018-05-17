@@ -39,16 +39,14 @@
 
 #define QT_NO_URL_CAST_FROM_STRING
 #include "qwindowsservices.h"
-#include "qtwindows_additional.h"
+#include <QtCore/qt_windows.h>
 
 #include <QtCore/QUrl>
 #include <QtCore/QDebug>
 #include <QtCore/QDir>
 
 #include <shlobj.h>
-#ifndef Q_OS_WINCE
-#  include <intshcut.h>
-#endif
+#include <intshcut.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -56,7 +54,6 @@ enum { debug = 0 };
 
 static inline bool shellExecute(const QUrl &url)
 {
-#ifndef Q_OS_WINCE
     const QString nativeFilePath = url.isLocalFile() && !url.hasFragment() && !url.hasQuery()
         ? QDir::toNativeSeparators(url.toLocalFile())
         : url.toString(QUrl::FullyEncoded);
@@ -70,10 +67,6 @@ static inline bool shellExecute(const QUrl &url)
         return false;
     }
     return true;
-#else
-    Q_UNUSED(url);
-    return false;
-#endif
 }
 
 // Retrieve the commandline for the default mail client. It contains a
@@ -105,15 +98,15 @@ static inline QString mailCommand()
         RegQueryValueEx(handle, L"", 0, 0, reinterpret_cast<unsigned char*>(command), &bufferSize);
         RegCloseKey(handle);
     }
-    if (!command[0])
+    // QTBUG-57816: As of Windows 10, if there is no mail client installed, an entry like
+    // "rundll32.exe .. url.dll,MailToProtocolHandler %l" is returned. Launching it
+    // silently fails or brings up a broken dialog after a long time, so exclude it and
+    // fall back to ShellExecute() which brings up the URL assocation dialog.
+    if (!command[0] || wcsstr(command, L",MailToProtocolHandler") != nullptr)
         return QString();
-#ifndef Q_OS_WINCE
     wchar_t expandedCommand[MAX_PATH] = {0};
     return ExpandEnvironmentStrings(command, expandedCommand, MAX_PATH) ?
            QString::fromWCharArray(expandedCommand) : QString::fromWCharArray(command);
-#else
-    return QString();
-#endif
 }
 
 static inline bool launchMail(const QUrl &url)

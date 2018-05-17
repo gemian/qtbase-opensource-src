@@ -51,10 +51,13 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtCore/qbasictimer.h"
 #include "QtCore/qelapsedtimer.h"
 #include "private/qwidget_p.h"
 #include "qstyle.h"
+
+QT_REQUIRE_CONFIG(abstractslider);
 
 QT_BEGIN_NAMESPACE
 

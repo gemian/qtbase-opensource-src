@@ -51,9 +51,8 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtWidgets/qabstractspinbox.h"
-
-#ifndef QT_NO_SPINBOX
 
 #include "QtWidgets/qlineedit.h"
 #include "QtWidgets/qstyleoption.h"
@@ -61,6 +60,8 @@
 #include "QtCore/qdatetime.h"
 #include "QtCore/qvariant.h"
 #include "private/qwidget_p.h"
+
+QT_REQUIRE_CONFIG(spinbox);
 
 QT_BEGIN_NAMESPACE
 
@@ -155,15 +156,13 @@ class QSpinBoxValidator : public QValidator
 {
 public:
     QSpinBoxValidator(QAbstractSpinBox *qptr, QAbstractSpinBoxPrivate *dptr);
-    QValidator::State validate(QString &input, int &) const;
-    void fixup(QString &) const;
+    QValidator::State validate(QString &input, int &) const override;
+    void fixup(QString &) const override;
 private:
     QAbstractSpinBox *qptr;
     QAbstractSpinBoxPrivate *dptr;
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_SPINBOX
 
 #endif // QABSTRACTSPINBOX_P_H

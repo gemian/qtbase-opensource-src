@@ -44,9 +44,9 @@
 //  W A R N I N G
 //  -------------
 //
-// This file is not part of the Qt API.  It exists for the convenience
-// of the QLibrary class.  This header file may change from
-// version to version without notice, or even be removed.
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
 //
 // We mean it.
 //
@@ -63,11 +63,11 @@ class QOpenGLFramebufferObject;
 class QGLPBufferGLPaintDevice : public QGLPaintDevice
 {
 public:
-    virtual QPaintEngine* paintEngine() const {return pbuf->paintEngine();}
-    virtual QSize size() const {return pbuf->size();}
-    virtual QGLContext* context() const;
-    virtual void beginPaint();
-    virtual void endPaint();
+    QPaintEngine* paintEngine() const override {return pbuf->paintEngine();}
+    QSize size() const override {return pbuf->size();}
+    QGLContext* context() const override;
+    void beginPaint() override;
+    void endPaint() override;
     void setPBuffer(QGLPixelBuffer* pb);
     void setFbo(GLuint fbo);
 private:

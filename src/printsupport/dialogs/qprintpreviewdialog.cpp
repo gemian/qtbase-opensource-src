@@ -40,26 +40,28 @@
 #include "qprintpreviewdialog.h"
 #include "qprintpreviewwidget.h"
 #include <private/qprinter_p.h>
-#include "private/qdialog_p.h"
 #include "qprintdialog.h"
 
 #include <QtWidgets/qaction.h>
 #include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qcombobox.h>
-#include <QtWidgets/qlabel.h>
 #include <QtWidgets/qlineedit.h>
 #include <QtPrintSupport/qpagesetupdialog.h>
 #include <QtPrintSupport/qprinter.h>
 #include <QtWidgets/qstyle.h>
 #include <QtWidgets/qtoolbutton.h>
 #include <QtGui/qvalidator.h>
+#if QT_CONFIG(filedialog)
 #include <QtWidgets/qfiledialog.h>
+#endif
 #include <QtWidgets/qmainwindow.h>
 #include <QtWidgets/qtoolbar.h>
-#include <QtWidgets/qformlayout.h>
 #include <QtCore/QCoreApplication>
 
-#ifndef QT_NO_PRINTPREVIEWDIALOG
+#include "private/qdialog_p.h"
+
+#include <QtWidgets/qformlayout.h>
+#include <QtWidgets/qlabel.h>
 
 static void initResources()
 {
@@ -77,7 +79,7 @@ class QPrintPreviewMainWindow : public QMainWindow
 {
 public:
     QPrintPreviewMainWindow(QWidget *parent) : QMainWindow(parent) {}
-    QMenu *createPopupMenu() Q_DECL_OVERRIDE { return 0; }
+    QMenu *createPopupMenu() Q_DECL_OVERRIDE { return nullptr; }
 };
 
 class ZoomFactorValidator : public QDoubleValidator
@@ -113,11 +115,11 @@ class LineEdit : public QLineEdit
 {
     Q_OBJECT
 public:
-    LineEdit(QWidget* parent = 0)
+    LineEdit(QWidget* parent = nullptr)
         : QLineEdit(parent)
     {
         setContextMenuPolicy(Qt::NoContextMenu);
-        connect(this, SIGNAL(returnPressed()), SLOT(handleReturnPressed()));
+        connect(this, &LineEdit::returnPressed, this, &LineEdit::handleReturnPressed);
     }
 
 protected:
@@ -150,7 +152,7 @@ class QPrintPreviewDialogPrivate : public QDialogPrivate
     Q_DECLARE_PUBLIC(QPrintPreviewDialog)
 public:
     QPrintPreviewDialogPrivate()
-        : printDialog(0), ownPrinter(false),
+        : printDialog(nullptr), ownPrinter(false),
           initialized(false) {}
 
     // private slots
@@ -165,7 +167,7 @@ public:
     void _q_previewChanged();
     void _q_zoomFactorChanged();
 
-    void init(QPrinter *printer = 0);
+    void init(QPrinter *printer = nullptr);
     void populateScene();
     void layoutPages();
     void setupActions();
@@ -334,7 +336,7 @@ void QPrintPreviewDialogPrivate::init(QPrinter *_printer)
 
     QString caption = QCoreApplication::translate("QPrintPreviewDialog", "Print Preview");
     if (!printer->docName().isEmpty())
-        caption += QString::fromLatin1(": ") + printer->docName();
+        caption += QLatin1String(": ") + printer->docName();
     q->setWindowTitle(caption);
 
     if (!printer->isValid()
@@ -734,7 +736,7 @@ void QPrintPreviewDialog::done(int result)
     if (d->receiverToDisconnectOnClose) {
         disconnect(this, SIGNAL(finished(int)),
                    d->receiverToDisconnectOnClose, d->memberToDisconnectOnClose);
-        d->receiverToDisconnectOnClose = 0;
+        d->receiverToDisconnectOnClose = nullptr;
     }
     d->memberToDisconnectOnClose.clear();
 }
@@ -785,7 +787,3 @@ QT_END_NAMESPACE
 
 #include "moc_qprintpreviewdialog.cpp"
 #include "qprintpreviewdialog.moc"
-
-#endif // QT_NO_PRINTPREVIEWDIALOG
-
-

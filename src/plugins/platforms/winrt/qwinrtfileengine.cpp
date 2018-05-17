@@ -92,7 +92,7 @@ public:
         }
 
         firstDot = fileName.size();
-        for (int i = lastSeparator; i > fileName.size(); ++i) {
+        for (int i = lastSeparator; i < fileName.size(); ++i) {
             if (fileName.at(i).unicode() == '.') {
                 firstDot = i;
                 break;
@@ -153,7 +153,6 @@ static HRESULT getDestinationFolder(const QString &fileName, const QString &newF
     HRESULT hr;
     ComPtr<IAsyncOperation<StorageFolder *>> op;
     QFileInfo newFileInfo(newFileName);
-#ifndef Q_OS_WINPHONE
     QFileInfo fileInfo(fileName);
     if (fileInfo.dir() == newFileInfo.dir()) {
         ComPtr<IStorageItem2> item;
@@ -161,12 +160,7 @@ static HRESULT getDestinationFolder(const QString &fileName, const QString &newF
         Q_ASSERT_SUCCEEDED(hr);
 
         hr = item->GetParentAsync(&op);
-    } else
-#else
-    Q_UNUSED(fileName);
-    Q_UNUSED(file)
-#endif
-    {
+    } else {
         ComPtr<IStorageFolderStatics> folderFactory;
         hr = RoGetActivationFactory(HString::MakeReference(RuntimeClass_Windows_Storage_StorageFolder).Get(),
                                     IID_PPV_ARGS(&folderFactory));
@@ -420,10 +414,11 @@ QDateTime QWinRTFileEngine::fileTime(FileTime type) const
     HRESULT hr;
     DateTime dateTime = { 0 };
     switch (type) {
-    case CreationTime:
+    case BirthTime:
         hr = d->file->get_DateCreated(&dateTime);
         RETURN_IF_FAILED("Failed to get file creation time", return QDateTime());
         break;
+    case MetadataChangeTime:
     case ModificationTime:
     case AccessTime: {
         ComPtr<IAsyncOperation<FileProperties::BasicProperties *>> op;
@@ -432,8 +427,7 @@ QDateTime QWinRTFileEngine::fileTime(FileTime type) const
         ComPtr<FileProperties::IBasicProperties> properties;
         hr = QWinRTFunctions::await(op, properties.GetAddressOf());
         RETURN_IF_FAILED("Failed to get file properties", return QDateTime());
-        hr = type == ModificationTime ? properties->get_DateModified(&dateTime)
-                                      : properties->get_ItemDate(&dateTime);
+        hr = properties->get_DateModified(&dateTime);
         RETURN_IF_FAILED("Failed to get file date", return QDateTime());
     }
         break;

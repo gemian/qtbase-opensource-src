@@ -58,6 +58,10 @@
 #include "private/qobject_p.h"
 #endif
 
+#ifdef Q_OS_MACOS
+#include "private/qcore_mac_p.h"
+#endif
+
 QT_BEGIN_NAMESPACE
 
 typedef QList<QTranslator*> QTranslatorList;
@@ -83,9 +87,10 @@ public:
     void init();
 
     QString appName() const;
+    QString appVersion() const;
 
-#ifdef Q_OS_MAC
-    static QString macMenuBarName();
+#ifdef Q_OS_DARWIN
+    static QString infoDictionaryStringProperty(const QString &propertyName);
 #endif
 
     static void initLocale();
@@ -133,7 +138,7 @@ public:
 
 #ifndef QT_NO_TRANSLATION
     QTranslatorList translators;
-
+    QReadWriteLock translateMutex;
     static bool isTranslatorInstalled(QTranslator *translator);
 #endif
 
@@ -145,6 +150,8 @@ public:
     static inline void clearApplicationFilePath() { delete cachedApplicationFilePath; cachedApplicationFilePath = 0; }
 
 #ifndef QT_NO_QOBJECT
+    void execCleanup();
+
     bool in_exec;
     bool aboutToQuitEmitted;
     bool threadData_clean;

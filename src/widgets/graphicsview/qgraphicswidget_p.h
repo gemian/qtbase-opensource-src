@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <private/qobject_p.h>
 #include "qgraphicsitem_p.h"
 #include "qgraphicswidget.h"
@@ -59,12 +60,12 @@
 #include <QtWidgets/qsizepolicy.h>
 #include <QtWidgets/qstyle.h>
 
+QT_REQUIRE_CONFIG(graphicsview);
+
 QT_BEGIN_NAMESPACE
 
 class QGraphicsLayout;
 class QStyleOptionTitleBar;
-
-#if !defined(QT_NO_GRAPHICSVIEW)
 
 class QGraphicsWidgetPrivate : public QGraphicsItemPrivate
 {
@@ -199,8 +200,6 @@ public:
     QList<QAction *> actions;
 #endif
 };
-
-#endif
 
 QT_END_NAMESPACE
 

@@ -40,12 +40,12 @@
 #ifndef QSTACKEDWIDGET_H
 #define QSTACKEDWIDGET_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qframe.h>
 
+QT_REQUIRE_CONFIG(stackedwidget);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_STACKEDWIDGET
 
 class QStackedWidgetPrivate;
 
@@ -85,8 +85,6 @@ private:
     Q_DISABLE_COPY(QStackedWidget)
     Q_DECLARE_PRIVATE(QStackedWidget)
 };
-
-#endif // QT_NO_STACKEDWIDGET
 
 QT_END_NAMESPACE
 

@@ -183,10 +183,8 @@ void QLocalSocket::connectToServer(OpenMode openMode)
     }
 
     // we have a valid handle
-    if (setSocketDescriptor((qintptr)localSocket, ConnectedState, openMode)) {
-        d->handle = localSocket;
+    if (setSocketDescriptor((qintptr)localSocket, ConnectedState, openMode))
         emit connected();
-    }
 }
 
 // This is reading from the buffer
@@ -309,10 +307,8 @@ bool QLocalSocket::flush()
 {
     Q_D(QLocalSocket);
     bool written = false;
-    if (d->pipeWriter) {
-        while (d->pipeWriter->waitForWrite(0))
-            written = true;
-    }
+    while (d->pipeWriter && d->pipeWriter->waitForWrite(0))
+        written = true;
     return written;
 }
 

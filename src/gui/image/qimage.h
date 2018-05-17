@@ -40,6 +40,7 @@
 #ifndef QIMAGE_H
 #define QIMAGE_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtGui/qcolor.h>
 #include <QtGui/qrgb.h>
 #include <QtGui/qpaintdevice.h>
@@ -51,6 +52,10 @@
 
 #if QT_DEPRECATED_SINCE(5, 0)
 #include <QtCore/qstringlist.h>
+#endif
+
+#if defined(Q_OS_DARWIN) || defined(Q_QDOC)
+Q_FORWARD_DECLARE_MUTABLE_CG_TYPE(CGImage);
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -174,9 +179,9 @@ public:
     Format format() const;
 
 #if defined(Q_COMPILER_REF_QUALIFIERS) && !defined(QT_COMPILING_QIMAGE_COMPAT_CPP)
-    Q_ALWAYS_INLINE QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) const & Q_REQUIRED_RESULT
+    Q_REQUIRED_RESULT Q_ALWAYS_INLINE QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) const &
     { return convertToFormat_helper(f, flags); }
-    Q_ALWAYS_INLINE QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) && Q_REQUIRED_RESULT
+    Q_REQUIRED_RESULT Q_ALWAYS_INLINE QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) &&
     {
         if (convertToFormat_inplace(f, flags))
             return std::move(*this);
@@ -184,9 +189,10 @@ public:
             return convertToFormat_helper(f, flags);
     }
 #else
-    QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) const Q_REQUIRED_RESULT;
+    Q_REQUIRED_RESULT QImage convertToFormat(Format f, Qt::ImageConversionFlags flags = Qt::AutoColor) const;
 #endif
-    QImage convertToFormat(Format f, const QVector<QRgb> &colorTable, Qt::ImageConversionFlags flags = Qt::AutoColor) const Q_REQUIRED_RESULT;
+    Q_REQUIRED_RESULT QImage convertToFormat(Format f, const QVector<QRgb> &colorTable, Qt::ImageConversionFlags flags = Qt::AutoColor) const;
+    bool reinterpretAsFormat(Format f);
 
     int width() const;
     int height() const;
@@ -208,7 +214,10 @@ public:
     const uchar *bits() const;
     const uchar *constBits() const;
 
-    int byteCount() const;
+#if QT_DEPRECATED_SINCE(5, 10)
+    QT_DEPRECATED_X("Use sizeInBytes") int byteCount() const;
+#endif
+    qsizetype sizeInBytes() const;
 
     uchar *scanLine(int);
     const uchar *scanLine(int) const;
@@ -320,6 +329,11 @@ public:
     static QPixelFormat toPixelFormat(QImage::Format format) Q_DECL_NOTHROW;
     static QImage::Format toImageFormat(QPixelFormat format) Q_DECL_NOTHROW;
 
+    // Platform spesific conversion functions
+#if defined(Q_OS_DARWIN) || defined(Q_QDOC)
+    CGImageRef toCGImage() const Q_DECL_CF_RETURNS_RETAINED;
+#endif
+
 #if QT_DEPRECATED_SINCE(5, 0)
     QT_DEPRECATED inline QString text(const char *key, const char *lang = Q_NULLPTR) const;
     QT_DEPRECATED inline QList<QImageTextKeyLang> textList() const;
@@ -371,8 +385,7 @@ inline void QImage::setPixelColor(const QPoint &pt, const QColor &c) { setPixelC
 #if QT_DEPRECATED_SINCE(5, 0)
 
 QT_WARNING_PUSH
-QT_WARNING_DISABLE_GCC("-Wdeprecated-declarations")
-QT_WARNING_DISABLE_MSVC(4996)
+QT_WARNING_DISABLE_DEPRECATED
 
 inline QString QImage::text(const char* key, const char* lang) const
 {
@@ -458,7 +471,7 @@ inline void QImage::setNumColors(int n)
 
 inline int QImage::numBytes() const
 {
-    return byteCount();
+    return int(sizeInBytes());
 }
 #endif
 

@@ -37,14 +37,19 @@
 **
 ****************************************************************************/
 
+#include "qtwidgetsglobal.h"
+#if QT_CONFIG(label)
 #include "qlabel.h"
+#endif
 #include "qpainter.h"
 #include "qpixmap.h"
 #include "qbitmap.h"
 #include "qevent.h"
 #include "qapplication.h"
 #include "qlist.h"
+#if QT_CONFIG(menu)
 #include "qmenu.h"
+#endif
 #include "qtimer.h"
 #include "qsystemtrayicon_p.h"
 #include "qpaintengine.h"
@@ -104,7 +109,9 @@ QSystemTrayIconSys::QSystemTrayIconSys(QSystemTrayIcon *qIn)
     , q(qIn)
 {
     setObjectName(QStringLiteral("QSystemTrayIconSys"));
+#if QT_CONFIG(tooltip)
     setToolTip(q->toolTip());
+#endif
     setAttribute(Qt::WA_AlwaysShowToolTips, true);
     setAttribute(Qt::WA_QuitOnClose, false);
     const QSize size(22, 22); // Gnome, standard size
@@ -205,7 +212,7 @@ bool QSystemTrayIconSys::event(QEvent *e)
     case QEvent::ToolTip:
         QApplication::sendEvent(q, e);
         break;
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     case QEvent::Wheel:
         return QApplication::sendEvent(q, e);
 #endif
@@ -284,7 +291,7 @@ void QSystemTrayIconPrivate::install_sys()
 QRect QSystemTrayIconPrivate::geometry_sys() const
 {
     if (qpa_sys)
-        return geometry_sys_qpa();
+        return qpa_sys->geometry();
     if (!sys)
         return QRect();
     return sys->globalGeometry();
@@ -307,7 +314,7 @@ void QSystemTrayIconPrivate::remove_sys()
 void QSystemTrayIconPrivate::updateIcon_sys()
 {
     if (qpa_sys) {
-        updateIcon_sys_qpa();
+        qpa_sys->updateIcon(icon);
         return;
     }
     if (sys)
@@ -316,14 +323,18 @@ void QSystemTrayIconPrivate::updateIcon_sys()
 
 void QSystemTrayIconPrivate::updateMenu_sys()
 {
-    if (qpa_sys)
-        updateMenu_sys_qpa();
+#if QT_CONFIG(menu)
+    if (qpa_sys && menu) {
+        addPlatformMenu(menu);
+        qpa_sys->updateMenu(menu->platformMenu());
+    }
+#endif
 }
 
 void QSystemTrayIconPrivate::updateToolTip_sys()
 {
     if (qpa_sys) {
-        updateToolTip_sys_qpa();
+        qpa_sys->updateToolTip(toolTip);
         return;
     }
     if (!sys)
@@ -357,10 +368,11 @@ bool QSystemTrayIconPrivate::supportsMessages_sys()
 }
 
 void QSystemTrayIconPrivate::showMessage_sys(const QString &title, const QString &message,
-                                   QSystemTrayIcon::MessageIcon icon, int msecs)
+                                   const QIcon &icon, QSystemTrayIcon::MessageIcon msgIcon, int msecs)
 {
     if (qpa_sys) {
-        showMessage_sys_qpa(title, message, icon, msecs);
+        qpa_sys->showMessage(title, message, icon,
+                         static_cast<QPlatformSystemTrayIcon::MessageIcon>(msgIcon), msecs);
         return;
     }
     if (!sys)

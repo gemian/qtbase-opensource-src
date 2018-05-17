@@ -51,17 +51,16 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
-
-#if !defined(QT_NO_GRAPHICSVIEW)
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 
 #include <QtCore/qrect.h>
 #include <QtCore/qlist.h>
 #include <QtWidgets/qgraphicsitem.h>
 #include <private/qgraphicssceneindex_p.h>
 
-QT_BEGIN_NAMESPACE
+QT_REQUIRE_CONFIG(graphicsview);
 
+QT_BEGIN_NAMESPACE
 
 class Q_AUTOTEST_EXPORT QGraphicsSceneLinearIndex : public QGraphicsSceneIndex
 {
@@ -113,8 +112,6 @@ private:
     QList<QGraphicsItem*> m_items;
     int m_numSortedElements;
 };
-
-#endif // QT_NO_GRAPHICSVIEW
 
 QT_END_NAMESPACE
 

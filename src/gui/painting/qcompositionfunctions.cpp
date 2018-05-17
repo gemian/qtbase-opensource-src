@@ -87,6 +87,36 @@ QT_BEGIN_NAMESPACE
     }\
 }
 
+#if defined __SSE2__
+#  define LOAD(ptr) _mm_loadl_epi64(reinterpret_cast<const __m128i *>(ptr))
+#ifdef Q_PROCESSOR_X86_64
+#  define CONVERT(value) _mm_cvtsi64_si128(value)
+#else
+#  define CONVERT(value) LOAD(&value)
+#endif
+#  define STORE(ptr, value) _mm_storel_epi64(reinterpret_cast<__m128i *>(ptr), value)
+#  define ADD(p, q) _mm_add_epi32(p, q)
+#  define ALPHA(c) _mm_shufflelo_epi16(c, _MM_SHUFFLE(3, 3, 3, 3))
+#  define CONST(n) _mm_shufflelo_epi16(_mm_cvtsi32_si128(n), _MM_SHUFFLE(0, 0, 0, 0))
+#  define INVALPHA(c) _mm_sub_epi32(CONST(65535), ALPHA(c))
+#elif defined __ARM_NEON__
+#  define LOAD(ptr) vreinterpret_u16_u64(vld1_u64(reinterpret_cast<const uint64_t *>(ptr)))
+#  define CONVERT(value) vreinterpret_u16_u64(vmov_n_u64(value))
+#  define STORE(ptr, value) vst1_u64(reinterpret_cast<uint64_t *>(ptr), vreinterpret_u64_u16(value))
+#  define ADD(p, q) vadd_u16(p, q)
+#  define ALPHA(c) vdup_lane_u16(c, 3)
+#  define CONST(n) vdup_n_u16(n)
+#  define INVALPHA(c) vmvn_u16(ALPHA(c))
+#else
+#  define LOAD(ptr) *ptr
+#  define CONVERT(value) value
+#  define STORE(ptr, value) *ptr = value
+#  define ADD(p, q) (p + q)
+#  define ALPHA(c) (c).alpha()
+#  define CONST(n) n
+#  define INVALPHA(c) (65535 - ALPHA(c))
+#endif
+
 void QT_FASTCALL comp_func_solid_Clear(uint *dest, int length, uint, uint const_alpha)
 {
     comp_func_Clear_impl(dest, length, const_alpha);
@@ -99,7 +129,7 @@ void QT_FASTCALL comp_func_solid_Clear_rgb64(QRgba64 *dest, int length, QRgba64,
     else {
         int ialpha = 255 - const_alpha;
         for (int i = 0; i < length; ++i) {
-            dest[i] = multiplyAlpha255(dest[i], ialpha);
+            STORE(&dest[i], multiplyAlpha255(LOAD(&dest[i]), ialpha));
         }
     }
 }
@@ -116,7 +146,7 @@ void QT_FASTCALL comp_func_Clear_rgb64(QRgba64 *dest, const QRgba64 *, int lengt
     else {
         int ialpha = 255 - const_alpha;
         for (int i = 0; i < length; ++i) {
-            dest[i] = multiplyAlpha255(dest[i], ialpha);
+            STORE(&dest[i], multiplyAlpha255(LOAD(&dest[i]), ialpha));
         }
     }
 }
@@ -146,9 +176,9 @@ void QT_FASTCALL comp_func_solid_Source_rgb64(QRgba64 *dest, int length, QRgba64
         qt_memfill64((quint64*)dest, color, length);
     else {
         int ialpha = 255 - const_alpha;
-        color = multiplyAlpha255(color, const_alpha);
+        auto c = multiplyAlpha255(CONVERT(color), const_alpha);
         for (int i = 0; i < length; ++i) {
-            dest[i] = color + multiplyAlpha255(dest[i], ialpha);
+            STORE(&dest[i], ADD(c, multiplyAlpha255(LOAD(&dest[i]), ialpha)));
         }
     }
 }
@@ -174,7 +204,7 @@ void QT_FASTCALL comp_func_Source_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRg
     else {
         int ialpha = 255 - const_alpha;
         for (int i = 0; i < length; ++i) {
-            dest[i] = interpolate255(src[i], const_alpha, dest[i], ialpha);
+            STORE(&dest[i], interpolate255(LOAD(&src[i]), const_alpha, LOAD(&dest[i]), ialpha));
         }
     }
 }
@@ -221,10 +251,12 @@ void QT_FASTCALL comp_func_solid_SourceOver_rgb64(QRgba64 *dest, int length, QRg
     if (const_alpha == 255 && color.isOpaque()) {
         qt_memfill64((quint64*)dest, color, length);
     } else {
+        auto c = CONVERT(color);
         if (const_alpha != 255)
-            color = multiplyAlpha255(color, const_alpha);
+            c = multiplyAlpha255(c, const_alpha);
+        auto cAlpha = INVALPHA(c);
         for (int i = 0; i < length; ++i) {
-            dest[i] = color + multiplyAlpha65535(dest[i], 65535 - color.alpha());
+            STORE(&dest[i], ADD(c, multiplyAlpha65535(LOAD(&dest[i]), cAlpha)));
         }
     }
 }
@@ -258,12 +290,12 @@ void QT_FASTCALL comp_func_SourceOver_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const
             if (s.isOpaque())
                 dest[i] = s;
             else if (!s.isTransparent())
-                dest[i] = s + multiplyAlpha65535(dest[i], 65535 - s.alpha());
+                STORE(&dest[i], ADD(CONVERT(s), multiplyAlpha65535(LOAD(&dest[i]), 65535 - s.alpha())));
         }
     } else {
         for (int i = 0; i < length; ++i) {
-            QRgba64 s = multiplyAlpha255(src[i], const_alpha);
-            dest[i] = s + multiplyAlpha65535(dest[i], 65535 - s.alpha());
+            auto s = multiplyAlpha255(LOAD(&src[i]), const_alpha);
+            STORE(&dest[i], ADD(s, multiplyAlpha65535(LOAD(&dest[i]), INVALPHA(s))));
         }
     }
 }
@@ -287,11 +319,12 @@ void QT_FASTCALL comp_func_solid_DestinationOver(uint *dest, int length, uint co
 
 void QT_FASTCALL comp_func_solid_DestinationOver_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
+    auto c = CONVERT(color);
     if (const_alpha != 255)
-        color = multiplyAlpha255(color, const_alpha);
+        c = multiplyAlpha255(c, const_alpha);
     for (int i = 0; i < length; ++i) {
-        QRgba64 d = dest[i];
-        dest[i] = d + multiplyAlpha65535(color, 65535 - d.alpha());
+        auto d = LOAD(&dest[i]);
+        STORE(&dest[i], ADD(d, multiplyAlpha65535(c, INVALPHA(d))));
     }
 }
 
@@ -318,14 +351,14 @@ void QT_FASTCALL comp_func_DestinationOver_rgb64(QRgba64 *Q_DECL_RESTRICT dest, 
 {
     if (const_alpha == 255) {
         for (int i = 0; i < length; ++i) {
-            QRgba64 d = dest[i];
-            dest[i] = d + multiplyAlpha65535(src[i], 65535 - d.alpha());
+            auto d = LOAD(&dest[i]);
+            STORE(&dest[i], ADD(d, multiplyAlpha65535(LOAD(&src[i]), INVALPHA(d))));
         }
     } else {
         for (int i = 0; i < length; ++i) {
-            QRgba64 d = dest[i];
-            QRgba64 s = multiplyAlpha255(src[i], const_alpha);
-            dest[i] = d + multiplyAlpha65535(s, 65535 - d.alpha());
+            auto d = LOAD(&dest[i]);
+            auto s = multiplyAlpha255(LOAD(&src[i]), const_alpha);
+            STORE(&dest[i], ADD(d, multiplyAlpha65535(s, INVALPHA(d))));
         }
     }
 }
@@ -393,15 +426,15 @@ void QT_FASTCALL comp_func_SourceIn_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const Q
 {
     if (const_alpha == 255) {
         for (int i = 0; i < length; ++i) {
-            dest[i] = multiplyAlpha65535(src[i], dest[i].alpha());
+            STORE(&dest[i], multiplyAlpha65535(LOAD(&src[i]), dest[i].alpha()));
         }
     } else {
         uint ca = const_alpha * 257;
-        uint cia = 65535 - ca;
+        auto cia = CONST(65535 - ca);
         for (int i = 0; i < length; ++i) {
-            QRgba64 d = dest[i];
-            QRgba64 s = multiplyAlpha65535(src[i], ca);
-            dest[i] = interpolate65535(s, d.alpha(), d, cia);
+            auto d = LOAD(&dest[i]);
+            auto s = multiplyAlpha65535(LOAD(&src[i]), ca);
+            STORE(&dest[i], interpolate65535(s, ALPHA(d), d, cia));
         }
     }
 }
@@ -431,7 +464,7 @@ void QT_FASTCALL comp_func_solid_DestinationIn_rgb64(QRgba64 *dest, int length, 
     if (const_alpha != 255)
         a = qt_div_65535(a * ca64k) + 65535 - ca64k;
     for (int i = 0; i < length; ++i) {
-        dest[i] = multiplyAlpha65535(dest[i], a);
+        STORE(&dest[i], multiplyAlpha65535(LOAD(&dest[i]), a));
     }
 }
 
@@ -822,6 +855,10 @@ struct QFullCoverage {
     {
         *dest = src;
     }
+    inline void store(QRgba64 *dest, const QRgba64 src) const
+    {
+        *dest = src;
+    }
 };
 
 struct QPartialCoverage {
@@ -835,6 +872,10 @@ struct QPartialCoverage {
     {
         *dest = INTERPOLATE_PIXEL_255(src, ca, *dest, ica);
     }
+    inline void store(QRgba64 *dest, const QRgba64 src) const
+    {
+        *dest = interpolate255(src, ca, *dest, ica);
+    }
 
 private:
     const uint ca;
@@ -844,6 +885,11 @@ private:
 static inline int mix_alpha(int da, int sa)
 {
     return 255 - ((255 - sa) * (255 - da) >> 8);
+}
+
+static inline uint mix_alpha_rgb64(uint da, uint sa)
+{
+    return 65535 - ((65535 - sa) * (65535 - da) >> 16);
 }
 
 /*
@@ -864,17 +910,6 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Plus_impl(uint *dest, int
     }
 }
 
-template <typename T>
-Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Plus_impl_rgb64(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
-{
-    QRgba64 s = color;
-    for (int i = 0; i < length; ++i) {
-        QRgba64 d = dest[i];
-        d = comp_func_Plus_one_pixel(d, s);
-        coverage.store(&dest[i], d);
-    }
-}
-
 void QT_FASTCALL comp_func_solid_Plus(uint *dest, int length, uint color, uint const_alpha)
 {
     if (const_alpha == 255)
@@ -885,14 +920,19 @@ void QT_FASTCALL comp_func_solid_Plus(uint *dest, int length, uint color, uint c
 
 void QT_FASTCALL comp_func_solid_Plus_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
+    auto b = CONVERT(color);
     if (const_alpha == 255) {
         for (int i = 0; i < length; ++i) {
-            dest[i] = addWithSaturation(dest[i], color);
+            auto a = LOAD(&dest[i]);
+            a = addWithSaturation(a, b);
+            STORE(&dest[i], a);
         }
     } else {
         for (int i = 0; i < length; ++i) {
-            QRgba64 d = addWithSaturation(dest[i], color);
-            dest[i] = interpolate255(d, const_alpha, dest[i], 255 - const_alpha);
+            auto a = LOAD(&dest[i]);
+            auto d = addWithSaturation(a, b);
+            a = interpolate255(d, const_alpha, a, 255 - const_alpha);
+            STORE(&dest[i], a);
         }
     }
 }
@@ -924,12 +964,18 @@ void QT_FASTCALL comp_func_Plus_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba
 {
     if (const_alpha == 255) {
         for (int i = 0; i < length; ++i) {
-            dest[i] = addWithSaturation(dest[i], src[i]);
+            auto a = LOAD(&dest[i]);
+            auto b = LOAD(&src[i]);
+            a = addWithSaturation(a, b);
+            STORE(&dest[i], a);
         }
     } else {
         for (int i = 0; i < length; ++i) {
-            QRgba64 d = addWithSaturation(dest[i], src[i]);
-            dest[i] = interpolate255(d, const_alpha, dest[i], 255 - const_alpha);
+            auto a = LOAD(&dest[i]);
+            auto b = LOAD(&src[i]);
+            auto d = addWithSaturation(a, b);
+            a = interpolate255(d, const_alpha, a, 255 - const_alpha);
+            STORE(&dest[i], a);
         }
     }
 }
@@ -940,6 +986,11 @@ void QT_FASTCALL comp_func_Plus_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba
 static inline int multiply_op(int dst, int src, int da, int sa)
 {
     return qt_div_255(src * dst + src * (255 - da) + dst * (255 - sa));
+}
+
+static inline uint multiply_op_rgb64(uint dst, uint src, uint da, uint sa)
+{
+    return qt_div_65535(src * dst + src * (65535 - da) + dst * (65535 - sa));
 }
 
 template <typename T>
@@ -967,7 +1018,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Multiply_impl(uint *dest,
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Multiply_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) multiply_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(), sr);
+        uint b = OP( d.blue(), sb);
+        uint g = OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_Multiply(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_Multiply_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_Multiply_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_Multiply_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_Multiply_impl(dest, length, color, QFullCoverage());
@@ -998,7 +1080,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Multiply_impl(uint *Q_DECL_REST
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Multiply_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) multiply_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_Multiply(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_Multiply_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_Multiply_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_Multiply_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_Multiply_impl(dest, src, length, QFullCoverage());
@@ -1035,7 +1146,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Screen_impl(uint *dest, i
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Screen_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) 65535 - qt_div_65535((65535-a) * (65535-b))
+        uint r = OP(  d.red(), sr);
+        uint b = OP( d.blue(), sb);
+        uint g = OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_Screen(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_Screen_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_Screen_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_Screen_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_Screen_impl(dest, length, color, QFullCoverage());
@@ -1066,7 +1208,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Screen_impl(uint *Q_DECL_RESTRI
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Screen_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) 65535 - (((65535-a) * (65535-b)) >> 16)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_Screen(uint *dest, const uint *src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_Screen_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_Screen_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_Screen_rgb64(QRgba64 *dest, const QRgba64 *src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_Screen_impl(dest, src, length, QFullCoverage());
@@ -1087,6 +1258,15 @@ static inline int overlay_op(int dst, int src, int da, int sa)
         return qt_div_255(2 * src * dst + temp);
     else
         return qt_div_255(sa * da - 2 * (da - dst) * (sa - src) + temp);
+}
+
+static inline uint overlay_op_rgb64(uint dst, uint src, uint da, uint sa)
+{
+    const uint temp = src * (65535 - da) + dst * (65535 - sa);
+    if (2 * dst < da)
+        return qt_div_65535(2 * src * dst + temp);
+    else
+        return qt_div_65535(sa * da - 2 * (da - dst) * (sa - src) + temp);
 }
 
 template <typename T>
@@ -1114,7 +1294,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Overlay_impl(uint *dest, 
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Overlay_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) overlay_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(), sr);
+        uint b = OP( d.blue(), sb);
+        uint g = OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_Overlay(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_Overlay_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_Overlay_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_Overlay_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_Overlay_impl(dest, length, color, QFullCoverage());
@@ -1145,7 +1356,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Overlay_impl(uint *Q_DECL_RESTR
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Overlay_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) overlay_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_Overlay(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_Overlay_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_Overlay_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_Overlay_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_Overlay_impl(dest, src, length, QFullCoverage());
@@ -1160,6 +1400,11 @@ void QT_FASTCALL comp_func_Overlay(uint *Q_DECL_RESTRICT dest, const uint *Q_DEC
 static inline int darken_op(int dst, int src, int da, int sa)
 {
     return qt_div_255(qMin(src * da, dst * sa) + src * (255 - da) + dst * (255 - sa));
+}
+
+static inline uint darken_op_rgb64(uint dst, uint src, uint da, uint sa)
+{
+    return qt_div_65535(qMin(src * da, dst * sa) + src * (65535 - da) + dst * (65535 - sa));
 }
 
 template <typename T>
@@ -1187,7 +1432,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Darken_impl(uint *dest, i
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Darken_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) darken_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(), sr);
+        uint b = OP( d.blue(), sb);
+        uint g = OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_Darken(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_Darken_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_Darken_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_Darken_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_Darken_impl(dest, length, color, QFullCoverage());
@@ -1218,7 +1494,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Darken_impl(uint *Q_DECL_RESTRI
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Darken_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) darken_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_Darken(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_Darken_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_Darken_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_Darken_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_Darken_impl(dest, src, length, QFullCoverage());
@@ -1233,6 +1538,11 @@ void QT_FASTCALL comp_func_Darken(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL
 static inline int lighten_op(int dst, int src, int da, int sa)
 {
     return qt_div_255(qMax(src * da, dst * sa) + src * (255 - da) + dst * (255 - sa));
+}
+
+static inline uint lighten_op_rgb64(uint dst, uint src, uint da, uint sa)
+{
+    return qt_div_65535(qMax(src * da, dst * sa) + src * (65535 - da) + dst * (65535 - sa));
 }
 
 template <typename T>
@@ -1260,7 +1570,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Lighten_impl(uint *dest, 
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Lighten_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) lighten_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(), sr);
+        uint b = OP( d.blue(), sb);
+        uint g = OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_Lighten(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_Lighten_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_Lighten_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_Lighten_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_Lighten_impl(dest, length, color, QFullCoverage());
@@ -1291,7 +1632,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Lighten_impl(uint *Q_DECL_RESTR
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Lighten_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) lighten_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_Lighten(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_Lighten_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_Lighten_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_Lighten_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_Lighten_impl(dest, src, length, QFullCoverage());
@@ -1316,6 +1686,19 @@ static inline int color_dodge_op(int dst, int src, int da, int sa)
         return qt_div_255(sa_da + temp);
     else
         return qt_div_255(255 * dst_sa / (255 - 255 * src / sa) + temp);
+}
+
+static inline uint color_dodge_op_rgb64(qint64 dst, qint64 src, qint64 da, qint64 sa)
+{
+    const qint64 sa_da = sa * da;
+    const qint64 dst_sa = dst * sa;
+    const qint64 src_da = src * da;
+
+    const qint64 temp = src * (65535 - da) + dst * (65535 - sa);
+    if (src_da + dst_sa >= sa_da)
+        return qt_div_65535(sa_da + temp);
+    else
+        return qt_div_65535(65535 * dst_sa / (65535 - 65535 * src / sa) + temp);
 }
 
 template <typename T>
@@ -1343,7 +1726,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_ColorDodge_impl(uint *des
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_ColorDodge_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a,b) color_dodge_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(), sr);
+        uint b = OP( d.blue(), sb);
+        uint g = OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_ColorDodge(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_ColorDodge_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_ColorDodge_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_ColorDodge_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_ColorDodge_impl(dest, length, color, QFullCoverage());
@@ -1374,7 +1788,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_ColorDodge_impl(uint *Q_DECL_RE
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_ColorDodge_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) color_dodge_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_ColorDodge(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_ColorDodge_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_ColorDodge_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_ColorDodge_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_ColorDodge_impl(dest, src, length, QFullCoverage());
@@ -1399,6 +1842,19 @@ static inline int color_burn_op(int dst, int src, int da, int sa)
     if (src == 0 || src_da + dst_sa <= sa_da)
         return qt_div_255(temp);
     return qt_div_255(sa * (src_da + dst_sa - sa_da) / src + temp);
+}
+
+static inline uint color_burn_op_rgb64(qint64 dst, qint64 src, qint64 da, qint64 sa)
+{
+    const qint64 src_da = src * da;
+    const qint64 dst_sa = dst * sa;
+    const qint64 sa_da = sa * da;
+
+    const qint64 temp = src * (65535 - da) + dst * (65535 - sa);
+
+    if (src == 0 || src_da + dst_sa <= sa_da)
+        return qt_div_65535(temp);
+    return qt_div_65535(sa * (src_da + dst_sa - sa_da) / src + temp);
 }
 
 template <typename T>
@@ -1426,7 +1882,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_ColorBurn_impl(uint *dest
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_ColorBurn_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) color_burn_op_rgb64(a, b, da, sa)
+        uint r =  OP(  d.red(), sr);
+        uint b =  OP( d.blue(), sb);
+        uint g =  OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_ColorBurn(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_ColorBurn_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_ColorBurn_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_ColorBurn_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_ColorBurn_impl(dest, length, color, QFullCoverage());
@@ -1457,7 +1944,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_ColorBurn_impl(uint *Q_DECL_RES
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_ColorBurn_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) color_burn_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_ColorBurn(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_ColorBurn_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_ColorBurn_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_ColorBurn_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_ColorBurn_impl(dest, src, length, QFullCoverage());
@@ -1479,6 +1995,16 @@ static inline uint hardlight_op(int dst, int src, int da, int sa)
         return qt_div_255(2 * src * dst + temp);
     else
         return qt_div_255(sa * da - 2 * (da - dst) * (sa - src) + temp);
+}
+
+static inline uint hardlight_op_rgb64(uint dst, uint src, uint da, uint sa)
+{
+    const uint temp = src * (65535 - da) + dst * (65535 - sa);
+
+    if (2 * src < sa)
+        return qt_div_65535(2 * src * dst + temp);
+    else
+        return qt_div_65535(sa * da - 2 * (da - dst) * (sa - src) + temp);
 }
 
 template <typename T>
@@ -1506,7 +2032,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_HardLight_impl(uint *dest
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_HardLight_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) hardlight_op_rgb64(a, b, da, sa)
+        uint r =  OP(  d.red(), sr);
+        uint b =  OP( d.blue(), sb);
+        uint g =  OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_HardLight(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_HardLight_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_HardLight_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_HardLight_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_HardLight_impl(dest, length, color, QFullCoverage());
@@ -1537,7 +2094,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_HardLight_impl(uint *Q_DECL_RES
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_HardLight_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) hardlight_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_HardLight(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_HardLight_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_HardLight_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_HardLight_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_HardLight_impl(dest, src, length, QFullCoverage());
@@ -1568,6 +2154,22 @@ static inline int soft_light_op(int dst, int src, int da, int sa)
     }
 }
 
+static inline uint soft_light_op_rgb64(qint64 dst, qint64 src, qint64 da, qint64 sa)
+{
+    const qint64 src2 = src << 1;
+    const qint64 dst_np = da != 0 ? (65535 * dst) / da : 0;
+    const qint64 temp = (src * (65535 - da) + dst * (65535 - sa)) * 65535;
+    const qint64 factor = qint64(65535) * 65535;
+
+    if (src2 < sa)
+        return (dst * (sa * 65535 + (src2 - sa) * (65535 - dst_np)) + temp) / factor;
+    else if (4 * dst <= da)
+        return (dst * sa * 65535 + da * (src2 - sa) * ((((16 * dst_np - 12 * 65535) * dst_np + 3 * factor) * dst_np) / factor) + temp) / factor;
+    else {
+        return (dst * sa * 65535 + da * (src2 - sa) * (int(qSqrt(qreal(dst_np * 65535))) - dst_np) + temp) / factor;
+    }
+}
+
 template <typename T>
 Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_SoftLight_impl(uint *dest, int length, uint color, const T &coverage)
 {
@@ -1593,7 +2195,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_SoftLight_impl(uint *dest
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_SoftLight_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) soft_light_op_rgb64(a, b, da, sa)
+        uint r =  OP(  d.red(), sr);
+        uint b =  OP( d.blue(), sb);
+        uint g =  OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_SoftLight(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_SoftLight_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_SoftLight_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_SoftLight_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_SoftLight_impl(dest, length, color, QFullCoverage());
@@ -1624,7 +2257,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_SoftLight_impl(uint *Q_DECL_RES
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_SoftLight_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) soft_light_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_SoftLight(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_SoftLight_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_SoftLight_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_SoftLight_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_SoftLight_impl(dest, src, length, QFullCoverage());
@@ -1639,6 +2301,11 @@ void QT_FASTCALL comp_func_SoftLight(uint *Q_DECL_RESTRICT dest, const uint *Q_D
 static inline int difference_op(int dst, int src, int da, int sa)
 {
     return src + dst - qt_div_255(2 * qMin(src * da, dst * sa));
+}
+
+static inline uint difference_op_rgb64(qint64 dst, qint64 src, qint64 da, qint64 sa)
+{
+    return src + dst - qt_div_65535(2 * qMin(src * da, dst * sa));
 }
 
 template <typename T>
@@ -1666,7 +2333,38 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Difference_impl(uint *des
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_solid_Difference_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) difference_op_rgb64(a, b, da, sa)
+        uint r =  OP(  d.red(), sr);
+        uint b =  OP( d.blue(), sb);
+        uint g =  OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_solid_Difference(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_Difference_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_Difference_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_Difference_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_Difference_impl(dest, length, color, QFullCoverage());
@@ -1697,7 +2395,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Difference_impl(uint *Q_DECL_RE
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Difference_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b) difference_op_rgb64(a, b, da, sa)
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_Difference(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_Difference_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_Difference_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_Difference_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_Difference_impl(dest, src, length, QFullCoverage());
@@ -1733,7 +2460,39 @@ Q_STATIC_TEMPLATE_FUNCTION inline void QT_FASTCALL comp_func_solid_Exclusion_imp
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void QT_FASTCALL comp_func_solid_Exclusion_impl(QRgba64 *dest, int length, QRgba64 color, const T &coverage)
+{
+    uint sa = color.alpha();
+    uint sr = color.red();
+    uint sg = color.green();
+    uint sb = color.blue();
+
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        uint da = d.alpha();
+
+#define OP(a, b) (a + b - qt_div_65535(2*(qint64(a)*b)))
+        uint r =  OP(  d.red(), sr);
+        uint b =  OP( d.blue(), sb);
+        uint g =  OP(d.green(), sg);
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
+
 void QT_FASTCALL comp_func_solid_Exclusion(uint *dest, int length, uint color, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_solid_Exclusion_impl(dest, length, color, QFullCoverage());
+    else
+        comp_func_solid_Exclusion_impl(dest, length, color, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_solid_Exclusion_rgb64(QRgba64 *dest, int length, QRgba64 color, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_solid_Exclusion_impl(dest, length, color, QFullCoverage());
@@ -1764,7 +2523,36 @@ Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Exclusion_impl(uint *Q_DECL_RES
     }
 }
 
+template <typename T>
+Q_STATIC_TEMPLATE_FUNCTION inline void comp_func_Exclusion_impl(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, const T &coverage)
+{
+    for (int i = 0; i < length; ++i) {
+        QRgba64 d = dest[i];
+        QRgba64 s = src[i];
+
+        uint da = d.alpha();
+        uint sa = s.alpha();
+
+#define OP(a, b)  (a + b - ((qint64(a)*b) >> 15))
+        uint r = OP(  d.red(),   s.red());
+        uint b = OP( d.blue(),  s.blue());
+        uint g = OP(d.green(), s.green());
+        uint a = mix_alpha_rgb64(da, sa);
+#undef OP
+
+        coverage.store(&dest[i], qRgba64(r, g, b, a));
+    }
+}
+
 void QT_FASTCALL comp_func_Exclusion(uint *Q_DECL_RESTRICT dest, const uint *Q_DECL_RESTRICT src, int length, uint const_alpha)
+{
+    if (const_alpha == 255)
+        comp_func_Exclusion_impl(dest, src, length, QFullCoverage());
+    else
+        comp_func_Exclusion_impl(dest, src, length, QPartialCoverage(const_alpha));
+}
+
+void QT_FASTCALL comp_func_Exclusion_rgb64(QRgba64 *Q_DECL_RESTRICT dest, const QRgba64 *Q_DECL_RESTRICT src, int length, uint const_alpha)
 {
     if (const_alpha == 255)
         comp_func_Exclusion_impl(dest, src, length, QFullCoverage());
@@ -2133,8 +2921,17 @@ CompositionFunctionSolid64 qt_functionForModeSolid64_C[] = {
         comp_func_solid_DestinationAtop_rgb64,
         comp_func_solid_XOR_rgb64,
         comp_func_solid_Plus_rgb64,
-        0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0,
+        comp_func_solid_Multiply_rgb64,
+        comp_func_solid_Screen_rgb64,
+        comp_func_solid_Overlay_rgb64,
+        comp_func_solid_Darken_rgb64,
+        comp_func_solid_Lighten_rgb64,
+        comp_func_solid_ColorDodge_rgb64,
+        comp_func_solid_ColorBurn_rgb64,
+        comp_func_solid_HardLight_rgb64,
+        comp_func_solid_SoftLight_rgb64,
+        comp_func_solid_Difference_rgb64,
+        comp_func_solid_Exclusion_rgb64,
         0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0
 };
@@ -2194,8 +2991,17 @@ CompositionFunction64 qt_functionForMode64_C[] = {
         comp_func_DestinationAtop_rgb64,
         comp_func_XOR_rgb64,
         comp_func_Plus_rgb64,
-        0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0,
+        comp_func_Multiply_rgb64,
+        comp_func_Screen_rgb64,
+        comp_func_Overlay_rgb64,
+        comp_func_Darken_rgb64,
+        comp_func_Lighten_rgb64,
+        comp_func_ColorDodge_rgb64,
+        comp_func_ColorBurn_rgb64,
+        comp_func_HardLight_rgb64,
+        comp_func_SoftLight_rgb64,
+        comp_func_Difference_rgb64,
+        comp_func_Exclusion_rgb64,
         0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0
 };

@@ -42,22 +42,51 @@
 
 #ifndef QT_NO_SYSTEMTRAYICON
 
+#if QT_CONFIG(menu)
 #include "qmenu.h"
+#endif
 #include "qlist.h"
 #include "qevent.h"
 #include "qpoint.h"
+#if QT_CONFIG(label)
 #include "qlabel.h"
+#include "private/qlabel_p.h"
+#endif
+#if QT_CONFIG(pushbutton)
 #include "qpushbutton.h"
+#endif
 #include "qpainterpath.h"
 #include "qpainter.h"
 #include "qstyle.h"
 #include "qgridlayout.h"
 #include "qapplication.h"
 #include "qdesktopwidget.h"
+#include <private/qdesktopwidget_p.h>
 #include "qbitmap.h"
-#include "private/qlabel_p.h"
+
+#include <private/qhighdpiscaling_p.h>
+#include <qpa/qplatformscreen.h>
 
 QT_BEGIN_NAMESPACE
+
+static QIcon messageIcon2qIcon(QSystemTrayIcon::MessageIcon icon)
+{
+    QStyle::StandardPixmap stdIcon = QStyle::SP_CustomBase; // silence gcc 4.9.0 about uninited variable
+    switch (icon) {
+    case QSystemTrayIcon::Information:
+        stdIcon = QStyle::SP_MessageBoxInformation;
+        break;
+    case QSystemTrayIcon::Warning:
+        stdIcon = QStyle::SP_MessageBoxWarning;
+        break;
+    case QSystemTrayIcon::Critical:
+        stdIcon = QStyle::SP_MessageBoxCritical;
+        break;
+    case QSystemTrayIcon::NoIcon:
+        return QIcon();
+    }
+    return QApplication::style()->standardIcon(stdIcon);
+}
 
 /*!
     \class QSystemTrayIcon
@@ -82,9 +111,7 @@ QT_BEGIN_NAMESPACE
     \li All X11 desktop environments that implement the D-Bus
        \l{http://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/StatusNotifierItem}
        specification, including recent versions of KDE and Unity.
-    \li All supported versions of \macos. Note that the Growl
-       notification system must be installed for
-       QSystemTrayIcon::showMessage() to display messages on \macos prior to 10.8 (Mountain Lion).
+    \li All supported versions of \macos.
     \endlist
 
     To check whether a system tray is present on the user's desktop,
@@ -141,7 +168,7 @@ QSystemTrayIcon::QSystemTrayIcon(QObject *parent)
     \sa visible
 */
 QSystemTrayIcon::QSystemTrayIcon(const QIcon &icon, QObject *parent)
-: QObject(*new QSystemTrayIconPrivate(), parent)
+    : QSystemTrayIcon(parent)
 {
     setIcon(icon);
 }
@@ -155,7 +182,7 @@ QSystemTrayIcon::~QSystemTrayIcon()
     d->remove_sys();
 }
 
-#ifndef QT_NO_MENU
+#if QT_CONFIG(menu)
 
 /*!
     Sets the specified \a menu to be the context menu for the system tray icon.
@@ -173,8 +200,23 @@ QSystemTrayIcon::~QSystemTrayIcon()
 void QSystemTrayIcon::setContextMenu(QMenu *menu)
 {
     Q_D(QSystemTrayIcon);
+    QMenu *oldMenu = d->menu.data();
     d->menu = menu;
     d->updateMenu_sys();
+    if (oldMenu != menu && d->qpa_sys) {
+        // Show the QMenu-based menu for QPA plugins that do not provide native menus
+        if (oldMenu && !oldMenu->platformMenu())
+            QObject::disconnect(d->qpa_sys, &QPlatformSystemTrayIcon::contextMenuRequested, menu, nullptr);
+        if (menu && !menu->platformMenu()) {
+            QObject::connect(d->qpa_sys, &QPlatformSystemTrayIcon::contextMenuRequested,
+                             menu,
+                             [menu](QPoint globalNativePos, const QPlatformScreen *platformScreen)
+            {
+                QScreen *screen = platformScreen ? platformScreen->screen() : nullptr;
+                menu->popup(QHighDpi::fromNativePixels(globalNativePos, screen), nullptr);
+            });
+        }
+    }
 }
 
 /*!
@@ -186,7 +228,7 @@ QMenu* QSystemTrayIcon::contextMenu() const
     return d->menu;
 }
 
-#endif // QT_NO_MENU
+#endif // QT_CONFIG(menu)
 
 /*!
     \property QSystemTrayIcon::icon
@@ -300,7 +342,9 @@ bool QSystemTrayIcon::event(QEvent *e)
 
      \value Unknown     Unknown reason
      \value Context     The context menu for the system tray entry was requested
-     \value DoubleClick The system tray entry was double clicked
+     \value DoubleClick The system tray entry was double clicked. \note On macOS, a
+        double click will only be emitted if no context menu is set, since the menu
+        opens on mouse press
      \value Trigger     The system tray entry was clicked
      \value MiddleClick The system tray entry was clicked with the middle mouse button
 
@@ -325,7 +369,7 @@ bool QSystemTrayIcon::event(QEvent *e)
 
     Currently this signal is not sent on \macos.
 
-    \note We follow Microsoft Windows XP/Vista behavior, so the
+    \note We follow Microsoft Windows behavior, so the
     signal is also emitted when the user clicks on a tray icon with
     a balloon message displayed.
 
@@ -374,19 +418,34 @@ bool QSystemTrayIcon::supportsMessages()
     On Windows, the \a millisecondsTimeoutHint is usually ignored by the system
     when the application has focus.
 
-    On \macos, the Growl notification system must be installed for this function to
-    display messages.
-
     Has been turned into a slot in Qt 5.2.
 
     \sa show(), supportsMessages()
   */
 void QSystemTrayIcon::showMessage(const QString& title, const QString& msg,
-                            QSystemTrayIcon::MessageIcon icon, int msecs)
+                            QSystemTrayIcon::MessageIcon msgIcon, int msecs)
 {
     Q_D(QSystemTrayIcon);
     if (d->visible)
-        d->showMessage_sys(title, msg, icon, msecs);
+        d->showMessage_sys(title, msg, messageIcon2qIcon(msgIcon), msgIcon, msecs);
+}
+
+/*!
+    \fn void QSystemTrayIcon::showMessage(const QString &title, const QString &message, const QIcon &icon, int millisecondsTimeoutHint)
+
+    \overload showMessage()
+
+    Shows a balloon message for the entry with the given \a title, \a message,
+    and custom icon \a icon for the time specified in \a millisecondsTimeoutHint.
+
+    \since 5.9
+*/
+void QSystemTrayIcon::showMessage(const QString &title, const QString &msg,
+                            const QIcon &icon, int msecs)
+{
+    Q_D(QSystemTrayIcon);
+    if (d->visible)
+        d->showMessage_sys(title, msg, icon, QSystemTrayIcon::NoIcon, msecs);
 }
 
 void QSystemTrayIconPrivate::_q_emitActivated(QPlatformSystemTrayIcon::ActivationReason reason)
@@ -398,9 +457,9 @@ void QSystemTrayIconPrivate::_q_emitActivated(QPlatformSystemTrayIcon::Activatio
 //////////////////////////////////////////////////////////////////////
 static QBalloonTip *theSolitaryBalloonTip = 0;
 
-void QBalloonTip::showBalloon(QSystemTrayIcon::MessageIcon icon, const QString& title,
-                              const QString& message, QSystemTrayIcon *trayIcon,
-                              const QPoint& pos, int timeout, bool showArrow)
+void QBalloonTip::showBalloon(const QIcon &icon, const QString &title,
+                              const QString &message, QSystemTrayIcon *trayIcon,
+                              const QPoint &pos, int timeout, bool showArrow)
 {
     hideBalloon();
     if (message.isEmpty() && title.isEmpty())
@@ -434,55 +493,47 @@ bool QBalloonTip::isBalloonVisible()
     return theSolitaryBalloonTip;
 }
 
-QBalloonTip::QBalloonTip(QSystemTrayIcon::MessageIcon icon, const QString& title,
-                         const QString& message, QSystemTrayIcon *ti)
-    : QWidget(0, Qt::ToolTip), trayIcon(ti), timerId(-1)
+QBalloonTip::QBalloonTip(const QIcon &icon, const QString &title,
+                         const QString &message, QSystemTrayIcon *ti)
+    : QWidget(0, Qt::ToolTip),
+      trayIcon(ti),
+      timerId(-1),
+      showArrow(true)
 {
     setAttribute(Qt::WA_DeleteOnClose);
     QObject::connect(ti, SIGNAL(destroyed()), this, SLOT(close()));
 
+#if QT_CONFIG(label)
     QLabel *titleLabel = new QLabel;
     titleLabel->installEventFilter(this);
     titleLabel->setText(title);
     QFont f = titleLabel->font();
     f.setBold(true);
-#ifdef Q_OS_WINCE
-    f.setPointSize(f.pointSize() - 2);
-#endif
     titleLabel->setFont(f);
     titleLabel->setTextFormat(Qt::PlainText); // to maintain compat with windows
-
-#ifdef Q_OS_WINCE
-    const int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize);
-    const int closeButtonSize = style()->pixelMetric(QStyle::PM_SmallIconSize) - 2;
-#else
-    const int iconSize = 18;
-    const int closeButtonSize = 15;
 #endif
 
+    const int iconSize = 18;
+    const int closeButtonSize = 15;
+
+#if QT_CONFIG(pushbutton)
     QPushButton *closeButton = new QPushButton;
     closeButton->setIcon(style()->standardIcon(QStyle::SP_TitleBarCloseButton));
     closeButton->setIconSize(QSize(closeButtonSize, closeButtonSize));
     closeButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     closeButton->setFixedSize(closeButtonSize, closeButtonSize);
     QObject::connect(closeButton, SIGNAL(clicked()), this, SLOT(close()));
-
-    QLabel *msgLabel = new QLabel;
-#ifdef Q_OS_WINCE
-    f.setBold(false);
-    msgLabel->setFont(f);
 #endif
+
+#if QT_CONFIG(label)
+    QLabel *msgLabel = new QLabel;
     msgLabel->installEventFilter(this);
     msgLabel->setText(message);
     msgLabel->setTextFormat(Qt::PlainText);
     msgLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
     // smart size for the message label
-#ifdef Q_OS_WINCE
-    int limit = QApplication::desktop()->availableGeometry(msgLabel).size().width() / 2;
-#else
-    int limit = QApplication::desktop()->availableGeometry(msgLabel).size().width() / 3;
-#endif
+    int limit = QDesktopWidgetPrivate::availableGeometry(msgLabel).size().width() / 3;
     if (msgLabel->sizeHint().width() > limit) {
         msgLabel->setWordWrap(true);
         if (msgLabel->sizeHint().width() > limit) {
@@ -493,37 +544,17 @@ QBalloonTip::QBalloonTip(QSystemTrayIcon::MessageIcon icon, const QString& title
                 control->document()->setDefaultTextOption(opt);
             }
         }
-#ifdef Q_OS_WINCE
-        // Make sure that the text isn't wrapped "somewhere" in the balloon widget
-        // in the case that we have a long title label.
-        setMaximumWidth(limit);
-#else
         // Here we allow the text being much smaller than the balloon widget
         // to emulate the weird standard windows behavior.
         msgLabel->setFixedSize(limit, msgLabel->heightForWidth(limit));
+    }
 #endif
-    }
-
-    QIcon si;
-    switch (icon) {
-    case QSystemTrayIcon::Warning:
-        si = style()->standardIcon(QStyle::SP_MessageBoxWarning);
-        break;
-    case QSystemTrayIcon::Critical:
-        si = style()->standardIcon(QStyle::SP_MessageBoxCritical);
-        break;
-    case QSystemTrayIcon::Information:
-        si = style()->standardIcon(QStyle::SP_MessageBoxInformation);
-        break;
-    case QSystemTrayIcon::NoIcon:
-    default:
-        break;
-    }
 
     QGridLayout *layout = new QGridLayout;
-    if (!si.isNull()) {
+#if QT_CONFIG(label)
+    if (!icon.isNull()) {
         QLabel *iconLabel = new QLabel;
-        iconLabel->setPixmap(si.pixmap(iconSize, iconSize));
+        iconLabel->setPixmap(icon.pixmap(iconSize, iconSize));
         iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         iconLabel->setMargin(2);
         layout->addWidget(iconLabel, 0, 0);
@@ -531,9 +562,15 @@ QBalloonTip::QBalloonTip(QSystemTrayIcon::MessageIcon icon, const QString& title
     } else {
         layout->addWidget(titleLabel, 0, 0, 1, 2);
     }
+#endif
 
+#if QT_CONFIG(pushbutton)
     layout->addWidget(closeButton, 0, 2);
+#endif
+
+#if QT_CONFIG(label)
     layout->addWidget(msgLabel, 1, 0, 1, 3);
+#endif
     layout->setSizeConstraint(QLayout::SetFixedSize);
     layout->setMargin(3);
     setLayout(layout);
@@ -563,7 +600,7 @@ void QBalloonTip::resizeEvent(QResizeEvent *ev)
 void QBalloonTip::balloon(const QPoint& pos, int msecs, bool showArrow)
 {
     this->showArrow = showArrow;
-    QRect scr = QApplication::desktop()->screenGeometry(pos);
+    QRect scr = QDesktopWidgetPrivate::screenGeometry(pos);
     QSize sh = sizeHint();
     const int border = 1;
     const int ah = 18, ao = 18, aw = 18, rc = 7;
@@ -587,7 +624,7 @@ void QBalloonTip::balloon(const QPoint& pos, int msecs, bool showArrow)
     }
 
     QPainterPath path;
-#if defined(QT_NO_XSHAPE) && defined(Q_DEAD_CODE_FROM_QT4_X11)
+#if defined(QT_NO_XSHAPE) && 0 /* Used to be included in Qt4 for Q_WS_X11 */
     // XShape is required for setting the mask, so we just
     // draw an ugly square when its not available
     path.moveTo(0, 0);
@@ -700,62 +737,16 @@ void QSystemTrayIconPrivate::remove_sys_qpa()
     qpa_sys->cleanup();
 }
 
-QRect QSystemTrayIconPrivate::geometry_sys_qpa() const
-{
-    return qpa_sys->geometry();
-}
-
-void QSystemTrayIconPrivate::updateIcon_sys_qpa()
-{
-    qpa_sys->updateIcon(icon);
-}
-
-void QSystemTrayIconPrivate::updateMenu_sys_qpa()
-{
-    if (menu) {
-        addPlatformMenu(menu);
-        qpa_sys->updateMenu(menu->platformMenu());
-    }
-}
-
-void QSystemTrayIconPrivate::updateToolTip_sys_qpa()
-{
-    qpa_sys->updateToolTip(toolTip);
-}
-
-void QSystemTrayIconPrivate::showMessage_sys_qpa(const QString &title,
-                                                 const QString &message,
-                                                 QSystemTrayIcon::MessageIcon icon,
-                                                 int msecs)
-{
-    QIcon notificationIcon;
-    switch (icon) {
-    case QSystemTrayIcon::Information:
-        notificationIcon = QApplication::style()->standardIcon(QStyle::SP_MessageBoxInformation);
-        break;
-    case QSystemTrayIcon::Warning:
-        notificationIcon = QApplication::style()->standardIcon(QStyle::SP_MessageBoxWarning);
-        break;
-    case QSystemTrayIcon::Critical:
-        notificationIcon = QApplication::style()->standardIcon(QStyle::SP_MessageBoxCritical);
-        break;
-    default:
-        break;
-    }
-    qpa_sys->showMessage(title, message, notificationIcon,
-                     static_cast<QPlatformSystemTrayIcon::MessageIcon>(icon), msecs);
-}
-
 void QSystemTrayIconPrivate::addPlatformMenu(QMenu *menu) const
 {
+#if QT_CONFIG(menu)
     if (menu->platformMenu())
         return; // The platform menu already exists.
 
     // The recursion depth is the same as menu depth, so should not
     // be higher than 3 levels.
-    QListIterator<QAction *> it(menu->actions());
-    while (it.hasNext()) {
-        QAction *action = it.next();
+    const auto actions = menu->actions();
+    for (QAction *action : actions) {
         if (action->menu())
             addPlatformMenu(action->menu());
     }
@@ -765,6 +756,9 @@ void QSystemTrayIconPrivate::addPlatformMenu(QMenu *menu) const
     QPlatformMenu *platformMenu = qpa_sys->createMenu();
     if (platformMenu)
         menu->setPlatformMenu(platformMenu);
+#else
+    Q_UNUSED(menu)
+#endif // QT_CONFIG(menu)
 }
 
 QT_END_NAMESPACE

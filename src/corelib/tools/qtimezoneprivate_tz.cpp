@@ -134,8 +134,6 @@ struct QTzType {
     int tz_gmtoff;  // UTC offset in seconds
     bool   tz_isdst;   // Is DST
     quint8 tz_abbrind; // abbreviation list index
-    bool   tz_ttisgmt; // Is in UTC time
-    bool   tz_ttisstd; // Is in Standard time
 };
 Q_DECLARE_TYPEINFO(QTzType, Q_PRIMITIVE_TYPE);
 
@@ -199,7 +197,7 @@ static QVector<QTzTransition> parseTzTransitions(QDataStream &ds, int tzh_timecn
         }
     } else {
         // Parse tzh_timecnt x 4-byte transition times
-        int val;
+        qint32 val;
         for (int i = 0; i < tzh_timecnt && ds.status() == QDataStream::Ok; ++i) {
             ds >> val;
             transitions[i].tz_time = val;
@@ -234,9 +232,6 @@ static QVector<QTzType> parseTzTypes(QDataStream &ds, int tzh_typecnt)
         // Parse Abbreviation Array Index, 1 byte
         if (ds.status() == QDataStream::Ok)
             ds >> type.tz_abbrind;
-        // Set defaults in case not populated later
-        type.tz_ttisgmt = false;
-        type.tz_ttisstd = false;
         if (ds.status() != QDataStream::Ok)
             types.resize(i);
     }
@@ -277,8 +272,9 @@ static void parseTzLeapSeconds(QDataStream &ds, int tzh_leapcnt, bool longTran)
 {
     // Parse tzh_leapcnt x pairs of leap seconds
     // We don't use leap seconds, so only read and don't store
-    qint64 val;
+    qint32 val;
     if (longTran) {
+        // v2 file format, each entry is 12 bytes long
         qint64 time;
         for (int i = 0; i < tzh_leapcnt && ds.status() == QDataStream::Ok; ++i) {
             // Parse Leap Occurrence Time, 8 bytes
@@ -288,6 +284,7 @@ static void parseTzLeapSeconds(QDataStream &ds, int tzh_leapcnt, bool longTran)
                 ds >> val;
         }
     } else {
+        // v0 file format, each entry is 8 bytes long
         for (int i = 0; i < tzh_leapcnt && ds.status() == QDataStream::Ok; ++i) {
             // Parse Leap Occurrence Time, 4 bytes
             ds >> val;
@@ -302,20 +299,24 @@ static QVector<QTzType> parseTzIndicators(QDataStream &ds, const QVector<QTzType
 {
     QVector<QTzType> result = types;
     bool temp;
+    /*
+      Scan and discard indicators.
 
-    // Parse tzh_ttisstdcnt x 1-byte standard/wall indicators
-    for (int i = 0; i < tzh_ttisstdcnt && ds.status() == QDataStream::Ok; ++i) {
-        ds >> temp;
-        if (ds.status() == QDataStream::Ok)
-            result[i].tz_ttisstd = temp;
-    }
+      These indicators are only of use (by the date program) when "handling
+      POSIX-style time zone environment variables".  The flags here say whether
+      the *specification* of the zone gave the time in UTC, local standard time
+      or local wall time; but whatever was specified has been digested for us,
+      already, by the zone-info compiler (zic), so that the tz_time values read
+      from the file (by parseTzTransitions) are all in UTC.
+     */
 
-    // Parse tzh_ttisgmtcnt x 1-byte UTC/local indicators
-    for (int i = 0; i < tzh_ttisgmtcnt && ds.status() == QDataStream::Ok; ++i) {
+    // Scan tzh_ttisstdcnt x 1-byte standard/wall indicators
+    for (int i = 0; i < tzh_ttisstdcnt && ds.status() == QDataStream::Ok; ++i)
         ds >> temp;
-        if (ds.status() == QDataStream::Ok)
-            result[i].tz_ttisgmt = temp;
-    }
+
+    // Scan tzh_ttisgmtcnt x 1-byte UTC/local indicators
+    for (int i = 0; i < tzh_ttisgmtcnt && ds.status() == QDataStream::Ok; ++i)
+        ds >> temp;
 
     return result;
 }
@@ -452,13 +453,31 @@ static inline bool asciiIsLetter(char ch)
     return ch >= 'a' && ch <= 'z';
 }
 
+namespace {
+
+struct PosixZone
+{
+    enum {
+        InvalidOffset = INT_MIN,
+    };
+
+    QString name;
+    int offset;
+
+    static PosixZone invalid() { return {QString(), InvalidOffset}; }
+    static PosixZone parse(const char *&pos, const char *end);
+
+    bool hasValidOffset() const Q_DECL_NOTHROW { return offset != InvalidOffset; }
+};
+
+} // unnamed namespace
+
 // Returns the zone name, the offset (in seconds) and advances \a begin to
 // where the parsing ended. Returns a zone of INT_MIN in case an offset
 // couldn't be read.
-static QPair<QString, int> parsePosixZoneNameAndOffset(const char *&pos, const char *end)
+PosixZone PosixZone::parse(const char *&pos, const char *end)
 {
     static const char offsetChars[] = "0123456789:";
-    QPair<QString, int> result = qMakePair(QString(), INT_MIN);
 
     const char *nameBegin = pos;
     const char *nameEnd;
@@ -480,7 +499,7 @@ static QPair<QString, int> parsePosixZoneNameAndOffset(const char *&pos, const c
         pos = nameEnd;
     }
     if (nameEnd - nameBegin < 3)
-        return result;  // name must be at least 3 characters long
+        return invalid();  // name must be at least 3 characters long
 
     // zone offset, form [+-]hh:mm:ss
     const char *zoneBegin = pos;
@@ -493,11 +512,10 @@ static QPair<QString, int> parsePosixZoneNameAndOffset(const char *&pos, const c
         ++zoneEnd;
     }
 
-    result.first = QString::fromUtf8(nameBegin, nameEnd - nameBegin);
-    if (zoneEnd > zoneBegin)
-        result.second = parsePosixOffset(zoneBegin, zoneEnd);
+    QString name = QString::fromUtf8(nameBegin, nameEnd - nameBegin);
+    const int offset = zoneEnd > zoneBegin ? parsePosixOffset(zoneBegin, zoneEnd) : InvalidOffset;
     pos = zoneEnd;
-    return result;
+    return {std::move(name), offset};
 }
 
 static QVector<QTimeZonePrivate::Data> calculatePosixTransitions(const QByteArray &posixRule,
@@ -517,19 +535,19 @@ static QVector<QTimeZonePrivate::Data> calculatePosixTransitions(const QByteArra
     // See the section about TZ at http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap08.html
     QList<QByteArray> parts = posixRule.split(',');
 
-    QPair<QString, int> stdZone, dstZone;
+    PosixZone stdZone, dstZone;
     {
         const QByteArray &zoneinfo = parts.at(0);
         const char *begin = zoneinfo.constBegin();
 
-        stdZone = parsePosixZoneNameAndOffset(begin, zoneinfo.constEnd());
-        if (stdZone.second == INT_MIN) {
-            stdZone.second = 0;     // reset to UTC if we failed to parse
+        stdZone = PosixZone::parse(begin, zoneinfo.constEnd());
+        if (!stdZone.hasValidOffset()) {
+            stdZone.offset = 0;     // reset to UTC if we failed to parse
         } else if (begin < zoneinfo.constEnd()) {
-            dstZone = parsePosixZoneNameAndOffset(begin, zoneinfo.constEnd());
-            if (dstZone.second == INT_MIN) {
+            dstZone = PosixZone::parse(begin, zoneinfo.constEnd());
+            if (!dstZone.hasValidOffset()) {
                 // if the dst offset isn't provided, it is 1 hour ahead of the standard offset
-                dstZone.second = stdZone.second + (60 * 60);
+                dstZone.offset = stdZone.offset + (60 * 60);
             }
         }
     }
@@ -538,10 +556,10 @@ static QVector<QTimeZonePrivate::Data> calculatePosixTransitions(const QByteArra
     if (parts.count() == 1) {
         QTimeZonePrivate::Data data;
         data.atMSecsSinceEpoch = lastTranMSecs;
-        data.offsetFromUtc = stdZone.second;
-        data.standardTimeOffset = stdZone.second;
+        data.offsetFromUtc = stdZone.offset;
+        data.standardTimeOffset = stdZone.offset;
         data.daylightTimeOffset = 0;
-        data.abbreviation = stdZone.first;
+        data.abbreviation = stdZone.name;
         result << data;
         return result;
     }
@@ -568,18 +586,18 @@ static QVector<QTimeZonePrivate::Data> calculatePosixTransitions(const QByteArra
     for (int year = startYear; year <= endYear; ++year) {
         QTimeZonePrivate::Data dstData;
         QDateTime dst(calculatePosixDate(dstDateRule, year), dstTime, Qt::UTC);
-        dstData.atMSecsSinceEpoch = dst.toMSecsSinceEpoch() - (stdZone.second * 1000);
-        dstData.offsetFromUtc = dstZone.second;
-        dstData.standardTimeOffset = stdZone.second;
-        dstData.daylightTimeOffset = dstZone.second - stdZone.second;
-        dstData.abbreviation = dstZone.first;
+        dstData.atMSecsSinceEpoch = dst.toMSecsSinceEpoch() - (stdZone.offset * 1000);
+        dstData.offsetFromUtc = dstZone.offset;
+        dstData.standardTimeOffset = stdZone.offset;
+        dstData.daylightTimeOffset = dstZone.offset - stdZone.offset;
+        dstData.abbreviation = dstZone.name;
         QTimeZonePrivate::Data stdData;
         QDateTime std(calculatePosixDate(stdDateRule, year), stdTime, Qt::UTC);
-        stdData.atMSecsSinceEpoch = std.toMSecsSinceEpoch() - (dstZone.second * 1000);
-        stdData.offsetFromUtc = stdZone.second;
-        stdData.standardTimeOffset = stdZone.second;
+        stdData.atMSecsSinceEpoch = std.toMSecsSinceEpoch() - (dstZone.offset * 1000);
+        stdData.offsetFromUtc = stdZone.offset;
+        stdData.standardTimeOffset = stdZone.offset;
         stdData.daylightTimeOffset = 0;
-        stdData.abbreviation = stdZone.first;
+        stdData.abbreviation = stdZone.name;
         // Part of the high year will overflow
         if (year == 292278994 && (dstData.atMSecsSinceEpoch < 0 || stdData.atMSecsSinceEpoch < 0)) {
             if (dstData.atMSecsSinceEpoch > 0) {
@@ -598,37 +616,21 @@ static QVector<QTimeZonePrivate::Data> calculatePosixTransitions(const QByteArra
 
 // Create the system default time zone
 QTzTimeZonePrivate::QTzTimeZonePrivate()
-#ifdef QT_USE_ICU
-    : m_icu(0)
-#endif // QT_USE_ICU
 {
     init(systemTimeZoneId());
 }
 
 // Create a named time zone
 QTzTimeZonePrivate::QTzTimeZonePrivate(const QByteArray &ianaId)
-#ifdef QT_USE_ICU
-    : m_icu(0)
-#endif // QT_USE_ICU
 {
     init(ianaId);
-}
-
-QTzTimeZonePrivate::QTzTimeZonePrivate(const QTzTimeZonePrivate &other)
-                  : QTimeZonePrivate(other), m_tranTimes(other.m_tranTimes),
-                    m_tranRules(other.m_tranRules), m_abbreviations(other.m_abbreviations),
-#ifdef QT_USE_ICU
-                    m_icu(other.m_icu),
-#endif // QT_USE_ICU
-                    m_posixRule(other.m_posixRule)
-{
 }
 
 QTzTimeZonePrivate::~QTzTimeZonePrivate()
 {
 }
 
-QTimeZonePrivate *QTzTimeZonePrivate::clone()
+QTzTimeZonePrivate *QTzTimeZonePrivate::clone() const
 {
     return new QTzTimeZonePrivate(*this);
 }
@@ -725,19 +727,61 @@ void QTzTimeZonePrivate::init(const QByteArray &ianaId)
         }
     }
 
-    // Now for each transition time calculate our rule and save them
-    m_tranTimes.reserve(tranList.count());
-    for (const QTzTransition &tz_tran : qAsConst(tranList)) {
+    // Now for each transition time calculate and store our rule:
+    const int tranCount = tranList.count();;
+    m_tranTimes.reserve(tranCount);
+    // The DST offset when in effect: usually stable, usually an hour:
+    int lastDstOff = 3600;
+    for (int i = 0; i < tranCount; i++) {
+        const QTzTransition &tz_tran = tranList.at(i);
         QTzTransitionTime tran;
         QTzTransitionRule rule;
         const QTzType tz_type = typeList.at(tz_tran.tz_typeind);
 
         // Calculate the associated Rule
-        if (!tz_type.tz_isdst)
+        if (!tz_type.tz_isdst) {
             utcOffset = tz_type.tz_gmtoff;
+        } else if (Q_UNLIKELY(tz_type.tz_gmtoff != utcOffset + lastDstOff)) {
+            /*
+              This might be a genuine change in DST offset, but could also be
+              DST starting at the same time as the standard offset changed.  See
+              if DST's end gives a more plausible utcOffset (i.e. one closer to
+              the last we saw, or a simple whole hour):
+            */
+            // Standard offset inferred from net offset and expected DST offset:
+            const int inferStd = tz_type.tz_gmtoff - lastDstOff; // != utcOffset
+            for (int j = i + 1; j < tranCount; j++) {
+                const QTzType new_type = typeList.at(tranList.at(j).tz_typeind);
+                if (!new_type.tz_isdst) {
+                    const int newUtc = new_type.tz_gmtoff;
+                    if (newUtc == utcOffset) {
+                        // DST-end can't help us, avoid lots of messy checks.
+                    // else: See if the end matches the familiar DST offset:
+                    } else if (newUtc == inferStd) {
+                        utcOffset = newUtc;
+                    // else: let either end shift us to one hour as DST offset:
+                    } else if (tz_type.tz_gmtoff - 3600 == utcOffset) {
+                        // Start does it
+                    } else if (tz_type.tz_gmtoff - 3600 == newUtc) {
+                        utcOffset = newUtc; // End does it
+                    // else: prefer whichever end gives DST offset closer to
+                    // last, but consider any offset > 0 "closer" than any <= 0:
+                    } else if (newUtc < tz_type.tz_gmtoff
+                               ? (utcOffset >= tz_type.tz_gmtoff
+                                  || qAbs(newUtc - inferStd) < qAbs(utcOffset - inferStd))
+                               : (utcOffset >= tz_type.tz_gmtoff
+                                  && qAbs(newUtc - inferStd) < qAbs(utcOffset - inferStd))) {
+                        utcOffset = newUtc;
+                    }
+                    break;
+                }
+            }
+            lastDstOff = tz_type.tz_gmtoff - utcOffset;
+        }
         rule.stdOffset = utcOffset;
         rule.dstOffset = tz_type.tz_gmtoff - utcOffset;
         rule.abbreviationIndex = tz_type.tz_abbrind;
+
         // If the rule already exist then use that, otherwise add it
         int ruleIndex = m_tranRules.indexOf(rule);
         if (ruleIndex == -1) {
@@ -747,14 +791,7 @@ void QTzTimeZonePrivate::init(const QByteArray &ianaId)
             tran.ruleIndex = ruleIndex;
         }
 
-        // TODO convert to UTC if not in UTC
-        if (tz_type.tz_ttisgmt)
-            tran.atMSecsSinceEpoch = tz_tran.tz_time * 1000;
-        else if (tz_type.tz_ttisstd)
-            tran.atMSecsSinceEpoch = tz_tran.tz_time * 1000;
-        else
-            tran.atMSecsSinceEpoch = tz_tran.tz_time * 1000;
-
+        tran.atMSecsSinceEpoch = tz_tran.tz_time * 1000;
         m_tranTimes.append(tran);
     }
 
@@ -778,7 +815,7 @@ QString QTzTimeZonePrivate::displayName(qint64 atMSecsSinceEpoch,
                                         QTimeZone::NameType nameType,
                                         const QLocale &locale) const
 {
-#ifdef QT_USE_ICU
+#if QT_CONFIG(icu)
     if (!m_icu)
         m_icu = new QIcuTimeZonePrivate(m_id);
     // TODO small risk may not match if tran times differ due to outdated files
@@ -788,7 +825,7 @@ QString QTzTimeZonePrivate::displayName(qint64 atMSecsSinceEpoch,
 #else
     Q_UNUSED(nameType)
     Q_UNUSED(locale)
-#endif // QT_USE_ICU
+#endif
     return abbreviation(atMSecsSinceEpoch);
 }
 
@@ -796,7 +833,7 @@ QString QTzTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
                                         QTimeZone::NameType nameType,
                                         const QLocale &locale) const
 {
-#ifdef QT_USE_ICU
+#if QT_CONFIG(icu)
     if (!m_icu)
         m_icu = new QIcuTimeZonePrivate(m_id);
     // TODO small risk may not match if tran times differ due to outdated files
@@ -807,7 +844,7 @@ QString QTzTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
     Q_UNUSED(timeType)
     Q_UNUSED(nameType)
     Q_UNUSED(locale)
-#endif // QT_USE_ICU
+#endif
     // If no ICU available then have to use abbreviations instead
     // Abbreviations don't have GenericTime
     if (timeType == QTimeZone::GenericTime)
@@ -1013,7 +1050,18 @@ QByteArray QTzTimeZonePrivate::systemTimeZoneId() const
     if (ianaId == "/etc/localtime")
         ianaId.clear();
 
-    // On Debian Etch and later /etc/localtime is real file with name held in /etc/timezone
+    // On most distros /etc/localtime is a symlink to a real file so extract name from the path
+    if (ianaId.isEmpty()) {
+        const QString path = QFile::symLinkTarget(QStringLiteral("/etc/localtime"));
+        if (!path.isEmpty()) {
+            // /etc/localtime is a symlink to the current TZ file, so extract from path
+            int index = path.indexOf(QLatin1String("/zoneinfo/"));
+            if (index != -1)
+                ianaId = path.mid(index + 10).toUtf8();
+        }
+    }
+
+    // On Debian Etch up to Jessie, /etc/localtime is a regular file while the actual name is in /etc/timezone
     if (ianaId.isEmpty()) {
         QFile tzif(QStringLiteral("/etc/timezone"));
         if (tzif.open(QIODevice::ReadOnly)) {
@@ -1021,16 +1069,6 @@ QByteArray QTzTimeZonePrivate::systemTimeZoneId() const
             QTextStream ts(&tzif);
             if (!ts.atEnd())
                 ianaId = ts.readLine().toUtf8();
-        }
-    }
-
-    // On other distros /etc/localtime is symlink to real file so can extract name from the path
-    if (ianaId.isEmpty()) {
-        const QString path = QFile::symLinkTarget(QStringLiteral("/etc/localtime"));
-        if (!path.isEmpty()) {
-            // /etc/localtime is a symlink to the current TZ file, so extract from path
-            int index = path.indexOf(QLatin1String("/zoneinfo/")) + 10;
-            ianaId = path.mid(index).toUtf8();
         }
     }
 

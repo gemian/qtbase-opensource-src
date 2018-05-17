@@ -97,14 +97,14 @@ static QUIView *focusView()
 
 @interface QIOSKeyboardListener : UIGestureRecognizer <UIGestureRecognizerDelegate> {
   @private
-    QIOSInputContext *m_context;
+    QT_PREPEND_NAMESPACE(QIOSInputContext) *m_context;
 }
 @property BOOL hasDeferredScrollToCursor;
 @end
 
 @implementation QIOSKeyboardListener
 
-- (id)initWithQIOSInputContext:(QIOSInputContext *)context
+- (id)initWithQIOSInputContext:(QT_PREPEND_NAMESPACE(QIOSInputContext) *)context
 {
     if (self = [super initWithTarget:self action:@selector(gestureStateChanged:)]) {
 
@@ -117,6 +117,7 @@ static QUIView *focusView()
         self.cancelsTouchesInView = NO;
         self.delaysTouchesEnded = NO;
 
+#ifndef Q_OS_TVOS
         NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
 
         [notificationCenter addObserver:self
@@ -134,6 +135,7 @@ static QUIView *focusView()
         [notificationCenter addObserver:self
             selector:@selector(keyboardDidChangeFrame:)
             name:UIKeyboardDidChangeFrameNotification object:nil];
+#endif
     }
 
     return self;
@@ -289,6 +291,8 @@ static QUIView *focusView()
 
 // -------------------------------------------------------------------------
 
+QT_BEGIN_NAMESPACE
+
 Qt::InputMethodQueries ImeState::update(Qt::InputMethodQueries properties)
 {
     if (!properties)
@@ -377,6 +381,9 @@ void QIOSInputContext::clearCurrentFocusObject()
 
 void QIOSInputContext::updateKeyboardState(NSNotification *notification)
 {
+#ifdef Q_OS_TVOS
+    Q_UNUSED(notification);
+#else
     static CGRect currentKeyboardRect = CGRectZero;
 
     KeyboardState previousState = m_keyboardState;
@@ -412,7 +419,7 @@ void QIOSInputContext::updateKeyboardState(NSNotification *notification)
         m_keyboardState.animationDuration = [[userInfo objectForKey:UIKeyboardAnimationDurationUserInfoKey] doubleValue];
         m_keyboardState.keyboardAnimating = m_keyboardState.animationDuration > 0 && !atEndOfKeyboardTransition;
 
-        qImDebug() << qPrintable(QString::fromNSString(notification.name)) << "from" << fromCGRect(frameBegin) << "to" << fromCGRect(frameEnd)
+        qImDebug() << qPrintable(QString::fromNSString(notification.name)) << "from" << QRectF::fromCGRect(frameBegin) << "to" << QRectF::fromCGRect(frameEnd)
                    << "(curve =" << m_keyboardState.animationCurve << "duration =" << m_keyboardState.animationDuration << "s)";
     } else {
         qImDebug("No notification to update keyboard state based on, just updating keyboard rect");
@@ -421,7 +428,7 @@ void QIOSInputContext::updateKeyboardState(NSNotification *notification)
     if (!focusView() || CGRectIsEmpty(currentKeyboardRect))
         m_keyboardState.keyboardRect = QRectF();
     else // QInputmethod::keyboardRectangle() is documented to be in window coordinates.
-        m_keyboardState.keyboardRect = fromCGRect([focusView() convertRect:currentKeyboardRect fromView:nil]);
+        m_keyboardState.keyboardRect = QRectF::fromCGRect([focusView() convertRect:currentKeyboardRect fromView:nil]);
 
     // Emit for all changed properties
     if (m_keyboardState.keyboardVisible != previousState.keyboardVisible)
@@ -430,6 +437,7 @@ void QIOSInputContext::updateKeyboardState(NSNotification *notification)
         emitAnimatingChanged();
     if (m_keyboardState.keyboardRect != previousState.keyboardRect)
         emitKeyboardRectChanged();
+#endif
 }
 
 bool QIOSInputContext::isInputPanelVisible() const
@@ -490,19 +498,40 @@ void QIOSInputContext::scrollToCursor()
         return;
     }
 
-    const int margin = 20;
-    QRectF translatedCursorPos = qApp->inputMethod()->cursorRectangle();
-    translatedCursorPos.translate(focusView().qwindow->geometry().topLeft());
+    QWindow *focusWindow = qApp->focusWindow();
+    QRect cursorRect = qApp->inputMethod()->cursorRectangle().translated(focusWindow->geometry().topLeft()).toRect();
 
-    qreal keyboardY = [rootView convertRect:m_keyboardState.keyboardEndRect fromView:nil].origin.y;
-    int statusBarY = qGuiApp->primaryScreen()->availableGeometry().y();
+    // We explicitly ask for the geometry of the screen instead of the availableGeometry,
+    // as we hide the status bar when scrolling the screen, so the available geometry will
+    // include the space taken by the status bar at the moment.
+    QRect screenGeometry = focusWindow->screen()->geometry();
 
-    scroll((translatedCursorPos.bottomLeft().y() < keyboardY - margin) ? 0
-        : qMin(rootView.bounds.size.height - keyboardY, translatedCursorPos.y() - statusBarY - margin));
+    if (!cursorRect.isNull()) {
+         // Add some padding so that the cursor does not end up directly above the keyboard
+        static const int kCursorRectPadding = 20;
+        cursorRect.adjust(0, -kCursorRectPadding, 0, kCursorRectPadding);
+
+        // Make sure the cursor rect is still within the screen geometry after padding
+        cursorRect &= screenGeometry;
+    }
+
+    QRect keyboardGeometry = QRectF::fromCGRect(m_keyboardState.keyboardEndRect).toRect();
+    QRect availableGeometry = (QRegion(screenGeometry) - keyboardGeometry).boundingRect();
+
+    if (!cursorRect.isNull() && !availableGeometry.contains(cursorRect)) {
+        qImDebug() << "cursor rect" << cursorRect << "not fully within" << availableGeometry;
+        int scrollToCenter = -(availableGeometry.center() - cursorRect.center()).y();
+        int scrollToBottom = focusWindow->screen()->geometry().bottom() - availableGeometry.bottom();
+        scroll(qMin(scrollToCenter, scrollToBottom));
+    } else {
+        scroll(0);
+    }
 }
 
 void QIOSInputContext::scroll(int y)
 {
+    Q_ASSERT(y >= 0);
+
     UIView *rootView = scrollableRootView();
     if (!rootView)
         return;
@@ -510,6 +539,8 @@ void QIOSInputContext::scroll(int y)
     CATransform3D translationTransform = CATransform3DMakeTranslation(0.0, -y, 0.0);
     if (CATransform3DEqualToTransform(translationTransform, rootView.layer.sublayerTransform))
         return;
+
+    qImDebug() << "scrolling root view to y =" << -y;
 
     QPointer<QIOSInputContext> self = this;
     [UIView animateWithDuration:m_keyboardState.animationDuration delay:0
@@ -549,7 +580,11 @@ void QIOSInputContext::scroll(int y)
                 if (keyboardScrollIsActive && !originalWindowLevels.contains(window))
                     originalWindowLevels.insert(window, window.windowLevel);
 
+#ifndef Q_OS_TVOS
                 UIWindowLevel windowLevelAdjustment = keyboardScrollIsActive ? UIWindowLevelStatusBar : 0;
+#else
+                UIWindowLevel windowLevelAdjustment = 0;
+#endif
                 window.windowLevel = originalWindowLevels.value(window) + windowLevelAdjustment;
 
                 if (!keyboardScrollIsActive)
@@ -619,10 +654,20 @@ void QIOSInputContext::focusWindowChanged(QWindow *focusWindow)
 */
 void QIOSInputContext::update(Qt::InputMethodQueries updatedProperties)
 {
+    qImDebug() << "fw =" << qApp->focusWindow() << "fo =" << qApp->focusObject();
+
+    // Changes to the focus object should always result in a call to setFocusObject(),
+    // triggering a reset() which will update all the properties based on the new
+    // focus object. We try to detect code paths that fail this assertion and smooth
+    // over the situation by doing a manual update of the focus object.
+    if (qApp->focusObject() != m_imeState.focusObject && updatedProperties != Qt::ImQueryAll) {
+        qWarning() << "stale focus object" << m_imeState.focusObject << ", doing manual update";
+        setFocusObject(qApp->focusObject());
+        return;
+    }
+
     // Mask for properties that we are interested in and see if any of them changed
     updatedProperties &= (Qt::ImEnabled | Qt::ImHints | Qt::ImQueryInput | Qt::ImEnterKeyType | Qt::ImPlatformData);
-
-    qImDebug() << "fw =" << qApp->focusWindow() << "fo =" << qApp->focusObject();
 
     // Perform update first, so we can trust the value of inputMethodAccepted()
     Qt::InputMethodQueries changedProperties = m_imeState.update(updatedProperties);
@@ -703,3 +748,5 @@ QLocale QIOSInputContext::locale() const
 {
     return QLocale(QString::fromNSString([[NSLocale currentLocale] objectForKey:NSLocaleIdentifier]));
 }
+
+QT_END_NAMESPACE

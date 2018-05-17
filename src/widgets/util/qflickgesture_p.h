@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "qevent.h"
 #include "qgesturerecognizer.h"
 #include "private/qgesture_p.h"
@@ -96,9 +97,9 @@ class QFlickGestureRecognizer : public QGestureRecognizer
 public:
     QFlickGestureRecognizer(Qt::MouseButton button);
 
-    QGesture *create(QObject *target);
-    QGestureRecognizer::Result recognize(QGesture *state, QObject *watched, QEvent *event);
-    void reset(QGesture *state);
+    QGesture *create(QObject *target) override;
+    QGestureRecognizer::Result recognize(QGesture *state, QObject *watched, QEvent *event) override;
+    void reset(QGesture *state) override;
 
 private:
     Qt::MouseButton button; // NoButton == Touch

@@ -100,6 +100,8 @@ private slots:
     void eventNotificationIBase();
     void eventNotificationPSQL_data() { generic_data("QPSQL"); }
     void eventNotificationPSQL();
+    void eventNotificationSQLite_data() { generic_data("QSQLITE"); }
+    void eventNotificationSQLite();
 
     //database specific 64 bit integer test
     void bigIntField_data() { generic_data(); }
@@ -185,6 +187,9 @@ private slots:
 
     void sqlite_enable_cache_mode_data() { generic_data("QSQLITE"); }
     void sqlite_enable_cache_mode();
+
+    void sqlite_enableRegexp_data() { generic_data("QSQLITE"); }
+    void sqlite_enableRegexp();
 
 private:
     void createTestTables(QSqlDatabase db);
@@ -343,7 +348,8 @@ void tst_QSqlDatabase::dropTestTables(QSqlDatabase db)
             << qTableName("qtest_sqlguid", __FILE__, db)
             << qTableName("uint_table", __FILE__, db)
             << qTableName("uint_test", __FILE__, db)
-            << qTableName("bug_249059", __FILE__, db);
+            << qTableName("bug_249059", __FILE__, db)
+            << qTableName("regexp_test", __FILE__, db);
 
     QSqlQuery q(0, db);
     if (dbType == QSqlDriver::PostgreSQL) {
@@ -748,8 +754,8 @@ void tst_QSqlDatabase::recordOCI()
         FieldDef("long raw", QVariant::ByteArray,       QByteArray("blah5")),
         FieldDef("raw(2000)", QVariant::ByteArray,      QByteArray("blah6"), false),
         FieldDef("blob", QVariant::ByteArray,           QByteArray("blah7")),
-        FieldDef("clob", QVariant::String,             QString("blah8")),
-        FieldDef("nclob", QVariant::String,            QString("blah9")),
+        FieldDef("clob", QVariant::ByteArray, QByteArray("blah8")),
+        FieldDef("nclob", QVariant::ByteArray, QByteArray("blah9")),
 //        FieldDef("bfile", QVariant::ByteArray,         QByteArray("blah10")),
 
         intytm,
@@ -1246,7 +1252,7 @@ void tst_QSqlDatabase::psql_schemas()
     QString table = schemaName + '.' + qTableName("qtesttable", __FILE__, db);
     QVERIFY_SQL(q, exec("CREATE TABLE " + table + " (id int primary key, name varchar(20))"));
 
-    QVERIFY(db.tables().contains(table));
+    QVERIFY(db.tables().contains(table, Qt::CaseInsensitive));
 
     QSqlRecord rec = db.record(table);
     QCOMPARE(rec.count(), 2);
@@ -2109,6 +2115,35 @@ void tst_QSqlDatabase::eventNotificationPSQL()
     QVERIFY_SQL(driver, unsubscribeFromNotification(procedureName));
 }
 
+void tst_QSqlDatabase::eventNotificationSQLite()
+{
+    QFETCH(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    CHECK_DATABASE(db);
+    if (db.driverName().compare(QLatin1String("QSQLITE"), Qt::CaseInsensitive)) {
+        QSKIP("QSQLITE specific test");
+    }
+    const QString tableName(qTableName("sqlitnotifytest", __FILE__, db));
+    tst_Databases::safeDropTable(db, tableName);
+
+    QSignalSpy notificationSpy(db.driver(), SIGNAL(notification(QString)));
+    QSignalSpy notificationSpyExt(db.driver(), SIGNAL(notification(QString,QSqlDriver::NotificationSource,QVariant)));
+    QSqlQuery q(db);
+    QVERIFY_SQL(q, exec("CREATE TABLE " + tableName + " (id INTEGER, realVal REAL)"));
+    db.driver()->subscribeToNotification(tableName);
+    QVERIFY_SQL(q, exec("INSERT INTO " + tableName + " (id, realVal) VALUES (1, 2.3)"));
+    QTRY_COMPARE(notificationSpy.count(), 1);
+    QTRY_COMPARE(notificationSpyExt.count(), 1);
+    QList<QVariant> arguments = notificationSpy.takeFirst();
+    QCOMPARE(arguments.at(0).toString(), tableName);
+    arguments = notificationSpyExt.takeFirst();
+    QCOMPARE(arguments.at(0).toString(), tableName);
+    db.driver()->unsubscribeFromNotification(tableName);
+    QVERIFY_SQL(q, exec("INSERT INTO " + tableName + " (id, realVal) VALUES (1, 2.3)"));
+    QTRY_COMPARE(notificationSpy.count(), 0);
+    QTRY_COMPARE(notificationSpyExt.count(), 0);
+}
+
 void tst_QSqlDatabase::sqlite_bindAndFetchUInt()
 {
     QFETCH(QString, dbName);
@@ -2160,7 +2195,7 @@ void tst_QSqlDatabase::sqlStatementUseIsNull_189093()
     CHECK_DATABASE(db);
 
     // select a record with NULL value
-    QSqlQuery q(QString::null, db);
+    QSqlQuery q(QString(), db);
     QVERIFY_SQL(q, exec("select * from " + qTableName("qtest", __FILE__, db) + " where id = 4"));
     QVERIFY_SQL(q, next());
 
@@ -2226,6 +2261,34 @@ void tst_QSqlDatabase::sqlite_enable_cache_mode()
     QVERIFY_SQL(q, exec("select * from " + qTableName("qtest", __FILE__, db)));
     QVERIFY_SQL(q2, exec("select * from " + qTableName("qtest", __FILE__, db)));
     db2.close();
+}
+
+void tst_QSqlDatabase::sqlite_enableRegexp()
+{
+    QFETCH(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    CHECK_DATABASE(db);
+    if (db.driverName().startsWith("QSQLITE2"))
+        QSKIP("SQLite3 specific test");
+
+    db.close();
+    db.setConnectOptions("QSQLITE_ENABLE_REGEXP");
+    QVERIFY_SQL(db, open());
+
+    QSqlQuery q(db);
+    const QString tableName(qTableName("regexp_test", __FILE__, db));
+    QVERIFY_SQL(q, exec(QString("CREATE TABLE %1(text TEXT)").arg(tableName)));
+    QVERIFY_SQL(q, prepare(QString("INSERT INTO %1 VALUES(?)").arg(tableName)));
+    q.addBindValue("a0");
+    QVERIFY_SQL(q, exec());
+    q.addBindValue("a1");
+    QVERIFY_SQL(q, exec());
+
+    QVERIFY_SQL(q, exec(QString("SELECT text FROM %1 WHERE text REGEXP 'a[^0]' "
+                                "ORDER BY text").arg(tableName)));
+    QVERIFY_SQL(q, next());
+    QCOMPARE(q.value(0).toString(), QString("a1"));
+    QFAIL_SQL(q, next());
 }
 
 QTEST_MAIN(tst_QSqlDatabase)

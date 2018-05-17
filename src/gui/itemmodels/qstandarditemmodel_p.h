@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include "private/qabstractitemmodel_p.h"
 
 #ifndef QT_NO_STANDARDITEMMODEL
@@ -104,7 +105,6 @@ public:
           q_ptr(0),
           lastIndexOf(2)
         { }
-    virtual ~QStandardItemPrivate();
 
     inline int childIndex(int row, int column) const {
         if ((row < 0) || (column < 0)

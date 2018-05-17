@@ -51,9 +51,11 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
+
 #ifndef QT_NO_OPENGL
 
-#include "qopengl.h"
+#include <qopengl.h>
 #include "qopenglcontext.h"
 #include <private/qobject_p.h>
 #include <qmutex.h>

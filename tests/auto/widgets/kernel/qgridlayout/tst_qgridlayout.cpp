@@ -41,22 +41,15 @@
 #include <QStyleFactory>
 #include <QSharedPointer>
 
-// Make a widget frameless to prevent size constraints of title bars
-// from interfering (Windows).
-static inline void setFrameless(QWidget *w)
-{
-    Qt::WindowFlags flags = w->windowFlags();
-    flags |= Qt::FramelessWindowHint;
-    flags &= ~(Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
-    w->setWindowFlags(flags);
-}
+#include <QtTest/private/qtesthelpers_p.h>
+
+using namespace QTestPrivate;
 
 class tst_QGridLayout : public QObject
 {
 Q_OBJECT
 
 private slots:
-    void initTestCase();
     void cleanup();
     void getItemPosition();
     void itemAtPosition();
@@ -81,16 +74,10 @@ private slots:
     void taskQTBUG_27420_takeAtShouldUnparentLayout();
     void taskQTBUG_40609_addingWidgetToItsOwnLayout();
     void taskQTBUG_40609_addingLayoutToItself();
+    void taskQTBUG_52357_spacingWhenItemIsHidden();
     void replaceWidget();
     void dontCrashWhenExtendsToEnd();
 };
-
-void tst_QGridLayout::initTestCase()
-{
-#ifdef Q_OS_WINCE //disable magic for WindowsCE
-    qApp->setAutoMaximizeThreshold(-1);
-#endif
-}
 
 static inline int visibleTopLevelWidgetCount()
 {
@@ -605,19 +592,6 @@ void tst_QGridLayout::spacingsAndMargins_data()
                                         << QPoint( 20, child_offset_y)
                                         << QPoint( 20, child_offset_y + 100 + 6)
                                         );
-#if defined (Q_OS_WINCE) //There is not enough screenspace to run the test in original size on Windows CE. We use smaller widgets.
-    child_offset_y = 11 + 9 + 50 + 6 + 50 + 6 + 50 + 6;
-    QTest::newRow("1x3 grid") << 1 << 3 << QSize(50, 50)
-                       << (PointList()  // toplevel
-                                        << QPoint( 11, 11)
-                                        << QPoint( 11, 11 + 50 + 6)
-                                        << QPoint( 11, 11 + 50 + 6 + 50 + 6)
-                                        // children
-                                        << QPoint( 20, child_offset_y)
-                                        << QPoint( 20, child_offset_y + 50 + 6)
-                                        << QPoint( 20, child_offset_y + 50 + 6 + 50 + 6)
-                                        );
-#else
     child_offset_y = 11 + 9 + 100 + 6 + 100 + 6 + 100 + 6;
     QTest::newRow("1x3 grid") << 1 << 3 << QSize(100, 100)
                        << (PointList()  // toplevel
@@ -629,7 +603,6 @@ void tst_QGridLayout::spacingsAndMargins_data()
                                         << QPoint( 20, child_offset_y + 100 + 6)
                                         << QPoint( 20, child_offset_y + 100 + 6 + 100 + 6)
                                         );
-#endif
 
     child_offset_y = 11 + 9 + 100 + 6 + 100 + 6;
     QTest::newRow("2x2 grid") << 2 << 2 << QSize(100, 100)
@@ -1672,6 +1645,26 @@ void tst_QGridLayout::taskQTBUG_40609_addingLayoutToItself(){
     QTest::ignoreMessage(QtWarningMsg, "QLayout: Cannot add layout QGridLayout/5d79e1b0aed83f100e3c2 to itself");
     layout.addLayout(&layout, 0, 0);
     QCOMPARE(layout.count(), 0);
+}
+
+void tst_QGridLayout::taskQTBUG_52357_spacingWhenItemIsHidden()
+{
+    QWidget widget;
+    setFrameless(&widget);
+    QGridLayout layout(&widget);
+    layout.setMargin(0);
+    layout.setSpacing(5);
+    QPushButton button1;
+    layout.addWidget(&button1, 0, 0);
+    QPushButton button2;
+    layout.addWidget(&button2, 0, 1);
+    QPushButton button3;
+    layout.addWidget(&button3, 0, 2);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+    int tempWidth = button1.width() + button2.width() + button3.width() + 2 * layout.spacing();
+    button2.hide();
+    QTRY_COMPARE_WITH_TIMEOUT(tempWidth, button1.width() + button3.width() + layout.spacing(), 1000);
 }
 
 void tst_QGridLayout::replaceWidget()

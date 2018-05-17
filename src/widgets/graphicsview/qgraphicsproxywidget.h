@@ -40,12 +40,12 @@
 #ifndef QGRAPHICSPROXYWIDGET_H
 #define QGRAPHICSPROXYWIDGET_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qgraphicswidget.h>
 
+QT_REQUIRE_CONFIG(graphicsview);
+
 QT_BEGIN_NAMESPACE
-
-
-#if !defined(QT_NO_GRAPHICSVIEW)
 
 class QGraphicsProxyWidgetPrivate;
 
@@ -102,7 +102,7 @@ protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) Q_DECL_OVERRIDE;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) Q_DECL_OVERRIDE;
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event) Q_DECL_OVERRIDE;
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     void wheelEvent(QGraphicsSceneWheelEvent *event) Q_DECL_OVERRIDE;
 #endif
 
@@ -132,9 +132,6 @@ private:
     friend class QGraphicsItem;
 };
 
-#endif
-
 QT_END_NAMESPACE
 
 #endif
-

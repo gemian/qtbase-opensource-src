@@ -40,13 +40,13 @@
 #ifndef QWHATSTHIS_H
 #define QWHATSTHIS_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qobject.h>
 #include <QtGui/qcursor.h>
 
+QT_REQUIRE_CONFIG(whatsthis);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_WHATSTHIS
 
 class QAction;
 
@@ -65,8 +65,6 @@ public:
     static QAction *createAction(QObject *parent = Q_NULLPTR);
 
 };
-
-#endif // QT_NO_WHATSTHIS
 
 QT_END_NAMESPACE
 

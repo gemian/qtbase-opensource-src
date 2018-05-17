@@ -44,11 +44,42 @@ class tst_QLatin1String : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void at();
+    void midLeftRight();
     void nullString();
     void emptyString();
+    void iterators();
     void relationalOperators_data();
     void relationalOperators();
 };
+
+
+void tst_QLatin1String::at()
+{
+    const QLatin1String l1("Hello World");
+    QCOMPARE(l1.at(0), QLatin1Char('H'));
+    QCOMPARE(l1.at(l1.size() - 1), QLatin1Char('d'));
+    QCOMPARE(l1[0], QLatin1Char('H'));
+    QCOMPARE(l1[l1.size() - 1], QLatin1Char('d'));
+}
+
+void tst_QLatin1String::midLeftRight()
+{
+    const QLatin1String l1("Hello World");
+    QCOMPARE(l1.mid(0),            l1);
+    QCOMPARE(l1.mid(0, l1.size()), l1);
+    QCOMPARE(l1.left(l1.size()),   l1);
+    QCOMPARE(l1.right(l1.size()),  l1);
+
+    QCOMPARE(l1.mid(6), QLatin1String("World"));
+    QCOMPARE(l1.mid(6, 5), QLatin1String("World"));
+    QCOMPARE(l1.right(5), QLatin1String("World"));
+
+    QCOMPARE(l1.mid(6, 1), QLatin1String("W"));
+    QCOMPARE(l1.right(5).left(1), QLatin1String("W"));
+
+    QCOMPARE(l1.left(5), QLatin1String("Hello"));
+}
 
 void tst_QLatin1String::nullString()
 {
@@ -125,6 +156,22 @@ void tst_QLatin1String::emptyString()
     }
 }
 
+void tst_QLatin1String::iterators()
+{
+    QLatin1String hello("hello");
+    QLatin1String olleh("olleh");
+
+    QVERIFY(std::equal(hello.begin(), hello.end(),
+                       olleh.rbegin()));
+    QVERIFY(std::equal(hello.rbegin(), hello.rend(),
+                       QT_MAKE_CHECKED_ARRAY_ITERATOR(olleh.begin(), olleh.size())));
+
+    QVERIFY(std::equal(hello.cbegin(), hello.cend(),
+                       olleh.rbegin()));
+    QVERIFY(std::equal(hello.crbegin(), hello.crend(),
+                       QT_MAKE_CHECKED_ARRAY_ITERATOR(olleh.begin(), olleh.size())));
+}
+
 void tst_QLatin1String::relationalOperators_data()
 {
     QTest::addColumn<QLatin1StringContainer>("lhs");
@@ -146,9 +193,9 @@ void tst_QLatin1String::relationalOperators_data()
     for (Data *lhs = data; lhs != data + sizeof data / sizeof *data; ++lhs) {
         for (Data *rhs = data; rhs != data + sizeof data / sizeof *data; ++rhs) {
             QLatin1StringContainer l = { lhs->l1 }, r = { rhs->l1 };
-            QTest::newRow(qPrintable(QString::asprintf("\"%s\" <> \"%s\"",
-                                                       lhs->l1.data() ? lhs->l1.data() : "nullptr",
-                                                       rhs->l1.data() ? rhs->l1.data() : "nullptr")))
+            QTest::addRow("\"%s\" <> \"%s\"",
+                          lhs->l1.data() ? lhs->l1.data() : "nullptr",
+                          rhs->l1.data() ? rhs->l1.data() : "nullptr")
                 << l << lhs->order << r << rhs->order;
         }
     }

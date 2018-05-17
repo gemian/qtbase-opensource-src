@@ -43,7 +43,7 @@
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QOpenGLTexture>
 #include <QtGui/QMatrix4x4>
-#include <QtGui/private/qopengltextureblitter_p.h>
+#include <QtGui/qopengltextureblitter.h>
 #include <QtGui/qopenglfunctions.h>
 
 QMirClientBackingStore::QMirClientBackingStore(QWindow* window)
@@ -61,6 +61,7 @@ QMirClientBackingStore::QMirClientBackingStore(QWindow* window)
 
 QMirClientBackingStore::~QMirClientBackingStore()
 {
+    mContext->makeCurrent(window()); // needed as QOpenGLTexture destructor assumes current context
 }
 
 void QMirClientBackingStore::flush(QWindow* window, const QRegion& region, const QPoint& offset)
@@ -76,7 +77,6 @@ void QMirClientBackingStore::flush(QWindow* window, const QRegion& region, const
         mBlitter->create();
 
     mBlitter->bind();
-    mBlitter->setSwizzleRB(true);
     mBlitter->blit(mTexture->textureId(), QMatrix4x4(), QOpenGLTextureBlitter::OriginTopLeft);
     mBlitter->release();
 
@@ -100,7 +100,7 @@ void QMirClientBackingStore::updateTexture()
     QRegion fixed;
     QRect imageRect = mImage.rect();
 
-    Q_FOREACH (const QRect &rect, mDirty.rects()) {
+    for (const QRect &rect : mDirty) {
         // intersect with image rect to be sure
         QRect r = imageRect & rect;
 
@@ -113,7 +113,7 @@ void QMirClientBackingStore::updateTexture()
         fixed |= r;
     }
 
-    Q_FOREACH (const QRect &rect, fixed.rects()) {
+    for (const QRect &rect : fixed) {
         // if the sub-rect is full-width we can pass the image data directly to
         // OpenGL instead of copying, since there is no gap between scanlines
         if (rect.width() == imageRect.width()) {
@@ -137,7 +137,9 @@ void QMirClientBackingStore::beginPaint(const QRegion& region)
 
 void QMirClientBackingStore::resize(const QSize& size, const QRegion& /*staticContents*/)
 {
-    mImage = QImage(size, QImage::Format_RGB32);
+    mImage = QImage(size, QImage::Format_RGBA8888);
+
+    mContext->makeCurrent(window());
 
     if (mTexture->isCreated())
         mTexture->destroy();
@@ -146,4 +148,10 @@ void QMirClientBackingStore::resize(const QSize& size, const QRegion& /*staticCo
 QPaintDevice* QMirClientBackingStore::paintDevice()
 {
     return &mImage;
+}
+
+QImage QMirClientBackingStore::toImage() const
+{
+    // used by QPlatformBackingStore::composeAndFlush
+    return mImage;
 }

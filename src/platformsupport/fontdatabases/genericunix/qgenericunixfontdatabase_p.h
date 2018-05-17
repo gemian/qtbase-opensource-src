@@ -51,14 +51,14 @@
 // We mean it.
 //
 
-#include <QtCore/qglobal.h>
+#include <QtGui/private/qtguiglobal_p.h>
 
-#ifdef Q_FONTCONFIGDATABASE
-#include <QtPlatformSupport/private/qfontconfigdatabase_p.h>
+#if QT_CONFIG(fontconfig)
+#include <QtFontDatabaseSupport/private/qfontconfigdatabase_p.h>
 typedef QFontconfigDatabase QGenericUnixFontDatabase;
 #else
-#include <QtPlatformSupport/private/qbasicfontdatabase_p.h>
-typedef QBasicFontDatabase QGenericUnixFontDatabase;
+#include <QtFontDatabaseSupport/private/qfreetypefontdatabase_p.h>
+typedef QFreeTypeFontDatabase QGenericUnixFontDatabase;
 #endif //Q_FONTCONFIGDATABASE
 
 #endif // QGENERICUNIXFONTDATABASE_H

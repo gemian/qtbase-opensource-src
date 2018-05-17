@@ -58,16 +58,16 @@ class PiecesList : public QListWidget
     Q_OBJECT
 
 public:
-    explicit PiecesList(int pieceSize, QWidget *parent = 0);
-    void addPiece(QPixmap pixmap, QPoint location);
+    explicit PiecesList(int pieceSize, QWidget *parent = nullptr);
+    void addPiece(const QPixmap &pixmap, const QPoint &location);
 
     static QString puzzleMimeType() { return QStringLiteral("image/x-puzzle-piece"); }
 
 protected:
-    void dragEnterEvent(QDragEnterEvent *event) Q_DECL_OVERRIDE;
-    void dragMoveEvent(QDragMoveEvent *event) Q_DECL_OVERRIDE;
-    void dropEvent(QDropEvent *event) Q_DECL_OVERRIDE;
-    void startDrag(Qt::DropActions supportedActions) Q_DECL_OVERRIDE;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dragMoveEvent(QDragMoveEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
+    void startDrag(Qt::DropActions supportedActions) override;
 
     int m_PieceSize;
 };

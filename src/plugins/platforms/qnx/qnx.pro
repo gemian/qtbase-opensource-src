@@ -1,11 +1,11 @@
 TARGET = qqnx
 
-QT += platformsupport-private core-private gui-private
+QT += \
+    core-private gui-private \
+    fontdatabase_support-private eventdispatcher_support-private egl_support-private
 
 # Uncomment this to build with support for IMF once it becomes available in the BBNDK
 #CONFIG += qqnx_imf
-
-CONFIG += qqnx_screeneventthread
 
 # Uncomment these to enable debugging output for various aspects of the plugin
 #DEFINES += QQNXBUFFER_DEBUG
@@ -45,7 +45,8 @@ SOURCES =   main.cpp \
             qqnxservices.cpp \
             qqnxcursor.cpp \
             qqnxrasterwindow.cpp \
-            qqnxglobal.cpp
+            qqnxglobal.cpp \
+            qqnxscreeneventthread.cpp
 
 HEADERS =   main.h \
             qqnxbuffer.h \
@@ -65,46 +66,41 @@ HEADERS =   main.h \
             qqnxrasterwindow.h \
             qqnxscreeneventfilter.h \
             qqnxglobal.h \
-            qqnxlgmon.h
-
-CONFIG(qqnx_screeneventthread) {
-    DEFINES += QQNX_SCREENEVENTTHREAD
-    SOURCES += qqnxscreeneventthread.cpp
-    HEADERS += qqnxscreeneventthread.h
-}
+            qqnxlgmon.h \
+            qqnxscreeneventthread.h
 
 LIBS += -lscreen
 
-contains(QT_CONFIG, opengles2) {
+qtConfig(opengles2) {
     SOURCES += qqnxglcontext.cpp \
                qqnxeglwindow.cpp
 
     HEADERS += qqnxglcontext.h \
                qqnxeglwindow.h
 
-    LIBS += -lEGL
+    QMAKE_USE += opengl_es2 egl
 }
 
-CONFIG(qqnx_pps) {
-    DEFINES += QQNX_PPS
-
-    SOURCES += qqnxclipboard.cpp \
-               qqnxbuttoneventnotifier.cpp \
+qtConfig(qqnx_pps) {
+    SOURCES += qqnxbuttoneventnotifier.cpp \
                qqnxnavigatorpps.cpp \
                qqnxnavigatoreventnotifier.cpp \
                qqnxvirtualkeyboardpps.cpp
 
-    HEADERS += qqnxclipboard.h \
-               qqnxbuttoneventnotifier.h \
+    HEADERS += qqnxbuttoneventnotifier.h \
                qqnxnavigatorpps.h \
                qqnxnavigatoreventnotifier.h \
                qqnxvirtualkeyboardpps.h
 
-    LIBS += -lpps
-    !contains(DEFINES, QT_NO_CLIPBOARD): LIBS += -lclipboard
+    QMAKE_USE += pps
 
-    CONFIG(qqnx_imf) {
-        DEFINES += QQNX_IMF
+    qtConfig(clipboard) {
+        SOURCES += qqnxclipboard.cpp
+        HEADERS += qqnxclipboard.h
+        LIBS += -lclipboard
+    }
+
+    qtConfig(qqnx_imf) {
         HEADERS += qqnxinputcontext_imf.h
         SOURCES += qqnxinputcontext_imf.cpp
     } else {
@@ -116,15 +112,10 @@ CONFIG(qqnx_pps) {
 lgmon {
     DEFINES += QQNX_LGMON
     SOURCES += qqnxlgmon.cpp
-    LIBS += -llgmon
+    QMAKE_USE += lgmon
 }
 
 OTHER_FILES += qnx.json
-
-QMAKE_CXXFLAGS += -I./private
-
-include (../../../platformsupport/eglconvenience/eglconvenience.pri)
-include (../../../platformsupport/fontdatabases/fontdatabases.pri)
 
 PLUGIN_TYPE = platforms
 PLUGIN_CLASS_NAME = QQnxIntegrationPlugin

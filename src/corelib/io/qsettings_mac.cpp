@@ -83,12 +83,12 @@ static QString rotateSlashesDotsAndMiddots(const QString &key, int shift)
 
 static QCFType<CFStringRef> macKey(const QString &key)
 {
-    return QCFString::toCFStringRef(rotateSlashesDotsAndMiddots(key, Macify));
+    return rotateSlashesDotsAndMiddots(key, Macify).toCFString();
 }
 
 static QString qtKey(CFStringRef cfkey)
 {
-    return rotateSlashesDotsAndMiddots(QCFString::toQString(cfkey), Qtify);
+    return rotateSlashesDotsAndMiddots(QString::fromCFString(cfkey), Qtify);
 }
 
 static QCFType<CFPropertyListRef> macValue(const QVariant &value);
@@ -160,7 +160,7 @@ static QCFType<CFPropertyListRef> macValue(const QVariant &value)
                     }
                 }
 
-                cfkeys[numUniqueKeys] = QCFString::toCFStringRef(key);
+                cfkeys[numUniqueKeys] = key.toCFString();
                 cfvalues[numUniqueKeys] = singleton ? macValue(values.constFirst()) : macList(values);
                 ++numUniqueKeys;
             }
@@ -175,17 +175,12 @@ static QCFType<CFPropertyListRef> macValue(const QVariant &value)
         break;
     case QVariant::DateTime:
         {
-            /*
-                CFDate, unlike QDateTime, doesn't store timezone information.
-            */
-            QDateTime dt = value.toDateTime();
-            if (dt.timeSpec() == Qt::LocalTime) {
-                QDateTime reference;
-                reference.setTime_t((uint)kCFAbsoluteTimeIntervalSince1970);
-                result = CFDateCreate(kCFAllocatorDefault, CFAbsoluteTime(reference.secsTo(dt)));
-            } else {
+            QDateTime dateTime = value.toDateTime();
+            // CFDate, unlike QDateTime, doesn't store timezone information
+            if (dateTime.timeSpec() == Qt::LocalTime)
+                result = dateTime.toCFDate();
+            else
                 goto string_case;
-            }
         }
         break;
     case QVariant::Bool:
@@ -215,13 +210,10 @@ static QCFType<CFPropertyListRef> macValue(const QVariant &value)
     string_case:
     default:
         QString string = QSettingsPrivate::variantToString(value);
-        if (string.contains(QChar::Null)) {
-            QByteArray ba = string.toUtf8();
-            result = CFDataCreate(kCFAllocatorDefault, reinterpret_cast<const UInt8 *>(ba.data()),
-                                  CFIndex(ba.size()));
-        } else {
-            result = QCFString::toCFStringRef(string);
-        }
+        if (string.contains(QChar::Null))
+            result = std::move(string).toUtf8().toCFData();
+        else
+            result = string.toCFString();
     }
     return result;
 }
@@ -237,7 +229,7 @@ static QVariant qtValue(CFPropertyListRef cfvalue)
         Sorted grossly from most to least frequent type.
     */
     if (typeId == CFStringGetTypeID()) {
-        return QSettingsPrivate::stringToVariant(QCFString::toQString(static_cast<CFStringRef>(cfvalue)));
+        return QSettingsPrivate::stringToVariant(QString::fromCFString(static_cast<CFStringRef>(cfvalue)));
     } else if (typeId == CFNumberGetTypeID()) {
         CFNumberRef cfnumber = static_cast<CFNumberRef>(cfvalue);
         if (CFNumberIsFloatType(cfnumber)) {
@@ -273,18 +265,17 @@ static QVariant qtValue(CFPropertyListRef cfvalue)
     } else if (typeId == CFBooleanGetTypeID()) {
         return (bool)CFBooleanGetValue(static_cast<CFBooleanRef>(cfvalue));
     } else if (typeId == CFDataGetTypeID()) {
-        CFDataRef cfdata = static_cast<CFDataRef>(cfvalue);
-        QByteArray byteArray = QByteArray(reinterpret_cast<const char *>(CFDataGetBytePtr(cfdata)),
-                          CFDataGetLength(cfdata));
+        QByteArray byteArray = QByteArray::fromRawCFData(static_cast<CFDataRef>(cfvalue));
 
         // Fast-path for QByteArray, so that we don't have to go
         // though the expensive and lossy conversion via UTF-8.
-        if (!byteArray.startsWith('@'))
+        if (!byteArray.startsWith('@')) {
+            byteArray.detach();
             return byteArray;
+        }
 
         const QString str = QString::fromUtf8(byteArray.constData(), byteArray.size());
         return QSettingsPrivate::stringToVariant(str);
-
     } else if (typeId == CFDictionaryGetTypeID()) {
         CFDictionaryRef cfdict = static_cast<CFDictionaryRef>(cfvalue);
         CFTypeID arrayTypeId = CFArrayGetTypeID();
@@ -295,7 +286,7 @@ static QVariant qtValue(CFPropertyListRef cfvalue)
 
         QMultiMap<QString, QVariant> map;
         for (int i = 0; i < size; ++i) {
-            QString key = QCFString::toQString(static_cast<CFStringRef>(keys[i]));
+            QString key = QString::fromCFString(static_cast<CFStringRef>(keys[i]));
 
             if (CFGetTypeID(values[i]) == arrayTypeId) {
                 CFArrayRef cfarray = static_cast<CFArrayRef>(values[i]);
@@ -308,9 +299,7 @@ static QVariant qtValue(CFPropertyListRef cfvalue)
         }
         return map;
     } else if (typeId == CFDateGetTypeID()) {
-        QDateTime dt;
-        dt.setTime_t((uint)kCFAbsoluteTimeIntervalSince1970);
-        return dt.addSecs((int)CFDateGetAbsoluteTime(static_cast<CFDateRef>(cfvalue)));
+        return QDateTime::fromCFDate(static_cast<CFDateRef>(cfvalue));
     }
     return QVariant();
 }
@@ -430,25 +419,19 @@ QMacSettingsPrivate::QMacSettingsPrivate(QSettings::Scope scope, const QString &
         curPos = nextDot + 1;
     }
     javaPackageName.prepend(domainName.midRef(curPos));
-    javaPackageName = javaPackageName.toLower();
+    javaPackageName = std::move(javaPackageName).toLower();
     if (curPos == 0)
         javaPackageName.prepend(QLatin1String("com."));
     suiteId = javaPackageName;
 
-    if (scope == QSettings::SystemScope)
-        spec |= F_System;
-
-    if (application.isEmpty()) {
-        spec |= F_Organization;
-    } else {
-        javaPackageName += QLatin1Char('.');
-        javaPackageName += application;
+    if (!application.isEmpty()) {
+        javaPackageName += QLatin1Char('.') + application;
         applicationId = javaPackageName;
     }
 
     numDomains = 0;
-    for (int i = (spec & F_System) ? 1 : 0; i < 2; ++i) {
-        for (int j = (spec & F_Organization) ? 1 : 0; j < 3; ++j) {
+    for (int i = (scope == QSettings::SystemScope) ? 1 : 0; i < 2; ++i) {
+        for (int j = (application.isEmpty()) ? 1 : 0; j < 3; ++j) {
             SearchDomain &domain = domains[numDomains++];
             domain.userName = (i == 0) ? kCFPreferencesCurrentUser : kCFPreferencesAnyUser;
             if (j == 0)
@@ -557,31 +540,7 @@ void QMacSettingsPrivate::sync()
                                                   domains[i].userName, hostNames[j]);
             // only report failures for the primary file (the one we write to)
             if (!ok && i == 0 && hostNames[j] == hostName && status == QSettings::NoError) {
-#if 1
-                if (QSysInfo::macVersion() < QSysInfo::MV_10_7) {
-                    // work around what seems to be a bug in CFPreferences:
-                    // don't report an error if there are no preferences for the application
-                    QCFType<CFArrayRef> appIds = CFPreferencesCopyApplicationList(domains[i].userName,
-                                                                                  hostNames[j]);
-
-                    // iterate through all the applications and see if we're there
-                    CFIndex size = CFArrayGetCount(appIds);
-                    for (CFIndex k = 0; k < size; ++k) {
-                        const void *cfvalue = CFArrayGetValueAtIndex(appIds, k);
-                        if (CFGetTypeID(cfvalue) == CFStringGetTypeID()) {
-                            if (CFStringCompare(static_cast<CFStringRef>(cfvalue),
-                                                domains[i].applicationOrSuiteId,
-                                                kCFCompareCaseInsensitive) == kCFCompareEqualTo) {
-                                setStatus(QSettings::AccessError);
-                                break;
-                            }
-                        }
-                    }
-                } else
-#endif
-                {
-                    setStatus(QSettings::AccessError);
-                }
+                setStatus(QSettings::AccessError);
             }
         }
     }
@@ -613,10 +572,10 @@ bool QMacSettingsPrivate::isWritable() const
 QString QMacSettingsPrivate::fileName() const
 {
     QString result;
-    if ((spec & F_System) == 0)
+    if (scope == QSettings::UserScope)
         result = QDir::homePath();
     result += QLatin1String("/Library/Preferences/");
-    result += QCFString::toQString(domains[0].applicationOrSuiteId);
+    result += QString::fromCFString(domains[0].applicationOrSuiteId);
     result += QLatin1String(".plist");
     return result;
 }
@@ -653,24 +612,11 @@ QSettingsPrivate *QSettingsPrivate::create(QSettings::Format format,
     }
 }
 
-static QCFType<CFURLRef> urlFromFileName(const QString &fileName)
+bool QConfFileSettingsPrivate::readPlistFile(const QByteArray &data, ParsedSettingsMap *map) const
 {
-    return CFURLCreateWithFileSystemPath(kCFAllocatorDefault, QCFString(fileName),
-                                         kCFURLPOSIXPathStyle, false);
-}
-
-bool QConfFileSettingsPrivate::readPlistFile(const QString &fileName, ParsedSettingsMap *map) const
-{
-    QCFType<CFDataRef> resource;
-    SInt32 code;
-    if (!CFURLCreateDataAndPropertiesFromResource(kCFAllocatorDefault, urlFromFileName(fileName),
-                                                  &resource, 0, 0, &code))
-        return false;
-
-    QCFString errorStr;
+    QCFType<CFDataRef> cfData = data.toRawCFData();
     QCFType<CFPropertyListRef> propertyList =
-            CFPropertyListCreateFromXMLData(kCFAllocatorDefault, resource, kCFPropertyListImmutable,
-                                            &errorStr);
+            CFPropertyListCreateWithData(kCFAllocatorDefault, cfData, kCFPropertyListImmutable, Q_NULLPTR, Q_NULLPTR);
 
     if (!propertyList)
         return true;
@@ -691,8 +637,7 @@ bool QConfFileSettingsPrivate::readPlistFile(const QString &fileName, ParsedSett
     return true;
 }
 
-bool QConfFileSettingsPrivate::writePlistFile(const QString &fileName,
-                                              const ParsedSettingsMap &map) const
+bool QConfFileSettingsPrivate::writePlistFile(QIODevice &file, const ParsedSettingsMap &map) const
 {
     QVarLengthArray<QCFType<CFStringRef> > cfkeys(map.size());
     QVarLengthArray<QCFType<CFPropertyListRef> > cfvalues(map.size());
@@ -715,8 +660,7 @@ bool QConfFileSettingsPrivate::writePlistFile(const QString &fileName,
     QCFType<CFDataRef> xmlData = CFPropertyListCreateData(
                  kCFAllocatorDefault, propertyList, kCFPropertyListXMLFormat_v1_0, 0, 0);
 
-    SInt32 code;
-    return CFURLWriteDataAndPropertiesToResource(urlFromFileName(fileName), xmlData, 0, &code);
+    return file.write(QByteArray::fromRawCFData(xmlData)) == CFDataGetLength(xmlData);
 }
 
 QT_END_NAMESPACE

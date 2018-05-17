@@ -73,8 +73,10 @@ void tst_QClipboard::cleanupTestCase()
 
 void tst_QClipboard::init()
 {
+#if QT_CONFIG(process)
     const QString testdataDir = QFileInfo(QFINDTESTDATA("copier")).absolutePath();
     QVERIFY2(QDir::setCurrent(testdataDir), qPrintable("Could not chdir to " + testdataDir));
+#endif
 }
 
 Q_DECLARE_METATYPE(QClipboard::Mode)
@@ -216,7 +218,7 @@ void tst_QClipboard::testSignals()
 #if defined(Q_OS_WIN) || defined(Q_OS_MAC) || defined(Q_OS_QNX)
 static bool runHelper(const QString &program, const QStringList &arguments, QByteArray *errorMessage)
 {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     QProcess process;
     process.setReadChannelMode(QProcess::ForwardedChannels);
     process.start(program, arguments);
@@ -252,19 +254,19 @@ static bool runHelper(const QString &program, const QStringList &arguments, QByt
         return false;
     }
     return true;
-#else // QT_NO_PROCESS
+#else // QT_CONFIG(process)
     Q_UNUSED(program)
     Q_UNUSED(arguments)
     Q_UNUSED(errorMessage)
     return false;
-#endif // QT_NO_PROCESS
+#endif // QT_CONFIG(process)
 }
 
 // Test that pasted text remains on the clipboard after a Qt application exits.
 // This test does not make sense on X11 and embedded, copied data disappears from the clipboard when the application exits
 void tst_QClipboard::copy_exit_paste()
 {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     // ### It's still possible to test copy/paste - just keep the apps running
     if (!PlatformClipboard::isAvailable())
         QSKIP("Native clipboard not working in this setup");
@@ -280,12 +282,12 @@ void tst_QClipboard::copy_exit_paste()
                        QStringList() << QStringLiteral("--text") << stringArgument,
                        &errorMessage),
              errorMessage.constData());
-#endif // QT_NO_PROCESS
+#endif // QT_CONFIG(process)
 }
 
 void tst_QClipboard::copyImage()
 {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     if (!PlatformClipboard::isAvailable())
         QSKIP("Native clipboard not working in this setup");
     QImage image(100, 100, QImage::Format_ARGB32);
@@ -301,7 +303,7 @@ void tst_QClipboard::copyImage()
     QVERIFY2(runHelper(QStringLiteral("paster/paster"),
                        QStringList(QStringLiteral("--image")), &errorMessage),
              errorMessage.constData());
-#endif // QT_NO_PROCESS
+#endif // QT_CONFIG(process)
 }
 
 #endif // Q_OS_WIN || Q_OS_MAC || Q_OS_QNX
@@ -313,10 +315,6 @@ void tst_QClipboard::setMimeData()
     QMimeData *mimeData = new QMimeData;
     const QString TestName(QLatin1String("tst_QClipboard::setMimeData() mimeData"));
     mimeData->setObjectName(TestName);
-#if defined(Q_OS_WINCE)
-    // need to set text on CE
-    mimeData->setText(QLatin1String("Qt/CE foo"));
-#endif
 
     QGuiApplication::clipboard()->setMimeData(mimeData);
     QCOMPARE(QGuiApplication::clipboard()->mimeData(), (const QMimeData *)mimeData);

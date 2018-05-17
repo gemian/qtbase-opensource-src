@@ -35,7 +35,9 @@
 #include <QtCore/QAbstractEventDispatcher>
 #include <QtCore/QFileInfo>
 #include <QtCore/QDir>
-#include <QtCore/QProcess>
+#if QT_CONFIG(process)
+# include <QtCore/QProcess>
+#endif
 #include <QtCore/private/qeventloop_p.h>
 
 #include <QtGui/QFontDatabase>
@@ -52,14 +54,8 @@
 #include <QtWidgets/private/qapplication_p.h>
 #include <QtWidgets/QStyle>
 
-#ifdef Q_OS_WINCE
-#include <windows.h>
-#endif
-
 #include <qpa/qwindowsysteminterface.h>
 #include <private/qhighdpiscaling_p.h>
-
-#include "../../../qtest-config.h"
 
 QT_BEGIN_NAMESPACE
 static QWindowSystemInterface::TouchPoint touchPoint(const QTouchEvent::TouchPoint& pt)
@@ -125,7 +121,7 @@ private slots:
     void testDeleteLater();
     void testDeleteLaterProcessEvents();
 
-#ifndef QT_NO_LIBRARY
+#if QT_CONFIG(library)
     void libraryPaths();
     void libraryPaths_qt_plugin_path();
     void libraryPaths_qt_plugin_path_2();
@@ -144,7 +140,7 @@ private slots:
 
     void execAfterExit();
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     void wheelScrollLines();
 #endif
 
@@ -235,10 +231,6 @@ static  char *argv0;
 tst_QApplication::tst_QApplication()
     : quitApplicationTriggered(false)
 {
-#ifdef Q_OS_WINCE
-    // Clean up environment previously to launching test
-    qputenv("QT_PLUGIN_PATH", QByteArray());
-#endif
 }
 
 void tst_QApplication::cleanup()
@@ -893,23 +885,12 @@ bool isPathListIncluded(const QStringList &l, const QStringList &r)
     return j == r.count();
 }
 
-#ifndef QT_NO_LIBRARY
+#if QT_CONFIG(library)
 #define QT_TST_QAPP_DEBUG
 void tst_QApplication::libraryPaths()
 {
-#ifndef Q_OS_WINCE
         const QString testDir = QFileInfo(QFINDTESTDATA("test/test.pro")).absolutePath();
         QVERIFY(!testDir.isEmpty());
-#else // !Q_OS_WINCE
-        // On Windows CE we need QApplication object to have valid
-        // current Path. Therefore we need to identify it ourselves
-        // here for the test.
-        QFileInfo filePath;
-        wchar_t module_name[MAX_PATH];
-        GetModuleFileName(0, module_name, MAX_PATH);
-        filePath = QString::fromWCharArray(module_name);
-        const QString testDir = filePath.path() + "/test";
-#endif // Q_OS_WINCE
     {
         QApplication::setLibraryPaths(QStringList() << testDir);
         QCOMPARE(QApplication::libraryPaths(), (QStringList() << testDir));
@@ -1000,11 +981,7 @@ void tst_QApplication::libraryPaths()
         QString appDirPath = app.applicationDirPath();
 
         app.addLibraryPath(appDirPath);
-#ifdef Q_OS_WINCE
-        app.addLibraryPath(appDirPath + "/../..");
-#else
         app.addLibraryPath(appDirPath + "/..");
-#endif
 #ifdef QT_TST_QAPP_DEBUG
         qDebug() << "appDirPath" << appDirPath;
         qDebug() << "After adding appDirPath && appDirPath + /..:" << app.libraryPaths();
@@ -1044,15 +1021,9 @@ void tst_QApplication::libraryPaths_qt_plugin_path_2()
     QByteArray nonExistentPath = "/nonexistent";
     QByteArray pluginPath = validPath + ':' + nonExistentPath;
 #elif defined(Q_OS_WIN)
-# ifdef Q_OS_WINCE
-    QByteArray validPath = "/Temp";
-    QByteArray nonExistentPath = "/nonexistent";
-    QByteArray pluginPath = validPath + ';' + nonExistentPath;
-# else
     QByteArray validPath = "C:\\windows";
     QByteArray nonExistentPath = "Z:\\nonexistent";
     QByteArray pluginPath = validPath + ';' + nonExistentPath;
-# endif
 #endif
 
     {
@@ -1069,9 +1040,7 @@ void tst_QApplication::libraryPaths_qt_plugin_path_2()
             << QLibraryInfo::location(QLibraryInfo::PluginsPath)
             << QDir(app.applicationDirPath()).canonicalPath()
             << QDir(QDir::fromNativeSeparators(QString::fromLatin1(validPath))).canonicalPath();
-# ifdef Q_OS_WINCE
-        expected = QSet<QString>::fromList(expected).toList();
-# endif
+
         QVERIFY2(isPathListIncluded(app.libraryPaths(), expected),
                  qPrintable("actual:\n - " + app.libraryPaths().join("\n - ") +
                             "\nexpected:\n - " + expected.join("\n - ")));
@@ -1091,9 +1060,6 @@ void tst_QApplication::libraryPaths_qt_plugin_path_2()
             QStringList()
             << QLibraryInfo::location(QLibraryInfo::PluginsPath)
             << app.applicationDirPath();
-# ifdef Q_OS_WINCE
-        expected = QSet<QString>::fromList(expected).toList();
-# endif
         QVERIFY(isPathListIncluded(app.libraryPaths(), expected));
 
         qputenv("QT_PLUGIN_PATH", QByteArray());
@@ -1468,7 +1434,7 @@ void tst_QApplication::testDeleteLaterProcessEvents()
 */
 void tst_QApplication::desktopSettingsAware()
 {
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     QString path;
     {
         // We need an application object for QFINDTESTDATA to work
@@ -1479,10 +1445,6 @@ void tst_QApplication::desktopSettingsAware()
     }
     QVERIFY2(!path.isEmpty(), "Cannot locate desktopsettingsaware helper application");
     path += "desktopsettingsaware";
-#ifdef Q_OS_WINCE
-    int argc = 0;
-    QApplication tmpApp(argc, 0);
-#endif
     QProcess testProcess;
     testProcess.start(path);
     QVERIFY2(testProcess.waitForStarted(),
@@ -1811,7 +1773,7 @@ void tst_QApplication::execAfterExit()
     QCOMPARE(exitCode, 0);
 }
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 void tst_QApplication::wheelScrollLines()
 {
     int argc = 1;
@@ -1819,7 +1781,7 @@ void tst_QApplication::wheelScrollLines()
     // If wheelScrollLines returns 0, the mose wheel will be disabled.
     QVERIFY(app.wheelScrollLines() > 0);
 }
-#endif // !QT_NO_WHEELEVENT
+#endif // QT_CONFIG(wheelevent)
 
 void tst_QApplication::style()
 {
@@ -1955,9 +1917,7 @@ void tst_QApplication::touchEventPropagation()
     release.setState(Qt::TouchPointReleased);
     releasedTouchPoints << release;
 
-    QTouchDevice *device = new QTouchDevice;
-    device->setType(QTouchDevice::TouchScreen);
-    QWindowSystemInterface::registerTouchDevice(device);
+    QTouchDevice *device = QTest::createTouchDevice();
 
     {
         // touch event behavior on a window
@@ -2027,7 +1987,7 @@ void tst_QApplication::touchEventPropagation()
         window.show();
         QVERIFY(QTest::qWaitForWindowExposed(&window));
         const QPoint deviceGlobalPos =
-            QHighDpi::toNativePixels(window.mapToGlobal(QPoint(50, 50)), window.windowHandle()->screen());
+            QHighDpi::toNativePixels(window.mapToGlobal(QPoint(50, 150)), window.windowHandle()->screen());
         pressedTouchPoints[0].setScreenPos(deviceGlobalPos);
         releasedTouchPoints[0].setScreenPos(deviceGlobalPos);
 
@@ -2163,7 +2123,7 @@ void tst_QApplication::qtbug_12673()
     QVERIFY2(!path.isEmpty(), "Cannot locate modal helper application");
     path += "modal";
 
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     QProcess testProcess;
     QStringList arguments;
     testProcess.start(path, arguments);
@@ -2197,8 +2157,8 @@ void tst_QApplication::noQuitOnHide()
 {
     int argc = 0;
     QApplication app(argc, 0);
-    QWidget *window1 = new NoQuitOnHideWidget;
-    window1->show();
+    NoQuitOnHideWidget window1;
+    window1.show();
     QCOMPARE(app.exec(), 1);
 }
 
@@ -2232,12 +2192,12 @@ void tst_QApplication::abortQuitOnShow()
 {
     int argc = 0;
     QApplication app(argc, 0);
-    QWidget *window1 = new ShowCloseShowWidget(false);
-    window1->show();
+    ShowCloseShowWidget window1(false);
+    window1.show();
     QCOMPARE(app.exec(), 0);
 
-    QWidget *window2 = new ShowCloseShowWidget(true);
-    window2->show();
+    ShowCloseShowWidget window2(true);
+    window2.show();
     QCOMPARE(app.exec(), 1);
 }
 
@@ -2296,7 +2256,7 @@ void tst_QApplication::settableStyleHints()
     executed *after* the destruction of QApplication.
  */
 Q_GLOBAL_STATIC(QLocale, tst_qapp_locale);
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
 Q_GLOBAL_STATIC(QProcess, tst_qapp_process);
 #endif
 #ifndef QT_NO_FILESYSTEMWATCHER
@@ -2312,7 +2272,7 @@ Q_GLOBAL_STATIC(QPixmap, tst_qapp_pixmap);
 Q_GLOBAL_STATIC(QFont, tst_qapp_font);
 Q_GLOBAL_STATIC(QRegion, tst_qapp_region);
 Q_GLOBAL_STATIC(QFontDatabase, tst_qapp_fontDatabase);
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
 Q_GLOBAL_STATIC(QCursor, tst_qapp_cursor);
 #endif
 
@@ -2321,7 +2281,7 @@ void tst_QApplication::globalStaticObjectDestruction()
     int argc = 1;
     QApplication app(argc, &argv0);
     QVERIFY(tst_qapp_locale());
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     QVERIFY(tst_qapp_process());
 #endif
 #ifndef QT_NO_FILESYSTEMWATCHER
@@ -2337,7 +2297,7 @@ void tst_QApplication::globalStaticObjectDestruction()
     QVERIFY(tst_qapp_font());
     QVERIFY(tst_qapp_region());
     QVERIFY(tst_qapp_fontDatabase());
-#ifndef QTEST_NO_CURSOR
+#ifndef QT_NO_CURSOR
     QVERIFY(tst_qapp_cursor());
 #endif
 }

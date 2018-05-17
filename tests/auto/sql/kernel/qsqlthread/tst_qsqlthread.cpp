@@ -177,7 +177,7 @@ public:
         for (int i = 0; i < ProdConIterations; ++i) {
             QVERIFY_SQL(q1, exec("select max(id) from " + qtest));
             q1.first();
-            q2.bindValue("id", q1.value(0));
+            q2.bindValue(":id", q1.value(0));
             q1.clear();
             QVERIFY_SQL(q2, exec());
             QThread::yieldCurrentThread();
@@ -398,7 +398,7 @@ void tst_QSqlThread::readWriteThreading()
     producer.start();
     consumer.start();
 
-    QTRY_VERIFY(threadFinishedCount >= 2);
+    QTRY_VERIFY_WITH_TIMEOUT(threadFinishedCount >= 2, 10000);
 }
 
 // run with n threads in parallel. Change this constant to hammer the poor DB server even more

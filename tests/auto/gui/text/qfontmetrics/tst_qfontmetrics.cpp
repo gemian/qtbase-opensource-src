@@ -47,7 +47,11 @@ private slots:
     void elidedText();
     void veryNarrowElidedText();
     void averageCharWidth();
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     void bypassShaping();
+#endif
+
     void elidedMultiLength();
     void elidedMultiLengthF();
     void inFontUcs4();
@@ -187,6 +191,7 @@ void tst_QFontMetrics::averageCharWidth()
     QVERIFY(fmf.averageCharWidth() != 0);
 }
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 void tst_QFontMetrics::bypassShaping()
 {
     QFont f;
@@ -201,37 +206,38 @@ void tst_QFontMetrics::bypassShaping()
     // This assertion is needed in Qt WebKit's WebCore::Font::offsetForPositionForSimpleText
     QCOMPARE(textWidth, charsWidth);
 }
+#endif
 
-template<class FontMetrics> void elidedMultiLength_helper()
+template<class FontMetrics, typename PrimitiveType> void elidedMultiLength_helper()
 {
     QString text1 = QLatin1String("Long Text 1\x9cShorter\x9csmall");
     QString text1_long = "Long Text 1";
     QString text1_short = "Shorter";
     QString text1_small = "small";
     FontMetrics fm = FontMetrics(QFont());
-    int width_long = fm.size(0, text1_long).width();
+    PrimitiveType width_long = fm.size(0, text1_long).width();
     QCOMPARE(fm.elidedText(text1,Qt::ElideRight, 8000), text1_long);
     QCOMPARE(fm.elidedText(text1,Qt::ElideRight, width_long + 1), text1_long);
     QCOMPARE(fm.elidedText(text1,Qt::ElideRight, width_long - 1), text1_short);
-    int width_short = fm.size(0, text1_short).width();
+    PrimitiveType width_short = fm.size(0, text1_short).width();
     QCOMPARE(fm.elidedText(text1,Qt::ElideRight, width_short + 1), text1_short);
     QCOMPARE(fm.elidedText(text1,Qt::ElideRight, width_short - 1), text1_small);
 
     // Not even wide enough for "small" - should use ellipsis
     QChar ellipsisChar(0x2026);
     QString text1_el = QString::fromLatin1("s") + ellipsisChar;
-    int width_small = fm.width(text1_el);
+    PrimitiveType width_small = fm.width(text1_el);
     QCOMPARE(fm.elidedText(text1,Qt::ElideRight, width_small + 1), text1_el);
 }
 
 void tst_QFontMetrics::elidedMultiLength()
 {
-    elidedMultiLength_helper<QFontMetrics>();
+    elidedMultiLength_helper<QFontMetrics, int>();
 }
 
 void tst_QFontMetrics::elidedMultiLengthF()
 {
-    elidedMultiLength_helper<QFontMetricsF>();
+    elidedMultiLength_helper<QFontMetricsF, qreal>();
 }
 
 void tst_QFontMetrics::inFontUcs4()

@@ -40,7 +40,7 @@
 #ifndef QWINDOWSBACKINGSTORE_H
 #define QWINDOWSBACKINGSTORE_H
 
-#include "qtwindows_additional.h"
+#include <QtCore/qt_windows.h>
 
 #include <qpa/qplatformbackingstore.h>
 #include <QtCore/QScopedPointer>
@@ -57,17 +57,15 @@ public:
     QWindowsBackingStore(QWindow *window);
     ~QWindowsBackingStore();
 
-    QPaintDevice *paintDevice() Q_DECL_OVERRIDE;
-    void flush(QWindow *window, const QRegion &region, const QPoint &offset) Q_DECL_OVERRIDE;
-    void resize(const QSize &size, const QRegion &r) Q_DECL_OVERRIDE;
-    bool scroll(const QRegion &area, int dx, int dy) Q_DECL_OVERRIDE;
-    void beginPaint(const QRegion &) Q_DECL_OVERRIDE;
+    QPaintDevice *paintDevice() override;
+    void flush(QWindow *window, const QRegion &region, const QPoint &offset) override;
+    void resize(const QSize &size, const QRegion &r) override;
+    bool scroll(const QRegion &area, int dx, int dy) override;
+    void beginPaint(const QRegion &) override;
 
     HDC getDC() const;
 
-#ifndef QT_NO_OPENGL
-    QImage toImage() const Q_DECL_OVERRIDE;
-#endif
+    QImage toImage() const override;
 
 private:
     QScopedPointer<QWindowsNativeImage> m_image;

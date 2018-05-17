@@ -37,6 +37,8 @@
 **
 ****************************************************************************/
 
+#include <QtPrintSupport/qtprintsupportglobal.h>
+
 #ifndef QT_NO_PRINTER
 
 #include "qprintengine_win_p.h"
@@ -77,7 +79,7 @@ extern QMarginsF qt_convertMargins(const QMarginsF &margins, QPageLayout::Unit f
 static void draw_text_item_win(const QPointF &_pos, const QTextItemInt &ti, HDC hdc,
                                const QTransform &xform, const QPointF &topLeft);
 
-QWin32PrintEngine::QWin32PrintEngine(QPrinter::PrinterMode mode)
+QWin32PrintEngine::QWin32PrintEngine(QPrinter::PrinterMode mode, const QString &deviceId)
     : QAlphaPaintEngine(*(new QWin32PrintEnginePrivate),
                    PaintEngineFeatures(PrimitiveTransform
                                        | PixmapTransform
@@ -90,7 +92,7 @@ QWin32PrintEngine::QWin32PrintEngine(QPrinter::PrinterMode mode)
     d->mode = mode;
     QPlatformPrinterSupport *ps = QPlatformPrinterSupportPlugin::get();
     if (ps)
-        d->m_printDevice = ps->createDefaultPrintDevice();
+        d->m_printDevice = ps->createPrintDevice(deviceId.isEmpty() ? ps->defaultPrintDeviceId() : deviceId);
     d->m_pageLayout.setPageSize(d->m_printDevice.defaultPageSize());
     d->initialize();
 }
@@ -104,7 +106,7 @@ static QByteArray msgBeginFailed(const char *function, const DOCINFO &d)
        str << ", document \"" << QString::fromWCharArray(d.lpszDocName) << '"';
     if (d.lpszOutput && d.lpszOutput[0])
         str << ", file \"" << QString::fromWCharArray(d.lpszOutput) << '"';
-    return result.toLocal8Bit();
+    return std::move(result).toLocal8Bit();
 }
 
 bool QWin32PrintEngine::begin(QPaintDevice *pdev)
@@ -1141,7 +1143,7 @@ void QWin32PrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &
 #endif // QT_DEBUG_METRICS
         break;
 
-    case PPK_CopyCount: // fallthrough
+    case PPK_CopyCount:
     case PPK_NumberOfCopies:
         if (!d->devMode)
             break;
@@ -1222,11 +1224,20 @@ void QWin32PrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &
         QPlatformPrinterSupport *ps = QPlatformPrinterSupportPlugin::get();
         if (!ps)
             return;
+
+        QVariant pageSize = QVariant::fromValue(d->m_pageLayout.pageSize());
+        const bool isFullPage = (d->m_pageLayout.mode() == QPageLayout::FullPageMode);
+        QVariant orientation = QVariant::fromValue(d->m_pageLayout.orientation());
+        QVariant margins = QVariant::fromValue(
+            QPair<QMarginsF, QPageLayout::Unit>(d->m_pageLayout.margins(), d->m_pageLayout.units()));
         QPrintDevice printDevice = ps->createPrintDevice(id.isEmpty() ? ps->defaultPrintDeviceId() : id);
         if (printDevice.isValid()) {
             d->m_printDevice = printDevice;
-            // TODO Do we need to check if the page size is valid on new printer?
             d->initialize();
+            setProperty(PPK_QPageSize, pageSize);
+            setProperty(PPK_FullPage, QVariant(isFullPage));
+            setProperty(PPK_Orientation, orientation);
+            setProperty(PPK_QPageMargins, margins);
         }
         break;
     }
@@ -1488,7 +1499,7 @@ QVariant QWin32PrintEngine::property(PrintEnginePropertyKey key) const
         QList<QVariant> out;
         const auto inputSlots = d->m_printDevice.supportedInputSlots();
         out.reserve(inputSlots.size());
-        for (const QPrint::InputSlot inputSlot : inputSlots)
+        for (const QPrint::InputSlot &inputSlot : inputSlots)
             out << QVariant(inputSlot.id == QPrint::CustomInputSlot ? inputSlot.windowsId : int(inputSlot.id));
         value = out;
         break;
@@ -1648,9 +1659,33 @@ void QWin32PrintEnginePrivate::updatePageLayout()
     m_pageLayout.setOrientation(devMode->dmOrientation == DMORIENT_LANDSCAPE ? QPageLayout::Landscape : QPageLayout::Portrait);
     if (devMode->dmPaperSize >= DMPAPER_LAST) {
         // Is a custom size
-        QPageSize pageSize = QPageSize(QSizeF(devMode->dmPaperWidth / 10.0f, devMode->dmPaperLength / 10.0f),
-                                       QPageSize::Millimeter);
-        setPageSize(pageSize);
+        // Check if it is using the Postscript Custom Size first
+        bool hasCustom = false;
+        int feature = PSIDENT_GDICENTRIC;
+        if (ExtEscape(hdc, POSTSCRIPT_IDENTIFY,
+                      sizeof(DWORD), reinterpret_cast<LPCSTR>(&feature), 0, 0) >= 0) {
+            PSFEATURE_CUSTPAPER custPaper;
+            feature = FEATURESETTING_CUSTPAPER;
+            if (ExtEscape(hdc, GET_PS_FEATURESETTING, sizeof(INT), reinterpret_cast<LPCSTR>(&feature),
+                          sizeof(custPaper), reinterpret_cast<LPSTR>(&custPaper)) > 0) {
+                // If orientation is 1 and width/height is 0 then it's not really custom
+                if (!(custPaper.lOrientation == 1 && custPaper.lWidth == 0 && custPaper.lHeight == 0)) {
+                    if (custPaper.lOrientation == 0 || custPaper.lOrientation == 2)
+                        m_pageLayout.setOrientation(QPageLayout::Portrait);
+                    else
+                        m_pageLayout.setOrientation(QPageLayout::Landscape);
+                    QPageSize pageSize = QPageSize(QSizeF(custPaper.lWidth, custPaper.lHeight),
+                                                   QPageSize::Point);
+                    setPageSize(pageSize);
+                    hasCustom = true;
+                }
+            }
+        }
+        if (!hasCustom) {
+            QPageSize pageSize = QPageSize(QSizeF(devMode->dmPaperWidth / 10.0f, devMode->dmPaperLength / 10.0f),
+                                           QPageSize::Millimeter);
+            setPageSize(pageSize);
+        }
     } else {
         // Is a supported size
         setPageSize(QPageSize(QPageSize::id(devMode->dmPaperSize)));
@@ -1719,7 +1754,6 @@ static void draw_text_item_win(const QPointF &pos, const QTextItemInt &ti, HDC h
         }
     }
 
-#if !defined(Q_OS_WINCE)
     // Scale, rotate and translate here.
     XFORM win_xform;
     win_xform.eM11 = xform.m11();
@@ -1731,7 +1765,6 @@ static void draw_text_item_win(const QPointF &pos, const QTextItemInt &ti, HDC h
 
     SetGraphicsMode(hdc, GM_ADVANCED);
     SetWorldTransform(hdc, &win_xform);
-#endif
 
     if (fast) {
         // fast path
@@ -1784,11 +1817,9 @@ static void draw_text_item_win(const QPointF &pos, const QTextItemInt &ti, HDC h
         }
     }
 
-#if !defined(Q_OS_WINCE)
         win_xform.eM11 = win_xform.eM22 = 1.0;
         win_xform.eM12 = win_xform.eM21 = win_xform.eDx = win_xform.eDy = 0.0;
         SetWorldTransform(hdc, &win_xform);
-#endif
 
     SelectObject(hdc, old_font);
 }

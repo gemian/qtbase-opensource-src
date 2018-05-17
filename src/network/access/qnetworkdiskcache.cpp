@@ -60,8 +60,6 @@
 
 #define MAX_COMPRESSION_SIZE (1024 * 1024 * 3)
 
-#ifndef QT_NO_NETWORKDISKCACHE
-
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -422,7 +420,7 @@ QIODevice *QNetworkDiskCache::data(const QUrl &url)
             // ### verify that QFile uses the fd size and not the file name
             qint64 size = file->size() - file->pos();
             const uchar *p = 0;
-#if !defined(Q_OS_WINCE) && !defined(Q_OS_INTEGRITY)
+#if !defined(Q_OS_INTEGRITY)
             p = file->map(file->pos(), size);
 #endif
             if (p) {
@@ -539,7 +537,9 @@ qint64 QNetworkDiskCache::expire()
         QFileInfo info = it.fileInfo();
         QString fileName = info.fileName();
         if (fileName.endsWith(CACHE_POSTFIX)) {
-            cacheItems.insert(info.created(), path);
+            const QDateTime birthTime = info.fileTime(QFile::FileBirthTime);
+            cacheItems.insert(birthTime.isValid() ? birthTime
+                              : info.fileTime(QFile::FileMetadataChangeTime), path);
             totalSize += info.size();
         }
     }
@@ -606,7 +606,7 @@ QString QNetworkDiskCachePrivate::uniqueFileName(const QUrl &url)
     QCryptographicHash hash(QCryptographicHash::Sha1);
     hash.addData(cleanUrl.toEncoded());
     // convert sha1 to base36 form and return first 8 bytes for use as string
-    QByteArray id =  QByteArray::number(*(qlonglong*)hash.result().data(), 36).left(8);
+    const QByteArray id = QByteArray::number(*(qlonglong*)hash.result().constData(), 36).left(8);
     // generates <one-char subdir>/<8-char filname.d>
     uint code = (uint)id.at(id.length()-1) % 16;
     QString pathFragment = QString::number(code, 16) + QLatin1Char('/')
@@ -737,5 +737,3 @@ bool QCacheItem::read(QFile *device, bool readData)
 }
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_NETWORKDISKCACHE

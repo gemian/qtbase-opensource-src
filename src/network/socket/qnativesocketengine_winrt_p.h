@@ -50,9 +50,12 @@
 //
 // We mean it.
 //
+
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include <QtCore/QEventLoop>
 #include <QtCore/QBuffer>
 #include <QtCore/QMutex>
+#include <QtCore/QAtomicInteger>
 #include "QtNetwork/qhostaddress.h"
 #include "private/qabstractsocketengine_p.h"
 #include <wrl.h>
@@ -60,7 +63,41 @@
 
 QT_BEGIN_NAMESPACE
 
+namespace WinRTSocketEngine {
+    enum ErrorString {
+        NonBlockingInitFailedErrorString,
+        BroadcastingInitFailedErrorString,
+        NoIpV6ErrorString,
+        RemoteHostClosedErrorString,
+        TimeOutErrorString,
+        ResourceErrorString,
+        OperationUnsupportedErrorString,
+        ProtocolUnsupportedErrorString,
+        InvalidSocketErrorString,
+        HostUnreachableErrorString,
+        NetworkUnreachableErrorString,
+        AccessErrorString,
+        ConnectionTimeOutErrorString,
+        ConnectionRefusedErrorString,
+        AddressInuseErrorString,
+        AddressNotAvailableErrorString,
+        AddressProtectedErrorString,
+        DatagramTooLargeErrorString,
+        SendDatagramErrorString,
+        ReceiveDatagramErrorString,
+        WriteErrorString,
+        ReadErrorString,
+        PortInuseErrorString,
+        NotSocketErrorString,
+        InvalidProxyTypeString,
+        TemporaryErrorString,
+
+        UnknownSocketErrorString = -1
+    };
+}
+
 class QNativeSocketEnginePrivate;
+class SocketEngineWorker;
 
 struct WinRtDatagram {
     QByteArray data;
@@ -135,9 +172,15 @@ signals:
     void connectionReady();
     void readReady();
     void writeReady();
+    void newDatagramReceived(const WinRtDatagram &datagram);
 
 private slots:
     void establishRead();
+    void handleConnectOpFinished(bool success, QAbstractSocket::SocketError error,
+                                 WinRTSocketEngine::ErrorString errorString);
+    void handleNewDatagrams(const QList<WinRtDatagram> &datagram);
+    void handleNewData(const QVector<QByteArray> &data);
+    void handleTcpError(QAbstractSocket::SocketError error);
 
 private:
     Q_DECLARE_PRIVATE(QNativeSocketEngine)
@@ -152,42 +195,12 @@ public:
     ~QNativeSocketEnginePrivate();
 
     qintptr socketDescriptor;
+    SocketEngineWorker *worker;
 
     bool notifyOnRead, notifyOnWrite, notifyOnException;
     QAtomicInt closingDown;
 
-    enum ErrorString {
-        NonBlockingInitFailedErrorString,
-        BroadcastingInitFailedErrorString,
-        NoIpV6ErrorString,
-        RemoteHostClosedErrorString,
-        TimeOutErrorString,
-        ResourceErrorString,
-        OperationUnsupportedErrorString,
-        ProtocolUnsupportedErrorString,
-        InvalidSocketErrorString,
-        HostUnreachableErrorString,
-        NetworkUnreachableErrorString,
-        AccessErrorString,
-        ConnectionTimeOutErrorString,
-        ConnectionRefusedErrorString,
-        AddressInuseErrorString,
-        AddressNotAvailableErrorString,
-        AddressProtectedErrorString,
-        DatagramTooLargeErrorString,
-        SendDatagramErrorString,
-        ReceiveDatagramErrorString,
-        WriteErrorString,
-        ReadErrorString,
-        PortInuseErrorString,
-        NotSocketErrorString,
-        InvalidProxyTypeString,
-        TemporaryErrorString,
-
-        UnknownSocketErrorString = -1
-    };
-
-    void setError(QAbstractSocket::SocketError error, ErrorString errorString) const;
+    void setError(QAbstractSocket::SocketError error, WinRTSocketEngine::ErrorString errorString) const;
 
     // native functions
     int option(QNativeSocketEngine::SocketOption option) const;
@@ -204,12 +217,21 @@ private:
     inline ABI::Windows::Networking::Sockets::IDatagramSocket *udpSocket() const
         { return reinterpret_cast<ABI::Windows::Networking::Sockets::IDatagramSocket *>(socketDescriptor); }
     Microsoft::WRL::ComPtr<ABI::Windows::Networking::Sockets::IStreamSocketListener> tcpListener;
-    Microsoft::WRL::ComPtr<ABI::Windows::Foundation::IAsyncAction> connectOp;
-    Microsoft::WRL::ComPtr<ABI::Windows::Foundation::IAsyncOperationWithProgress<ABI::Windows::Storage::Streams::IBuffer *, UINT32>> readOp;
-    QBuffer readBytes;
-    QMutex readMutex;
 
+    // In case of TCP readMutex protects readBytes and bytesAvailable. In case of UDP it is
+    // pendingDatagrams. They are written inside native callbacks (handleReadyRead and
+    // handleNewDatagrams/putIntoPendingDatagramsList)
+    mutable QMutex readMutex;
+
+    // Protected by readMutex. Written in handleReadyRead (native callback)
+    QAtomicInteger<int> bytesAvailable;
+
+    // Protected by readMutex. Written in handleNewData/putIntoPendingData (native callback)
+    QVector<QByteArray> pendingData;
+
+    // Protected by readMutex. Written in handleNewDatagrams/putIntoPendingDatagramsList
     QList<WinRtDatagram> pendingDatagrams;
+
     QList<ABI::Windows::Networking::Sockets::IStreamSocket *> pendingConnections;
     QList<ABI::Windows::Networking::Sockets::IStreamSocket *> currentConnections;
     QEventLoop eventLoop;
@@ -220,10 +242,11 @@ private:
                               ABI::Windows::Networking::Sockets::IDatagramSocketMessageReceivedEventArgs *args);
     HRESULT handleClientConnection(ABI::Windows::Networking::Sockets::IStreamSocketListener *tcpListener,
                                    ABI::Windows::Networking::Sockets::IStreamSocketListenerConnectionReceivedEventArgs *args);
-    HRESULT handleConnectOpFinished(ABI::Windows::Foundation::IAsyncAction *, ABI::Windows::Foundation::AsyncStatus);
-    HRESULT handleReadyRead(ABI::Windows::Foundation::IAsyncOperationWithProgress<ABI::Windows::Storage::Streams::IBuffer *, UINT32> *asyncInfo, ABI::Windows::Foundation::AsyncStatus);
 };
 
 QT_END_NAMESPACE
+
+Q_DECLARE_METATYPE(WinRtDatagram)
+Q_DECLARE_METATYPE(WinRTSocketEngine::ErrorString)
 
 #endif // QNATIVESOCKETENGINE_WINRT_P_H

@@ -51,15 +51,15 @@
 //
 //
 
-#include "qglobal.h"
-
-#ifndef QT_NO_PRINTDIALOG
+#include <QtPrintSupport/private/qtprintsupportglobal_p.h>
 
 #include "qprinter.h"
 
 #include <QtGui/qpagelayout.h>
 
 #include <ui_qpagesetupwidget.h>
+
+QT_REQUIRE_CONFIG(printdialog);
 
 QT_BEGIN_NAMESPACE
 
@@ -69,8 +69,8 @@ class QPagePreview;
 class QPageSetupWidget : public QWidget {
     Q_OBJECT
 public:
-    explicit QPageSetupWidget(QWidget *parent = 0);
-    explicit QPageSetupWidget(QPrinter *printer, QWidget *parent = 0);
+    explicit QPageSetupWidget(QWidget *parent = nullptr);
+    explicit QPageSetupWidget(QPrinter *printer, QWidget *parent = nullptr);
 
     void setPrinter(QPrinter *printer);
     void selectPrinter(QPrinter::OutputFormat outputFormat, const QString &printerName);
@@ -106,5 +106,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QT_NO_PRINTDIALOG
 #endif

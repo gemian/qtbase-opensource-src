@@ -39,7 +39,11 @@
 
 #include "qrasterbackingstore_p.h"
 
+#include <QtGui/qbackingstore.h>
 #include <QtGui/qpainter.h>
+
+#include <private/qhighdpiscaling_p.h>
+#include <qpa/qplatformwindow.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -55,18 +59,15 @@ QRasterBackingStore::~QRasterBackingStore()
 void QRasterBackingStore::resize(const QSize &size, const QRegion &staticContents)
 {
     Q_UNUSED(staticContents);
+    m_requestedSize = size;
+}
 
-    int windowDevicePixelRatio = window()->devicePixelRatio();
-    QSize effectiveBufferSize = size * windowDevicePixelRatio;
-
-    if (m_image.size() == effectiveBufferSize)
-        return;
-
-    QImage::Format format = window()->format().hasAlpha() ? QImage::Format_ARGB32_Premultiplied : QImage::Format_RGB32;
-    m_image = QImage(effectiveBufferSize, format);
-    m_image.setDevicePixelRatio(windowDevicePixelRatio);
-    if (format == QImage::Format_ARGB32_Premultiplied)
-        m_image.fill(Qt::transparent);
+QImage::Format QRasterBackingStore::format() const
+{
+    if (window()->format().hasAlpha())
+        return QImage::Format_ARGB32_Premultiplied;
+    else
+        return QImage::Format_RGB32;
 }
 
 QPaintDevice *QRasterBackingStore::paintDevice()
@@ -89,7 +90,7 @@ bool QRasterBackingStore::scroll(const QRegion &region, int dx, int dy)
     const qreal devicePixelRatio = m_image.devicePixelRatio();
     const QPoint delta(dx * devicePixelRatio, dy * devicePixelRatio);
 
-    foreach (const QRect &rect, region.rects())
+    for (const QRect &rect : region)
         qt_scrollRectInImage(m_image, QRect(rect.topLeft() * devicePixelRatio, rect.size() * devicePixelRatio), delta);
 
     return true;
@@ -97,14 +98,22 @@ bool QRasterBackingStore::scroll(const QRegion &region, int dx, int dy)
 
 void QRasterBackingStore::beginPaint(const QRegion &region)
 {
+    qreal nativeWindowDevicePixelRatio = window()->handle()->devicePixelRatio();
+    QSize effectiveBufferSize = m_requestedSize * nativeWindowDevicePixelRatio;
+    if (m_image.devicePixelRatio() != nativeWindowDevicePixelRatio || m_image.size() != effectiveBufferSize) {
+        m_image = QImage(effectiveBufferSize, format());
+        m_image.setDevicePixelRatio(nativeWindowDevicePixelRatio);
+        if (m_image.format() == QImage::Format_ARGB32_Premultiplied)
+            m_image.fill(Qt::transparent);
+    }
+
     if (!m_image.hasAlphaChannel())
         return;
 
     QPainter painter(&m_image);
     painter.setCompositionMode(QPainter::CompositionMode_Source);
-    const QColor blank = Qt::transparent;
-    foreach (const QRect &rect, region.rects())
-        painter.fillRect(rect, blank);
+    for (const QRect &rect : region)
+        painter.fillRect(rect, Qt::transparent);
 }
 
 QT_END_NAMESPACE

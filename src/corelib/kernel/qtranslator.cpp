@@ -487,10 +487,9 @@ bool QTranslator::load(const QString & filename, const QString & directory,
     }
 
     const QString suffixOrDotQM = suffix.isNull() ? dotQmLiteral() : suffix;
-    QString fname = filename;
+    QStringRef fname(&filename);
     QString realname;
-    QString delims;
-    delims = search_delimiters.isNull() ? QStringLiteral("_.") : search_delimiters;
+    const QString delims = search_delimiters.isNull() ? QStringLiteral("_.") : search_delimiters;
 
     for (;;) {
         QFileInfo fi;
@@ -1143,5 +1142,7 @@ bool QTranslator::isEmpty() const
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qtranslator.cpp"
 
 #endif // QT_NO_TRANSLATION

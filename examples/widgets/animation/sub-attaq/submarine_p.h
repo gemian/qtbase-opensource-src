@@ -69,6 +69,7 @@
 
 //Qt
 #include <QtCore/QPropertyAnimation>
+#include <QtCore/QRandomGenerator>
 #include <QtWidgets/QGraphicsScene>
 
 //This state is describing when the boat is moving right
@@ -88,12 +89,12 @@ public:
 protected slots:
     void onAnimationMovementValueChanged(const QVariant &)
     {
-        if (qrand() % 200 + 1 == 3)
-            submarine->launchTorpedo(qrand() % 3 + 1);
+        if (QRandomGenerator::global()->bounded(200) + 1 == 3)
+            submarine->launchTorpedo(QRandomGenerator::global()->bounded(3) + 1);
     }
 
 protected:
-    void onEntry(QEvent *e) Q_DECL_OVERRIDE
+    void onEntry(QEvent *e) override
     {
         if (submarine->currentDirection() == SubMarine::Left) {
             movementAnimation->setEndValue(QPointF(0,submarine->y()));
@@ -125,14 +126,14 @@ public:
     }
 
 protected:
-    void onEntry(QEvent *e) Q_DECL_OVERRIDE
+    void onEntry(QEvent *e) override
     {
         returnAnimation->stop();
         returnAnimation->setEndValue(submarine->currentDirection() == SubMarine::Right ? 360. : 180.);
         QAnimationState::onEntry(e);
     }
 
-    void onExit(QEvent *e) Q_DECL_OVERRIDE
+    void onExit(QEvent *e) override
     {
         submarine->currentDirection() == SubMarine::Right ? submarine->setCurrentDirection(SubMarine::Left) : submarine->setCurrentDirection(SubMarine::Right);
         QAnimationState::onExit(e);

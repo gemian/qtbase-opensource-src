@@ -40,6 +40,7 @@
 #ifndef QSTATICTEXT_H
 #define QSTATICTEXT_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qmetatype.h>
@@ -61,7 +62,7 @@ public:
     };
 
     QStaticText();
-    QStaticText(const QString &text);
+    explicit QStaticText(const QString &text);
     QStaticText(const QStaticText &other);
 #ifdef Q_COMPILER_RVALUE_REFS
     QStaticText &operator=(QStaticText &&other) Q_DECL_NOTHROW { swap(other); return *this; }

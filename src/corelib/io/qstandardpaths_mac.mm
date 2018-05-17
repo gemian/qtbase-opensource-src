@@ -117,7 +117,7 @@ static QString baseWritableLocation(QStandardPaths::StandardLocation type,
     case QStandardPaths::TempLocation:
         path = QDir::tempPath();
         break;
-#ifdef Q_OS_IOS
+#if defined(QT_PLATFORM_UIKIT)
     // These locations point to non-existing write-protected paths. Use sensible fallbacks.
     case QStandardPaths::MusicLocation:
         path = pathForDirectory(NSDocumentDirectory, mask) + QLatin1String("/Music");
@@ -168,43 +168,18 @@ static QString baseWritableLocation(QStandardPaths::StandardLocation type,
 
 QString QStandardPaths::writableLocation(StandardLocation type)
 {
-    if (isTestModeEnabled()) {
-        const QString qttestDir = QDir::homePath() + QLatin1String("/.qttest");
-        QString path;
-        switch (type) {
-        case GenericDataLocation:
-        case AppDataLocation:
-        case AppLocalDataLocation:
-            path = qttestDir + QLatin1String("/Application Support");
-            if (type != GenericDataLocation)
-                appendOrganizationAndApp(path);
-            return path;
-        case GenericCacheLocation:
-        case CacheLocation:
-            path = qttestDir + QLatin1String("/Cache");
-            if (type == CacheLocation)
-                appendOrganizationAndApp(path);
-            return path;
-        case GenericConfigLocation:
-        case ConfigLocation:
-        case AppConfigLocation:
-            path = qttestDir + QLatin1String("/Preferences");
-            if (type == AppConfigLocation)
-                appendOrganizationAndApp(path);
-            return path;
-        default:
-            break;
-        }
-    }
+    QString location = baseWritableLocation(type, NSUserDomainMask, true);
+    if (isTestModeEnabled())
+        location = location.replace(QDir::homePath(), QDir::homePath() + QLatin1String("/.qttest"));
 
-    return baseWritableLocation(type, NSUserDomainMask, true);
+    return location;
 }
 
 QStringList QStandardPaths::standardLocations(StandardLocation type)
 {
     QStringList dirs;
 
-#ifdef Q_OS_IOS
+#if defined(QT_PLATFORM_UIKIT)
     if (type == PicturesLocation)
         dirs << writableLocation(PicturesLocation) << QLatin1String("assets-library://");
 #endif
@@ -229,14 +204,15 @@ QStringList QStandardPaths::standardLocations(StandardLocation type)
         CFBundleRef mainBundle = CFBundleGetMainBundle();
         if (mainBundle) {
             CFURLRef bundleUrl = CFBundleCopyBundleURL(mainBundle);
-            CFStringRef cfBundlePath = CFURLCopyPath(bundleUrl);
-            QString bundlePath = QCFString::toQString(cfBundlePath);
+            CFStringRef cfBundlePath = CFURLCopyFileSystemPath(bundleUrl, kCFURLPOSIXPathStyle);
+            QString bundlePath = QString::fromCFString(cfBundlePath);
             CFRelease(cfBundlePath);
             CFRelease(bundleUrl);
 
             CFURLRef resourcesUrl = CFBundleCopyResourcesDirectoryURL(mainBundle);
-            CFStringRef cfResourcesPath = CFURLCopyPath(resourcesUrl);
-            QString resourcesPath = QCFString::toQString(cfResourcesPath);
+            CFStringRef cfResourcesPath = CFURLCopyFileSystemPath(resourcesUrl,
+                kCFURLPOSIXPathStyle);
+            QString resourcesPath = QString::fromCFString(cfResourcesPath);
             CFRelease(cfResourcesPath);
             CFRelease(resourcesUrl);
 
@@ -272,9 +248,9 @@ QString QStandardPaths::displayName(StandardLocation type)
     if (QStandardPaths::ApplicationsLocation == type)
         return QCoreApplication::translate("QStandardPaths", "Applications");
 
+    const QCFString fsPath(standardLocations(type).constFirst());
     if (QCFType<CFURLRef> url = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
-            standardLocations(type).constFirst().toCFString(),
-            kCFURLPOSIXPathStyle, true)) {
+            fsPath, kCFURLPOSIXPathStyle, true)) {
         QCFString name;
         CFURLCopyResourcePropertyForKey(url, kCFURLLocalizedNameKey, &name, NULL);
         if (name && CFStringGetLength(name))

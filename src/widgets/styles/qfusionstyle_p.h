@@ -51,15 +51,16 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtWidgets/qcommonstyle.h>
 
 QT_BEGIN_NAMESPACE
 
 
-#if !defined(QT_NO_STYLE_FUSION)
+#if QT_CONFIG(style_fusion)
 
 class QFusionStylePrivate;
-class QFusionStyle : public QCommonStyle
+class Q_WIDGETS_EXPORT QFusionStyle : public QCommonStyle
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QFusionStyle)
@@ -109,7 +110,7 @@ protected:
 
 };
 
-#endif // QT_NO_STYLE_FUSION
+#endif // style_fusion
 
 QT_END_NAMESPACE
 

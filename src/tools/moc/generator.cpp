@@ -218,6 +218,7 @@ void Generator::generateCode()
     registerFunctionStrings(cdef->slotList);
     registerFunctionStrings(cdef->methodList);
     registerFunctionStrings(cdef->constructorList);
+    registerByteArrayVector(cdef->nonClassSignalList);
     registerPropertyStrings();
     registerEnumStrings();
 
@@ -515,36 +516,36 @@ void Generator::generateCode()
         for (int i = 0; i < extraList.count(); ++i) {
             fprintf(out, "    &%s::staticMetaObject,\n", extraList.at(i).constData());
         }
-        fprintf(out, "    Q_NULLPTR\n};\n\n");
+        fprintf(out, "    nullptr\n};\n\n");
     }
 
 //
 // Finally create and initialize the static meta object
 //
     if (isQt)
-        fprintf(out, "const QMetaObject QObject::staticQtMetaObject = {\n");
+        fprintf(out, "QT_INIT_METAOBJECT const QMetaObject QObject::staticQtMetaObject = {\n");
     else
-        fprintf(out, "const QMetaObject %s::staticMetaObject = {\n", cdef->qualified.constData());
+        fprintf(out, "QT_INIT_METAOBJECT const QMetaObject %s::staticMetaObject = {\n", cdef->qualified.constData());
 
     if (isQObject)
-        fprintf(out, "    { Q_NULLPTR, ");
+        fprintf(out, "    { nullptr, ");
     else if (cdef->superclassList.size() && (!cdef->hasQGadget || knownGadgets.contains(purestSuperClass)))
         fprintf(out, "    { &%s::staticMetaObject, ", purestSuperClass.constData());
     else
-        fprintf(out, "    { Q_NULLPTR, ");
+        fprintf(out, "    { nullptr, ");
     fprintf(out, "qt_meta_stringdata_%s.data,\n"
             "      qt_meta_data_%s, ", qualifiedClassNameIdentifier.constData(),
             qualifiedClassNameIdentifier.constData());
     if (hasStaticMetaCall)
         fprintf(out, " qt_static_metacall, ");
     else
-        fprintf(out, " Q_NULLPTR, ");
+        fprintf(out, " nullptr, ");
 
     if (extraList.isEmpty())
-        fprintf(out, "Q_NULLPTR, ");
+        fprintf(out, "nullptr, ");
     else
         fprintf(out, "qt_meta_extradata_%s, ", qualifiedClassNameIdentifier.constData());
-    fprintf(out, "Q_NULLPTR}\n};\n\n");
+    fprintf(out, "nullptr}\n};\n\n");
 
     if(isQt)
         return;
@@ -559,16 +560,16 @@ void Generator::generateCode()
 // Generate smart cast function
 //
     fprintf(out, "\nvoid *%s::qt_metacast(const char *_clname)\n{\n", cdef->qualified.constData());
-    fprintf(out, "    if (!_clname) return Q_NULLPTR;\n");
+    fprintf(out, "    if (!_clname) return nullptr;\n");
     fprintf(out, "    if (!strcmp(_clname, qt_meta_stringdata_%s.stringdata0))\n"
-                  "        return static_cast<void*>(const_cast< %s*>(this));\n",
-            qualifiedClassNameIdentifier.constData(), cdef->classname.constData());
+                  "        return static_cast<void*>(this);\n",
+            qualifiedClassNameIdentifier.constData());
     for (int i = 1; i < cdef->superclassList.size(); ++i) { // for all superclasses but the first one
         if (cdef->superclassList.at(i).second == FunctionDef::Private)
             continue;
         const char *cname = cdef->superclassList.at(i).first.constData();
-        fprintf(out, "    if (!strcmp(_clname, \"%s\"))\n        return static_cast< %s*>(const_cast< %s*>(this));\n",
-                cname, cname, cdef->classname.constData());
+        fprintf(out, "    if (!strcmp(_clname, \"%s\"))\n        return static_cast< %s*>(this);\n",
+                cname, cname);
     }
     for (int i = 0; i < cdef->interfaceList.size(); ++i) {
         const QVector<ClassDef::Interface> &iface = cdef->interfaceList.at(i);
@@ -576,15 +577,14 @@ void Generator::generateCode()
             fprintf(out, "    if (!strcmp(_clname, %s))\n        return ", iface.at(j).interfaceId.constData());
             for (int k = j; k >= 0; --k)
                 fprintf(out, "static_cast< %s*>(", iface.at(k).className.constData());
-            fprintf(out, "const_cast< %s*>(this)%s;\n",
-                    cdef->classname.constData(), QByteArray(j+1, ')').constData());
+            fprintf(out, "this%s;\n", QByteArray(j + 1, ')').constData());
         }
     }
     if (!purestSuperClass.isEmpty() && !isQObject) {
         QByteArray superClass = purestSuperClass;
         fprintf(out, "    return %s::qt_metacast(_clname);\n", superClass.constData());
     } else {
-        fprintf(out, "    return Q_NULLPTR;\n");
+        fprintf(out, "    return nullptr;\n");
     }
     fprintf(out, "}\n");
 
@@ -603,6 +603,19 @@ void Generator::generateCode()
 // Generate plugin meta data
 //
     generatePluginMetaData();
+
+//
+// Generate function to make sure the non-class signals exist in the parent classes
+//
+    if (!cdef->nonClassSignalList.isEmpty()) {
+        fprintf(out, "// If you get a compile error in this function it can be because either\n");
+        fprintf(out, "//     a) You are using a NOTIFY signal that does not exist. Fix it.\n");
+        fprintf(out, "//     b) You are using a NOTIFY signal that does exist (in a parent class) but has a non-empty parameter list. This is a moc limitation.\n");
+        fprintf(out, "Q_DECL_UNUSED static void checkNotifySignalValidity_%s(%s *t) {\n", qualifiedClassNameIdentifier.constData(), cdef->qualified.constData());
+        for (const QByteArray &nonClassSignal : cdef->nonClassSignalList)
+            fprintf(out, "    t->%s();\n", nonClassSignal.constData());
+        fprintf(out, "}\n");
+    }
 }
 
 
@@ -646,6 +659,12 @@ void Generator::registerFunctionStrings(const QVector<FunctionDef>& list)
             strreg(a.name);
         }
     }
+}
+
+void Generator::registerByteArrayVector(const QVector<QByteArray> &list)
+{
+    for (const QByteArray &ba : list)
+        strreg(ba);
 }
 
 void Generator::generateFunctions(const QVector<FunctionDef>& list, const char *functype, int type, int &paramsIndex)
@@ -841,12 +860,17 @@ void Generator::generateProperties()
         fprintf(out, "\n // properties: notify_signal_id\n");
         for (int i = 0; i < cdef->propertyList.count(); ++i) {
             const PropertyDef &p = cdef->propertyList.at(i);
-            if(p.notifyId == -1)
+            if (p.notifyId == -1) {
                 fprintf(out, "    %4d,\n",
                         0);
-            else
+            } else if (p.notifyId > -1) {
                 fprintf(out, "    %4d,\n",
                         p.notifyId);
+            } else {
+                const int indexInStrings = strings.indexOf(p.notify);
+                fprintf(out, "    %4d,\n",
+                        indexInStrings | IsUnresolvedSignal);
+            }
         }
     }
     if (cdef->revisionedProperties) {
@@ -878,9 +902,14 @@ void Generator::generateEnums(int index)
     int i;
     for (i = 0; i < cdef->enumList.count(); ++i) {
         const EnumDef &e = cdef->enumList.at(i);
+        int flags = 0;
+        if (cdef->enumDeclarations.value(e.name))
+            flags |= EnumIsFlag;
+        if (e.isEnumClass)
+            flags |= EnumIsScoped;
         fprintf(out, "    %4d, 0x%.1x, %4d, %4d,\n",
                  stridx(e.name),
-                 cdef->enumDeclarations.value(e.name) ? 1 : 0,
+                 flags,
                  e.values.count(),
                  index);
         index += e.values.count() * 2;
@@ -913,14 +942,21 @@ void Generator::generateMetacall()
         fprintf(out, "    _id = %s::qt_metacall(_c, _id, _a);\n", superClass.constData());
     }
 
-    fprintf(out, "    if (_id < 0)\n        return _id;\n");
-    fprintf(out, "    ");
 
     bool needElse = false;
     QVector<FunctionDef> methodList;
     methodList += cdef->signalList;
     methodList += cdef->slotList;
     methodList += cdef->methodList;
+
+    // If there are no methods or properties, we will return _id anyway, so
+    // don't emit this comparison -- it is unnecessary, and it makes coverity
+    // unhappy.
+    if (methodList.size() || cdef->propertyList.size()) {
+        fprintf(out, "    if (_id < 0)\n        return _id;\n");
+    }
+
+    fprintf(out, "    ");
 
     if (methodList.size()) {
         needElse = true;
@@ -1062,7 +1098,7 @@ void Generator::generateMetacall()
 
         fprintf(out, "\n#endif // QT_NO_PROPERTIES");
     }
-    if (methodList.size() || cdef->signalList.size() || cdef->propertyList.size())
+    if (methodList.size() || cdef->propertyList.size())
         fprintf(out, "\n    ");
     fprintf(out,"return _id;\n}\n");
 }
@@ -1181,7 +1217,7 @@ void Generator::generateStaticMetacall()
             }
             fprintf(out, ");");
             if (f.normalizedType != "void") {
-                fprintf(out, "\n            if (_a[0]) *reinterpret_cast< %s*>(_a[0]) = _r; } ",
+                fprintf(out, "\n            if (_a[0]) *reinterpret_cast< %s*>(_a[0]) = std::move(_r); } ",
                         noRef(f.normalizedType).constData());
                 isUsed_a = true;
             }
@@ -1226,7 +1262,6 @@ void Generator::generateStaticMetacall()
         Q_ASSERT(needElse); // if there is signal, there was method.
         fprintf(out, " else if (_c == QMetaObject::IndexOfMethod) {\n");
         fprintf(out, "        int *result = reinterpret_cast<int *>(_a[0]);\n");
-        fprintf(out, "        void **func = reinterpret_cast<void **>(_a[1]);\n");
         bool anythingUsed = false;
         for (int methodindex = 0; methodindex < cdef->signalList.size(); ++methodindex) {
             const FunctionDef &f = cdef->signalList.at(methodindex);
@@ -1252,14 +1287,14 @@ void Generator::generateStaticMetacall()
                 fprintf(out, ") const;\n");
             else
                 fprintf(out, ");\n");
-            fprintf(out, "            if (*reinterpret_cast<_t *>(func) == static_cast<_t>(&%s::%s)) {\n",
+            fprintf(out, "            if (*reinterpret_cast<_t *>(_a[1]) == static_cast<_t>(&%s::%s)) {\n",
                     cdef->classname.constData(), f.name.constData());
             fprintf(out, "                *result = %d;\n", methodindex);
             fprintf(out, "                return;\n");
             fprintf(out, "            }\n        }\n");
         }
         if (!anythingUsed)
-            fprintf(out, "        Q_UNUSED(result);\n        Q_UNUSED(func);\n");
+            fprintf(out, "        Q_UNUSED(result);\n");
         fprintf(out, "    }");
         needElse = true;
     }
@@ -1389,13 +1424,15 @@ void Generator::generateStaticMetacall()
                             prefix.constData(), p.member.constData(), p.type.constData());
                     fprintf(out, "                %s%s = *reinterpret_cast< %s*>(_v);\n",
                             prefix.constData(), p.member.constData(), p.type.constData());
-                    if (!p.notify.isEmpty() && p.notifyId != -1) {
+                    if (!p.notify.isEmpty() && p.notifyId > -1) {
                         const FunctionDef &f = cdef->signalList.at(p.notifyId);
                         if (f.arguments.size() == 0)
                             fprintf(out, "                Q_EMIT _t->%s();\n", p.notify.constData());
                         else if (f.arguments.size() == 1 && f.arguments.at(0).normalizedType == p.type)
                             fprintf(out, "                Q_EMIT _t->%s(%s%s);\n",
                                     p.notify.constData(), prefix.constData(), p.member.constData());
+                    } else if (!p.notify.isEmpty() && p.notifyId < -1) {
+                        fprintf(out, "                Q_EMIT _t->%s();\n", p.notify.constData());
                     }
                     fprintf(out, "            }\n");
                     fprintf(out, "            break;\n");
@@ -1471,12 +1508,9 @@ void Generator::generateSignal(FunctionDef *def,int index)
     }
 
     Q_ASSERT(!def->normalizedType.isEmpty());
-    if (def->arguments.isEmpty() && def->normalizedType == "void") {
-        if (def->isPrivateSignal)
-            fprintf(out, "QPrivateSignal");
-
+    if (def->arguments.isEmpty() && def->normalizedType == "void" && !def->isPrivateSignal) {
         fprintf(out, ")%s\n{\n"
-                "    QMetaObject::activate(%s, &staticMetaObject, %d, Q_NULLPTR);\n"
+                "    QMetaObject::activate(%s, &staticMetaObject, %d, nullptr);\n"
                 "}\n", constQualifier, thisPtr.constData(), index);
         return;
     }
@@ -1491,22 +1525,18 @@ void Generator::generateSignal(FunctionDef *def,int index)
     if (def->isPrivateSignal) {
         if (!def->arguments.isEmpty())
             fprintf(out, ", ");
-        fprintf(out, "QPrivateSignal");
+        fprintf(out, "QPrivateSignal _t%d", offset++);
     }
 
     fprintf(out, ")%s\n{\n", constQualifier);
     if (def->type.name.size() && def->normalizedType != "void") {
         QByteArray returnType = noRef(def->normalizedType);
-        if (returnType.endsWith('*')) {
-            fprintf(out, "    %s _t0 = 0;\n", returnType.constData());
-        } else {
-            fprintf(out, "    %s _t0 = %s();\n", returnType.constData(), returnType.constData());
-        }
+        fprintf(out, "    %s _t0{};\n", returnType.constData());
     }
 
     fprintf(out, "    void *_a[] = { ");
     if (def->normalizedType == "void") {
-        fprintf(out, "Q_NULLPTR");
+        fprintf(out, "nullptr");
     } else {
         if (def->returnTypeIsVolatile)
              fprintf(out, "const_cast<void*>(reinterpret_cast<const volatile void*>(&_t0))");
@@ -1515,7 +1545,7 @@ void Generator::generateSignal(FunctionDef *def,int index)
     }
     int i;
     for (i = 1; i < offset; ++i)
-        if (def->arguments.at(i - 1).type.isVolatile)
+        if (i <= def->arguments.count() && def->arguments.at(i - 1).type.isVolatile)
             fprintf(out, ", const_cast<void*>(reinterpret_cast<const volatile void*>(&_t%d))", i);
         else
             fprintf(out, ", const_cast<void*>(reinterpret_cast<const void*>(&_t%d))", i);

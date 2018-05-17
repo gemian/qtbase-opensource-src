@@ -55,21 +55,21 @@
 
 #include <xcb/xcb.h>
 
-#include <QtPlatformSupport/private/qgenericunixeventdispatcher_p.h>
-#include <QtPlatformSupport/private/qgenericunixfontdatabase_p.h>
-#include <QtPlatformSupport/private/qgenericunixservices_p.h>
+#include <QtEventDispatcherSupport/private/qgenericunixeventdispatcher_p.h>
+#include <QtFontDatabaseSupport/private/qgenericunixfontdatabase_p.h>
+#include <QtServiceSupport/private/qgenericunixservices_p.h>
 
 #include <stdio.h>
 
-//this has to be included before egl, since egl pulls in X headers
 #include <QtGui/private/qguiapplication_p.h>
 
-#ifdef XCB_USE_EGL
-# include <QtPlatformSupport/private/qt_egl_p.h>
-#endif
-
-#ifdef XCB_USE_XLIB
+#if QT_CONFIG(xcb_xlib)
 #include <X11/Xlib.h>
+#if QT_CONFIG(xcb_native_painting)
+#include "qxcbnativepainting.h"
+#include "qpixmap_x11_p.h"
+#include "qbackingstore_x11_p.h"
+#endif
 #endif
 
 #include <qpa/qplatforminputcontextfactory_p.h>
@@ -82,11 +82,16 @@
 #ifndef QT_NO_ACCESSIBILITY
 #include <qpa/qplatformaccessibility.h>
 #ifndef QT_NO_ACCESSIBILITY_ATSPI_BRIDGE
-#include "../../../platformsupport/linuxaccessibility/bridge_p.h"
+#include <QtLinuxAccessibilitySupport/private/bridge_p.h>
 #endif
 #endif
 
 #include <QtCore/QFileInfo>
+
+#if QT_CONFIG(vulkan)
+#include "qxcbvulkaninstance.h"
+#include "qxcbvulkanwindow.h"
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -128,7 +133,7 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
     qApp->setAttribute(Qt::AA_CompressHighFrequencyEvents, true);
 
     qRegisterMetaType<QXcbWindow*>();
-#ifdef XCB_USE_XLIB
+#if QT_CONFIG(xcb_xlib)
     XInitThreads();
 #endif
     m_nativeInterface.reset(new QXcbNativeInterface);
@@ -171,8 +176,8 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
 
 #if defined(QT_DEBUG)
     if (!noGrabArg && !doGrabArg && underDebugger) {
-        qDebug("Qt: gdb: -nograb added to command-line options.\n"
-               "\t Use the -dograb option to enforce grabbing.");
+        qCDebug(lcQpaXcb, "Qt: gdb: -nograb added to command-line options.\n"
+                "\t Use the -dograb option to enforce grabbing.");
     }
 #endif
     m_canGrab = (!underDebugger && !noGrabArg) || (underDebugger && doGrabArg);
@@ -183,15 +188,35 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
 
     const int numParameters = parameters.size();
     m_connections.reserve(1 + numParameters / 2);
-    m_connections << new QXcbConnection(m_nativeInterface.data(), m_canGrab, m_defaultVisualId, displayName);
+    auto conn = new QXcbConnection(m_nativeInterface.data(), m_canGrab, m_defaultVisualId, displayName);
+    if (conn->isConnected())
+        m_connections << conn;
+    else
+        delete conn;
 
     for (int i = 0; i < numParameters - 1; i += 2) {
         qCDebug(lcQpaScreen) << "connecting to additional display: " << parameters.at(i) << parameters.at(i+1);
         QString display = parameters.at(i) + QLatin1Char(':') + parameters.at(i+1);
-        m_connections << new QXcbConnection(m_nativeInterface.data(), m_canGrab, m_defaultVisualId, display.toLatin1().constData());
+        conn = new QXcbConnection(m_nativeInterface.data(), m_canGrab, m_defaultVisualId, display.toLatin1().constData());
+        if (conn->isConnected())
+            m_connections << conn;
+        else
+            delete conn;
+    }
+
+    if (m_connections.isEmpty()) {
+        qCritical("Could not connect to any X display.");
+        exit(1);
     }
 
     m_fontDatabase.reset(new QGenericUnixFontDatabase());
+
+#if QT_CONFIG(xcb_native_painting)
+    if (nativePaintingEnabled()) {
+        qCDebug(lcQpaXcb, "QXCB USING NATIVE PAINTING");
+        qt_xcb_native_x11_info_init(defaultConnection());
+    }
+#endif
 }
 
 QXcbIntegration::~QXcbIntegration()
@@ -200,15 +225,33 @@ QXcbIntegration::~QXcbIntegration()
     m_instance = Q_NULLPTR;
 }
 
+QPlatformPixmap *QXcbIntegration::createPlatformPixmap(QPlatformPixmap::PixelType type) const
+{
+#if QT_CONFIG(xcb_native_painting)
+    if (nativePaintingEnabled())
+        return new QX11PlatformPixmap(type);
+#endif
+
+    return QPlatformIntegration::createPlatformPixmap(type);
+}
+
 QPlatformWindow *QXcbIntegration::createPlatformWindow(QWindow *window) const
 {
     QXcbScreen *screen = static_cast<QXcbScreen *>(window->screen()->handle());
     QXcbGlIntegration *glIntegration = screen->connection()->glIntegration();
-    if (window->type() != Qt::Desktop && window->supportsOpenGL()) {
-        if (glIntegration) {
-            QXcbWindow *xcbWindow = glIntegration->createWindow(window);
+    if (window->type() != Qt::Desktop) {
+        if (window->supportsOpenGL()) {
+            if (glIntegration) {
+                QXcbWindow *xcbWindow = glIntegration->createWindow(window);
+                xcbWindow->create();
+                return xcbWindow;
+            }
+#if QT_CONFIG(vulkan)
+        } else if (window->surfaceType() == QSurface::VulkanSurface) {
+            QXcbWindow *xcbWindow = new QXcbVulkanWindow(window);
             xcbWindow->create();
             return xcbWindow;
+#endif
         }
     }
 
@@ -217,6 +260,11 @@ QPlatformWindow *QXcbIntegration::createPlatformWindow(QWindow *window) const
     QXcbWindow *xcbWindow = new QXcbWindow(window);
     xcbWindow->create();
     return xcbWindow;
+}
+
+QPlatformWindow *QXcbIntegration::createForeignWindow(QWindow *window, WId nativeHandle) const
+{
+    return new QXcbForeignWindow(window, nativeHandle);
 }
 
 #ifndef QT_NO_OPENGL
@@ -234,6 +282,11 @@ QPlatformOpenGLContext *QXcbIntegration::createPlatformOpenGLContext(QOpenGLCont
 
 QPlatformBackingStore *QXcbIntegration::createPlatformBackingStore(QWindow *window) const
 {
+#if QT_CONFIG(xcb_native_painting)
+    if (nativePaintingEnabled())
+        return new QXcbNativeBackingStore(window);
+#endif
+
     return new QXcbBackingStore(window);
 }
 
@@ -289,12 +342,15 @@ QAbstractEventDispatcher *QXcbIntegration::createEventDispatcher() const
 
 void QXcbIntegration::initialize()
 {
+    const QLatin1String defaultInputContext("compose");
     // Perform everything that may potentially need the event dispatcher (timers, socket
     // notifiers) here instead of the constructor.
     QString icStr = QPlatformInputContextFactory::requested();
     if (icStr.isNull())
-        icStr = QLatin1String("compose");
+        icStr = defaultInputContext;
     m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
+    if (!m_inputContext && icStr != defaultInputContext && icStr != QLatin1String("none"))
+        m_inputContext.reset(QPlatformInputContextFactory::create(defaultInputContext));
 }
 
 void QXcbIntegration::moveToScreen(QWindow *window, int screen)
@@ -389,9 +445,6 @@ QVariant QXcbIntegration::styleHint(QPlatformIntegration::StyleHint hint) const
     case QPlatformIntegration::PasswordMaskCharacter:
         // TODO using various xcb, gnome or KDE settings
         break; // Not implemented, use defaults
-    case QPlatformIntegration::FontSmoothingGamma:
-        // Match Qt 4.8 text rendering, and rendering of other X11 toolkits.
-        return qreal(1.0);
     case QPlatformIntegration::StartDragDistance: {
         // The default (in QPlatformTheme::defaultThemeHint) is 10 pixels, but
         // on a high-resolution screen it makes sense to increase it.
@@ -452,17 +505,13 @@ QByteArray QXcbIntegration::wmClass() const
                 className[0] = className.at(0).toUpper();
         }
 
-        if (!name.isEmpty() && !className.isEmpty()) {
-            m_wmClass = name.toLocal8Bit();
-            m_wmClass.append('\0');
-            m_wmClass.append(className.toLocal8Bit());
-            m_wmClass.append('\0');
-        }
+        if (!name.isEmpty() && !className.isEmpty())
+            m_wmClass = std::move(name).toLocal8Bit() + '\0' + std::move(className).toLocal8Bit() + '\0';
     }
     return m_wmClass;
 }
 
-#if !defined(QT_NO_SESSIONMANAGER) && defined(XCB_USE_SM)
+#if QT_CONFIG(xcb_sm)
 QPlatformSessionManager *QXcbIntegration::createPlatformSessionManager(const QString &id, const QString &key) const
 {
     return new QXcbSessionManager(id, key);
@@ -488,5 +537,22 @@ void QXcbIntegration::beep() const
     xcb_connection_t *connection = static_cast<QXcbScreen *>(screen)->xcb_connection();
     xcb_bell(connection, 0);
 }
+
+bool QXcbIntegration::nativePaintingEnabled() const
+{
+#if QT_CONFIG(xcb_native_painting)
+    static bool enabled = qEnvironmentVariableIsSet("QT_XCB_NATIVE_PAINTING");
+    return enabled;
+#else
+    return false;
+#endif
+}
+
+#if QT_CONFIG(vulkan)
+QPlatformVulkanInstance *QXcbIntegration::createPlatformVulkanInstance(QVulkanInstance *instance) const
+{
+    return new QXcbVulkanInstance(instance);
+}
+#endif
 
 QT_END_NAMESPACE

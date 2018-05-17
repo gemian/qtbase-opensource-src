@@ -40,13 +40,13 @@
 #ifndef QCALENDARWIDGET_H
 #define QCALENDARWIDGET_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qwidget.h>
 #include <QtCore/qdatetime.h>
 
+QT_REQUIRE_CONFIG(calendarwidget);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_CALENDARWIDGET
 
 class QDate;
 class QTextCharFormat;
@@ -183,9 +183,6 @@ private:
 
 };
 
-#endif // QT_NO_CALENDARWIDGET
-
 QT_END_NAMESPACE
 
 #endif // QCALENDARWIDGET_H
-

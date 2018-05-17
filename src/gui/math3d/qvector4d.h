@@ -40,6 +40,7 @@
 #ifndef QVECTOR4D_H
 #define QVECTOR4D_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qmetatype.h>
 
@@ -87,7 +88,7 @@ public:
     float length() const;
     float lengthSquared() const; //In Qt 6 convert to inline and constexpr
 
-    QVector4D normalized() const Q_REQUIRED_RESULT;
+    Q_REQUIRED_RESULT QVector4D normalized() const;
     void normalize();
 
     QVector4D &operator+=(const QVector4D &vector);
@@ -145,7 +146,7 @@ Q_DECL_CONSTEXPR inline QVector4D::QVector4D(float xpos, float ypos, float zpos,
 
 Q_DECL_CONSTEXPR inline QVector4D::QVector4D(const QPoint& point) : xp(point.x()), yp(point.y()), zp(0.0f), wp(0.0f) {}
 
-Q_DECL_CONSTEXPR inline QVector4D::QVector4D(const QPointF& point) : xp(point.x()), yp(point.y()), zp(0.0f), wp(0.0f) {}
+Q_DECL_CONSTEXPR inline QVector4D::QVector4D(const QPointF& point) : xp(float(point.x())), yp(float(point.y())), zp(0.0f), wp(0.0f) {}
 
 inline bool QVector4D::isNull() const
 {
@@ -228,6 +229,9 @@ inline QVector4D &QVector4D::operator/=(const QVector4D &vector)
     return *this;
 }
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_CLANG("-Wfloat-equal")
+QT_WARNING_DISABLE_GCC("-Wfloat-equal")
 Q_DECL_CONSTEXPR inline bool operator==(const QVector4D &v1, const QVector4D &v2)
 {
     return v1.xp == v2.xp && v1.yp == v2.yp && v1.zp == v2.zp && v1.wp == v2.wp;
@@ -237,6 +241,7 @@ Q_DECL_CONSTEXPR inline bool operator!=(const QVector4D &v1, const QVector4D &v2
 {
     return v1.xp != v2.xp || v1.yp != v2.yp || v1.zp != v2.zp || v1.wp != v2.wp;
 }
+QT_WARNING_POP
 
 Q_DECL_CONSTEXPR inline const QVector4D operator+(const QVector4D &v1, const QVector4D &v2)
 {

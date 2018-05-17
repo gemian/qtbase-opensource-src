@@ -62,6 +62,8 @@ private slots:
     void styleName();
     void defaultFamily_data();
     void defaultFamily();
+    void toAndFromString();
+    void fromStringWithoutStyleName();
 
     void sharing();
 };
@@ -129,7 +131,6 @@ void tst_QFont::italicOblique()
 
         QString family = *f_it;
         QStringList styles = fdb.styles(family);
-        QVERIFY(!styles.isEmpty());
         QStringList::ConstIterator s_it, s_end = styles.end();
         for (s_it = styles.begin(); s_it != s_end; ++s_it) {
             QString style = *s_it;
@@ -358,6 +359,8 @@ void tst_QFont::serialize_data()
     // Versions <= Qt 2.1 had broken point size serialization,
     // so we set an integer point size.
     basicFont.setPointSize(9);
+    // Versions <= Qt 5.4 didn't serialize styleName, so clear it
+    basicFont.setStyleName(QString());
 
     QFont font = basicFont;
     QTest::newRow("defaultConstructed") << font << QDataStream::Qt_1_0;
@@ -483,7 +486,7 @@ void tst_QFont::styleName()
 
 QString getPlatformGenericFont(const char* genericName)
 {
-#if defined(Q_OS_UNIX) && !defined(QT_NO_FONTCONFIG)
+#if defined(Q_OS_UNIX) && !defined(QT_NO_FONTCONFIG) && QT_CONFIG(process)
     QProcess p;
     p.start(QLatin1String("fc-match"), (QStringList() << "-f%{family}" << genericName));
     if (!p.waitForStarted())
@@ -508,11 +511,11 @@ void tst_QFont::defaultFamily_data()
     QTest::addColumn<QFont::StyleHint>("styleHint");
     QTest::addColumn<QStringList>("acceptableFamilies");
 
-    QTest::newRow("serif") << QFont::Serif << (QStringList() << "Times New Roman" << "Times" << "Droid Serif" << getPlatformGenericFont("serif"));
-    QTest::newRow("monospace") << QFont::Monospace << (QStringList() << "Courier New" << "Monaco" << "Droid Sans Mono" << getPlatformGenericFont("monospace"));
-    QTest::newRow("cursive") << QFont::Cursive << (QStringList() << "Comic Sans MS" << "Apple Chancery" << "Roboto" << "Droid Sans" << getPlatformGenericFont("cursive"));
-    QTest::newRow("fantasy") << QFont::Fantasy << (QStringList() << "Impact" << "Zapfino"  << "Roboto" << "Droid Sans" << getPlatformGenericFont("fantasy"));
-    QTest::newRow("sans-serif") << QFont::SansSerif << (QStringList() << "Arial" << "Lucida Grande" << "Roboto" << "Droid Sans" << getPlatformGenericFont("sans-serif"));
+    QTest::newRow("serif") << QFont::Serif << (QStringList() << "Times New Roman" << "Times" << "Droid Serif" << getPlatformGenericFont("serif").split(","));
+    QTest::newRow("monospace") << QFont::Monospace << (QStringList() << "Courier New" << "Monaco" << "Droid Sans Mono" << getPlatformGenericFont("monospace").split(","));
+    QTest::newRow("cursive") << QFont::Cursive << (QStringList() << "Comic Sans MS" << "Apple Chancery" << "Roboto" << "Droid Sans" << getPlatformGenericFont("cursive").split(","));
+    QTest::newRow("fantasy") << QFont::Fantasy << (QStringList() << "Impact" << "Zapfino"  << "Roboto" << "Droid Sans" << getPlatformGenericFont("fantasy").split(","));
+    QTest::newRow("sans-serif") << QFont::SansSerif << (QStringList() << "Arial" << "Lucida Grande" << "Roboto" << "Droid Sans" << "Segoe UI" << getPlatformGenericFont("sans-serif").split(","));
 }
 
 void tst_QFont::defaultFamily()
@@ -538,6 +541,39 @@ void tst_QFont::defaultFamily()
 
     QVERIFY2(isAcceptable, msgNotAcceptableFont(familyForHint, acceptableFamilies));
 }
+
+void tst_QFont::toAndFromString()
+{
+    QFont defaultFont = QGuiApplication::font();
+    QString family = defaultFont.family();
+
+    QFontDatabase fdb;
+    const QStringList stylesList = fdb.styles(family);
+    if (stylesList.size() == 0)
+        QSKIP("Default font doesn't have any styles");
+
+    for (const QString &style : stylesList) {
+        QFont result;
+        QFont initial = fdb.font(family, style, defaultFont.pointSize());
+
+        result.fromString(initial.toString());
+
+        QCOMPARE(result, initial);
+    }
+}
+
+void tst_QFont::fromStringWithoutStyleName()
+{
+    QFont font1;
+    font1.fromString("Noto Sans,12,-1,5,50,0,0,0,0,0,Regular");
+
+    QFont font2 = font1;
+    const QString str = "Times,16,-1,5,50,0,0,0,0,0";
+    font2.fromString(str);
+
+    QCOMPARE(font2.toString(), str);
+}
+
 
 void tst_QFont::sharing()
 {

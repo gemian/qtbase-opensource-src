@@ -40,6 +40,7 @@
 #ifndef QGRAPHICSSCENEEVENT_H
 #define QGRAPHICSSCENEEVENT_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qcoreevent.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qscopedpointer.h>
@@ -50,10 +51,9 @@
 #include <QtCore/qhash.h>
 #endif
 
+QT_REQUIRE_CONFIG(graphicsview);
+
 QT_BEGIN_NAMESPACE
-
-
-#if !defined(QT_NO_GRAPHICSVIEW)
 
 class QMimeData;
 class QPointF;
@@ -319,8 +319,6 @@ public:
     QPointF newPos() const;
     void setNewPos(const QPointF &pos);
 };
-
-#endif // QT_NO_GRAPHICSVIEW
 
 QT_END_NAMESPACE
 

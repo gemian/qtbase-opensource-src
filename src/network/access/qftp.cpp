@@ -43,8 +43,6 @@
 #include "private/qftp_p.h"
 #include "qabstractsocket.h"
 
-#ifndef QT_NO_FTP
-
 #include "qcoreapplication.h"
 #include "qtcpsocket.h"
 #include "qurlinfo_p.h"
@@ -246,22 +244,25 @@ public:
     } data;
     bool is_ba;
 
-    static QBasicAtomicInt idCounter;
 };
 
-QBasicAtomicInt QFtpCommand::idCounter = Q_BASIC_ATOMIC_INITIALIZER(1);
+static int nextId()
+{
+    static QBasicAtomicInt counter = Q_BASIC_ATOMIC_INITIALIZER(0);
+    return 1 + counter.fetchAndAddRelaxed(1);
+}
 
 QFtpCommand::QFtpCommand(QFtp::Command cmd, const QStringList &raw, const QByteArray &ba)
     : command(cmd), rawCmds(raw), is_ba(true)
 {
-    id = idCounter.fetchAndAddRelaxed(1);
+    id = nextId();
     data.ba = new QByteArray(ba);
 }
 
 QFtpCommand::QFtpCommand(QFtp::Command cmd, const QStringList &raw, QIODevice *dev)
     : command(cmd), rawCmds(raw), is_ba(false)
 {
-    id = idCounter.fetchAndAddRelaxed(1);
+    id = nextId();
     data.dev = dev;
 }
 
@@ -571,7 +572,7 @@ static void _q_parseDosDir(const QStringList &tokens, const QString &userName, Q
 
     QString name = tokens.at(3);
     info->setName(name);
-    info->setSymLink(name.toLower().endsWith(QLatin1String(".lnk")));
+    info->setSymLink(name.endsWith(QLatin1String(".lnk"), Qt::CaseInsensitive));
 
     if (tokens.at(2) == QLatin1String("<DIR>")) {
         info->setFile(false);
@@ -1121,7 +1122,7 @@ bool QFtpPI::processReply()
         case Success:
             // success handling
             state = Idle;
-            // no break!
+            Q_FALLTHROUGH();
         case Idle:
             if (dtp.hasError()) {
                 emit error(QFtp::UnknownError, dtp.errorMessage());
@@ -1701,8 +1702,16 @@ int QFtp::connectToHost(const QString &host, quint16 port)
 int QFtp::login(const QString &user, const QString &password)
 {
     QStringList cmds;
-    cmds << (QLatin1String("USER ") + (user.isNull() ? QLatin1String("anonymous") : user) + QLatin1String("\r\n"));
-    cmds << (QLatin1String("PASS ") + (password.isNull() ? QLatin1String("anonymous@") : password) + QLatin1String("\r\n"));
+
+    if (user.isNull() || user.compare(QLatin1String("anonymous"), Qt::CaseInsensitive) == 0) {
+        cmds << (QLatin1String("USER ") + (user.isNull() ? QLatin1String("anonymous") : user) + QLatin1String("\r\n"));
+        cmds << (QLatin1String("PASS ") + (password.isNull() ? QLatin1String("anonymous@") : password) + QLatin1String("\r\n"));
+    } else {
+        cmds << (QLatin1String("USER ") + user + QLatin1String("\r\n"));
+        if (!password.isNull())
+            cmds << (QLatin1String("PASS ") + password + QLatin1String("\r\n"));
+    }
+
     return d_func()->addCommand(new QFtpCommand(Login, cmds));
 }
 
@@ -2450,5 +2459,3 @@ QT_END_NAMESPACE
 #include "qftp.moc"
 
 #include "moc_qftp_p.cpp"
-
-#endif // QT_NO_FTP

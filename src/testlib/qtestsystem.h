@@ -42,7 +42,7 @@
 
 #include <QtTest/qtestcase.h>
 #include <QtCore/qcoreapplication.h>
-#include <QtCore/qelapsedtimer.h>
+#include <QtCore/qdeadlinetimer.h>
 #ifdef QT_GUI_LIB
 #  include <QtGui/QWindow>
 #endif
@@ -54,39 +54,73 @@ QT_BEGIN_NAMESPACE
 
 namespace QTest
 {
+    template <typename Functor>
+    Q_REQUIRED_RESULT static bool qWaitFor(Functor predicate, int timeout = 5000)
+    {
+        // We should not spin the event loop in case the predicate is already true,
+        // otherwise we might send new events that invalidate the predicate.
+        if (predicate())
+            return true;
+
+        // qWait() is expected to spin the event loop, even when called with a small
+        // timeout like 1ms, so we we can't use a simple while-loop here based on
+        // the deadline timer not having timed out. Use do-while instead.
+
+        int remaining = timeout;
+        QDeadlineTimer deadline(remaining, Qt::PreciseTimer);
+
+        do {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, remaining);
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+
+            remaining = deadline.remainingTime();
+            if (remaining > 0) {
+                QTest::qSleep(qMin(10, remaining));
+                remaining = deadline.remainingTime();
+            }
+
+            if (predicate())
+                return true;
+
+            remaining = deadline.remainingTime();
+        } while (remaining > 0);
+
+        return predicate(); // Last chance
+    }
+
     Q_DECL_UNUSED inline static void qWait(int ms)
     {
+        // Ideally this method would be implemented in terms of qWaitFor, with
+        // a predicate that always returns false, but due to a compiler bug in
+        // GCC 6 we can't do that.
+
         Q_ASSERT(QCoreApplication::instance());
 
-        QElapsedTimer timer;
-        timer.start();
+        QDeadlineTimer timer(ms, Qt::PreciseTimer);
+        int remaining = ms;
         do {
-            QCoreApplication::processEvents(QEventLoop::AllEvents, ms);
+            QCoreApplication::processEvents(QEventLoop::AllEvents, remaining);
             QCoreApplication::sendPostedEvents(Q_NULLPTR, QEvent::DeferredDelete);
-            QTest::qSleep(10);
-        } while (timer.elapsed() < ms);
+            remaining = timer.remainingTime();
+            if (remaining <= 0)
+                break;
+            QTest::qSleep(qMin(10, remaining));
+            remaining = timer.remainingTime();
+        } while (remaining > 0);
     }
 
 #ifdef QT_GUI_LIB
-    inline static bool qWaitForWindowActive(QWindow *window, int timeout = 5000)
+    Q_REQUIRED_RESULT inline static bool qWaitForWindowActive(QWindow *window, int timeout = 5000)
     {
-        QElapsedTimer timer;
-        timer.start();
-        while (!window->isActive()) {
-            int remaining = timeout - int(timer.elapsed());
-            if (remaining <= 0)
-                break;
-            QCoreApplication::processEvents(QEventLoop::AllEvents, remaining);
-            QCoreApplication::sendPostedEvents(Q_NULLPTR, QEvent::DeferredDelete);
-            QTest::qSleep(10);
-        }
+        bool becameActive = qWaitFor([&]() { return window->isActive(); }, timeout);
+
         // Try ensuring the platform window receives the real position.
         // (i.e. that window->pos() reflects reality)
         // isActive() ( == FocusIn in case of X) does not guarantee this. It seems some WMs randomly
         // send the final ConfigureNotify (the one with the non-bogus 0,0 position) after the FocusIn.
         // If we just let things go, every mapTo/FromGlobal call the tests perform directly after
         // qWaitForWindowShown() will generate bogus results.
-        if (window->isActive()) {
+        if (becameActive) {
             int waitNo = 0; // 0, 0 might be a valid position after all, so do not wait for ever
             while (window->position().isNull()) {
                 if (waitNo++ > timeout / 10)
@@ -97,33 +131,23 @@ namespace QTest
         return window->isActive();
     }
 
-    inline static bool qWaitForWindowExposed(QWindow *window, int timeout = 5000)
+    Q_REQUIRED_RESULT inline static bool qWaitForWindowExposed(QWindow *window, int timeout = 5000)
     {
-        QElapsedTimer timer;
-        timer.start();
-        while (!window->isExposed()) {
-            int remaining = timeout - int(timer.elapsed());
-            if (remaining <= 0)
-                break;
-            QCoreApplication::processEvents(QEventLoop::AllEvents, remaining);
-            QCoreApplication::sendPostedEvents(Q_NULLPTR, QEvent::DeferredDelete);
-            QTest::qSleep(10);
-        }
-        return window->isExposed();
+        return qWaitFor([&]() { return window->isExposed(); }, timeout);
     }
 #endif
 
 #ifdef QT_WIDGETS_LIB
-    inline static bool qWaitForWindowActive(QWidget *widget, int timeout = 1000)
+    Q_REQUIRED_RESULT inline static bool qWaitForWindowActive(QWidget *widget, int timeout = 5000)
     {
-        if (QWindow *window = widget->windowHandle())
+        if (QWindow *window = widget->window()->windowHandle())
             return qWaitForWindowActive(window, timeout);
         return false;
     }
 
-    inline static bool qWaitForWindowExposed(QWidget *widget, int timeout = 1000)
+    Q_REQUIRED_RESULT inline static bool qWaitForWindowExposed(QWidget *widget, int timeout = 5000)
     {
-        if (QWindow *window = widget->windowHandle())
+        if (QWindow *window = widget->window()->windowHandle())
             return qWaitForWindowExposed(window, timeout);
         return false;
     }
@@ -131,7 +155,8 @@ namespace QTest
 
 #if QT_DEPRECATED_SINCE(5, 0)
 #  ifdef QT_WIDGETS_LIB
-    QT_DEPRECATED inline static bool qWaitForWindowShown(QWidget *widget, int timeout = 1000)
+
+    QT_DEPRECATED Q_REQUIRED_RESULT inline static bool qWaitForWindowShown(QWidget *widget, int timeout = 5000)
     {
         return qWaitForWindowExposed(widget, timeout);
     }

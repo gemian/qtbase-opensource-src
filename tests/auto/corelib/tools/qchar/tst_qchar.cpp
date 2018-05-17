@@ -31,15 +31,14 @@
 #include <qfile.h>
 #include <qstringlist.h>
 #include <private/qunicodetables_p.h>
-#if defined(Q_OS_WINCE)
-#include <qcoreapplication.h>
-#endif
 
 class tst_QChar : public QObject
 {
     Q_OBJECT
 private slots:
-    void operator_eqeq_int();
+    void fromChar16_t();
+    void fromWchar_t();
+    void operator_eqeq_null();
     void operators_data();
     void operators();
     void toUpper();
@@ -75,27 +74,78 @@ private slots:
     void unicodeVersion();
 };
 
-void tst_QChar::operator_eqeq_int()
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+
+void tst_QChar::fromChar16_t()
+{
+#if defined(Q_COMPILER_UNICODE_STRINGS)
+    QChar aUmlaut = u'\u00E4'; // German small letter a-umlaut
+    QCOMPARE(aUmlaut, QChar(0xE4));
+    QChar replacementCharacter = u'\uFFFD';
+    QCOMPARE(replacementCharacter, QChar(QChar::ReplacementCharacter));
+#else
+    QSKIP("This test requires C++11 char16_t support enabled in the compiler.");
+#endif
+}
+
+void tst_QChar::fromWchar_t()
+{
+#if defined(Q_OS_WIN)
+    QChar aUmlaut = L'\u00E4'; // German small letter a-umlaut
+    QCOMPARE(aUmlaut, QChar(0xE4));
+    QChar replacementCharacter = L'\uFFFD';
+    QCOMPARE(replacementCharacter, QChar(QChar::ReplacementCharacter));
+#else
+    QSKIP("This is a Windows-only test.");
+#endif
+}
+
+void tst_QChar::operator_eqeq_null()
 {
     {
         const QChar ch = QLatin1Char(' ');
-        QVERIFY(ch != 0);
-        QVERIFY(!(ch == 0));
+#define CHECK(NUL) \
+        do { \
+            QVERIFY(!(ch  == NUL)); \
+            QVERIFY(  ch  != NUL ); \
+            QVERIFY(!(ch  <  NUL)); \
+            QVERIFY(  ch  >  NUL ); \
+            QVERIFY(!(ch  <= NUL)); \
+            QVERIFY(  ch  >= NUL ); \
+            QVERIFY(!(NUL == ch )); \
+            QVERIFY(  NUL != ch  ); \
+            QVERIFY(  NUL <  ch  ); \
+            QVERIFY(!(NUL >  ch )); \
+            QVERIFY(  NUL <= ch  ); \
+            QVERIFY(!(NUL >= ch )); \
+        } while (0)
 
-        QVERIFY(ch == 0x20);
-        QVERIFY(!(ch != 0x20));
-        QVERIFY(0x20 == ch);
-        QVERIFY(!(0x20 != ch));
+        CHECK(0);
+        CHECK('\0');
+#undef CHECK
     }
     {
         const QChar ch = QLatin1Char('\0');
-        QVERIFY(ch == 0);
-        QVERIFY(!(ch != 0));
+#define CHECK(NUL) \
+        do { \
+            QVERIFY(  ch  == NUL ); \
+            QVERIFY(!(ch  != NUL)); \
+            QVERIFY(!(ch  <  NUL)); \
+            QVERIFY(!(ch  >  NUL)); \
+            QVERIFY(  ch  <= NUL ); \
+            QVERIFY(  ch  >= NUL ); \
+            QVERIFY(  NUL == ch  ); \
+            QVERIFY(!(NUL != ch )); \
+            QVERIFY(!(NUL <  ch )); \
+            QVERIFY(!(NUL >  ch )); \
+            QVERIFY(  NUL <= ch  ); \
+            QVERIFY(  NUL >= ch  ); \
+        } while (0)
 
-        QVERIFY(ch != 0x20);
-        QVERIFY(!(ch == 0x20));
-        QVERIFY(0x20 != ch);
-        QVERIFY(!(0x20 == ch));
+        CHECK(0);
+        CHECK('\0');
+#undef CHECK
     }
 }
 
@@ -106,7 +156,7 @@ void tst_QChar::operators_data()
 
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j)
-            QTest::newRow(qPrintable(QString::asprintf("'\\%d' (op) '\\%d'", i, j)))
+            QTest::addRow("'\\%d' (op) '\\%d'", i, j)
                     << QChar(ushort(i)) << QChar(ushort(j));
     }
 }

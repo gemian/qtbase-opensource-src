@@ -84,30 +84,6 @@ Q_DECLARE_METATYPE(Qt::Key);
 Q_DECLARE_METATYPE(Qt::KeyboardModifiers);
 Q_DECLARE_METATYPE(Qt::KeyboardModifier);
 
-#if defined(Q_OS_WINCE)
-#ifndef SPI_GETPLATFORMTYPE
-#define SPI_GETPLATFORMTYPE 257
-#endif
-
-bool qt_wince_is_platform(const QString &platformString) {
-    wchar_t tszPlatform[64];
-    if (SystemParametersInfo(SPI_GETPLATFORMTYPE,
-                             sizeof(tszPlatform)/sizeof(*tszPlatform),tszPlatform,0))
-      if (0 == _tcsicmp(reinterpret_cast<const wchar_t *> (platformString.utf16()), tszPlatform))
-            return true;
-    return false;
-}
-bool qt_wince_is_pocket_pc() {
-    return qt_wince_is_platform(QString::fromLatin1("PocketPC"));
-}
-bool qt_wince_is_smartphone() {
-       return qt_wince_is_platform(QString::fromLatin1("Smartphone"));
-}
-bool qt_wince_is_mobile() {
-     return (qt_wince_is_smartphone() || qt_wince_is_pocket_pc());
-}
-#endif
-
 class EditorDateEdit : public QDateTimeEdit
 {
     Q_OBJECT
@@ -229,7 +205,7 @@ private slots:
     void reverseTest();
 
     void ddMMMMyyyy();
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     void wheelEvent();
 #endif
 
@@ -262,6 +238,8 @@ private slots:
     void taskQTBUG_12384_timeSpecShowTimeOnly();
 
     void deleteCalendarWidget();
+
+    void setLocaleOnCalendarWidget();
 
 #ifdef QT_BUILD_INTERNAL
     void dateEditCorrectSectionSize_data();
@@ -332,7 +310,7 @@ void tst_QDateTimeEdit::cleanupTestCase()
 void tst_QDateTimeEdit::init()
 {
     QLocale::setDefault(QLocale(QLocale::C));
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
     SetThreadLocale(MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT));
 #endif
     testWidget->setDisplayFormat("dd/MM/yyyy"); // Nice default to have
@@ -3022,7 +3000,7 @@ void tst_QDateTimeEdit::ddMMMMyyyy()
     QCOMPARE(testWidget->lineEdit()->text(), "01." + QDate::longMonthName(1) + ".200");
 }
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 void tst_QDateTimeEdit::wheelEvent()
 {
     testWidget->setDisplayFormat("dddd/MM");
@@ -3035,7 +3013,7 @@ void tst_QDateTimeEdit::wheelEvent()
     qApp->sendEvent(testWidget, &w);
     QCOMPARE(testWidget->date(), QDate(2000, 3, 22));
 }
-#endif // !QT_NO_WHEELEVENT
+#endif // QT_CONFIG(wheelevent)
 
 void tst_QDateTimeEdit::specialValueCornerCase()
 {
@@ -3108,7 +3086,7 @@ void tst_QDateTimeEdit::nextPrevSection_data()
 
     // 1. mac doesn't do these,
     // 2. some WinCE devices do not have modifiers
-#if !defined(Q_OS_MAC) && !defined(WINCE_NO_MODIFIER_KEYS)
+#if !defined(Q_OS_DARWIN)
     QTest::newRow("ctrl-right") << Qt::Key_Right << (Qt::KeyboardModifiers)Qt::ControlModifier << QString("56");
     QTest::newRow("ctrl-left") << Qt::Key_Left << (Qt::KeyboardModifiers)Qt::ControlModifier << QString("12");
 #endif
@@ -3433,6 +3411,25 @@ void tst_QDateTimeEdit::deleteCalendarWidget()
     }
 }
 
+void tst_QDateTimeEdit::setLocaleOnCalendarWidget()
+{
+    QDateEdit dateEdit;
+    QList<QLocale> allLocales = QLocale::matchingLocales(
+                QLocale::AnyLanguage,
+                QLocale::AnyScript,
+                QLocale::AnyCountry);
+    QLocale c = QLocale::c();
+    dateEdit.setCalendarPopup(true);
+    dateEdit.setLocale(c);
+    for (const QLocale& l : allLocales) {
+        dateEdit.setLocale(l);
+        const QLocale locCal = dateEdit.calendarWidget()->locale();
+        const QLocale locEdit = dateEdit.locale();
+        QCOMPARE(locCal.name(), locEdit.name());
+        QVERIFY(locCal == locEdit);
+    }
+}
+
 #ifdef QT_BUILD_INTERNAL
 
 typedef QPair<Qt::Key, Qt::KeyboardModifier> KeyPair;
@@ -3734,7 +3731,7 @@ void tst_QDateTimeEdit::dateEditCorrectSectionSize()
         QTest::keyClick(&edit, keyPair.first, keyPair.second);
 
     QDateTimeEditPrivate* edit_d_ptr(static_cast<QDateTimeEditPrivate*>(qt_widget_private(&edit)));
-    QCOMPARE(edit_d_ptr->text, expectedDisplayString);
+    QCOMPARE(edit_d_ptr->QDateTimeParser::displayText(), expectedDisplayString);
 }
 #endif
 

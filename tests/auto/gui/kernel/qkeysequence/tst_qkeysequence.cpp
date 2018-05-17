@@ -36,13 +36,17 @@
 #include <QLibraryInfo>
 
 #ifdef Q_OS_MAC
-#ifdef Q_OS_OSX
-#include <Carbon/Carbon.h>
-#endif
 struct MacSpecialKey {
     int key;
     ushort macSymbol;
 };
+
+// Unicode code points for the glyphs associated with these keys
+// Defined by Carbon headers but not anywhere in Cocoa
+static const int kShiftUnicode = 0x21E7;
+static const int kControlUnicode = 0x2303;
+static const int kOptionUnicode = 0x2325;
+static const int kCommandUnicode = 0x2318;
 
 static const int NumEntries = 21;
 static const MacSpecialKey entries[NumEntries] = {
@@ -61,12 +65,10 @@ static const MacSpecialKey entries[NumEntries] = {
     { Qt::Key_Down, 0x2193 },
     { Qt::Key_PageUp, 0x21DE },
     { Qt::Key_PageDown, 0x21DF },
-#ifdef Q_OS_OSX
     { Qt::Key_Shift, kShiftUnicode },
     { Qt::Key_Control, kCommandUnicode },
     { Qt::Key_Meta, kControlUnicode },
     { Qt::Key_Alt, kOptionUnicode },
-#endif
     { Qt::Key_CapsLock, 0x21EA },
 };
 
@@ -725,7 +727,7 @@ void tst_QKeySequence::listFromString()
 
 void tst_QKeySequence::translated_data()
 {
-#if defined (Q_OS_MAC) || defined (Q_OS_WINCE)
+#if defined (Q_OS_DARWIN)
     QSKIP("Test not applicable");
 #endif
 
@@ -756,7 +758,7 @@ void tst_QKeySequence::translated_data()
 
 void tst_QKeySequence::translated()
 {
-#if !defined (Q_OS_MAC) && !defined (Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     QFETCH(QString, transKey);
     QFETCH(QString, compKey);
 

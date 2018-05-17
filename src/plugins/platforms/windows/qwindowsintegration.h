@@ -43,6 +43,7 @@
 
 #include <qpa/qplatformintegration.h>
 #include <QtCore/QScopedPointer>
+#include <QtFontDatabaseSupport/private/qwindowsfontdatabase_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -61,41 +62,45 @@ public:
         NoNativeDialogs = 0x8,
         XpNativeDialogs = 0x10,
         DontPassOsMouseEventsSynthesizedFromTouch = 0x20, // Do not pass OS-generated mouse events from touch.
-        DontUseDirectWriteFonts = 0x40,
-        DontUseColorFonts = 0x80
+        // Keep in sync with QWindowsFontDatabase::FontOptions
+        DontUseDirectWriteFonts = QWindowsFontDatabase::DontUseDirectWriteFonts,
+        DontUseColorFonts = QWindowsFontDatabase::DontUseColorFonts,
+        AlwaysUseNativeMenus = 0x100,
+        NoNativeMenus = 0x200
     };
 
     explicit QWindowsIntegration(const QStringList &paramList);
     virtual ~QWindowsIntegration();
 
-    bool hasCapability(QPlatformIntegration::Capability cap) const Q_DECL_OVERRIDE;
+    bool hasCapability(QPlatformIntegration::Capability cap) const override;
 
-    QPlatformWindow *createPlatformWindow(QWindow *window) const Q_DECL_OVERRIDE;
+    QPlatformWindow *createPlatformWindow(QWindow *window) const override;
+    QPlatformWindow *createForeignWindow(QWindow *window, WId nativeHandle) const override;
 #ifndef QT_NO_OPENGL
-    QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const Q_DECL_OVERRIDE;
-    QOpenGLContext::OpenGLModuleType openGLModuleType() Q_DECL_OVERRIDE;
+    QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
+    QOpenGLContext::OpenGLModuleType openGLModuleType() override;
     static QWindowsStaticOpenGLContext *staticOpenGLContext();
 #endif
-    QAbstractEventDispatcher *createEventDispatcher() const Q_DECL_OVERRIDE;
-    void initialize() Q_DECL_OVERRIDE;
-#ifndef QT_NO_CLIPBOARD
-    QPlatformClipboard *clipboard() const Q_DECL_OVERRIDE;
-#  ifndef QT_NO_DRAGANDDROP
-    QPlatformDrag *drag() const Q_DECL_OVERRIDE;
+    QAbstractEventDispatcher *createEventDispatcher() const override;
+    void initialize() override;
+#if QT_CONFIG(clipboard)
+    QPlatformClipboard *clipboard() const override;
+#  if QT_CONFIG(draganddrop)
+    QPlatformDrag *drag() const override;
 #  endif
 #endif // !QT_NO_CLIPBOARD
-    QPlatformInputContext *inputContext() const Q_DECL_OVERRIDE;
+    QPlatformInputContext *inputContext() const override;
 #ifndef QT_NO_ACCESSIBILITY
-    QPlatformAccessibility *accessibility() const Q_DECL_OVERRIDE;
+    QPlatformAccessibility *accessibility() const override;
 #endif
-    QPlatformFontDatabase *fontDatabase() const Q_DECL_OVERRIDE;
-    QStringList themeNames() const Q_DECL_OVERRIDE;
-    QPlatformTheme *createPlatformTheme(const QString &name) const Q_DECL_OVERRIDE;
-    QPlatformServices *services() const Q_DECL_OVERRIDE;
-    QVariant styleHint(StyleHint hint) const Q_DECL_OVERRIDE;
+    QPlatformFontDatabase *fontDatabase() const override;
+    QStringList themeNames() const override;
+    QPlatformTheme *createPlatformTheme(const QString &name) const override;
+    QPlatformServices *services() const override;
+    QVariant styleHint(StyleHint hint) const override;
 
-    Qt::KeyboardModifiers queryKeyboardModifiers() const Q_DECL_OVERRIDE;
-    QList<int> possibleKeys(const QKeyEvent *e) const Q_DECL_OVERRIDE;
+    Qt::KeyboardModifiers queryKeyboardModifiers() const override;
+    QList<int> possibleKeys(const QKeyEvent *e) const override;
 
     static QWindowsIntegration *instance() { return m_instance; }
 
@@ -104,10 +109,14 @@ public:
 
     unsigned options() const;
 
-    void beep() const Q_DECL_OVERRIDE;
+    void beep() const override;
 
-#if !defined(Q_OS_WINCE) && !defined(QT_NO_SESSIONMANAGER)
-    QPlatformSessionManager *createPlatformSessionManager(const QString &id, const QString &key) const Q_DECL_OVERRIDE;
+#if QT_CONFIG(sessionmanager)
+    QPlatformSessionManager *createPlatformSessionManager(const QString &id, const QString &key) const override;
+#endif
+
+#if QT_CONFIG(vulkan)
+    QPlatformVulkanInstance *createPlatformVulkanInstance(QVulkanInstance *instance) const override;
 #endif
 
 protected:

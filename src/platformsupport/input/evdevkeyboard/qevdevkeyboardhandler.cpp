@@ -49,7 +49,14 @@
 #include <qpa/qwindowsysteminterface.h>
 #include <private/qcore_unix_p.h>
 
+#include <QtGui/private/qguiapplication_p.h>
+#include <QtGui/private/qinputdevicemanager_p.h>
+
+#ifdef Q_OS_FREEBSD
+#include <dev/evdev/input.h>
+#else
 #include <linux/input.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -83,7 +90,7 @@ QEvdevKeyboardHandler::QEvdevKeyboardHandler(const QString &device, QFdContainer
 
     // socket notifier for events on the keyboard device
     m_notify = new QSocketNotifier(m_fd.get(), QSocketNotifier::Read, this);
-    connect(m_notify, SIGNAL(activated(int)), this, SLOT(readKeycode()));
+    connect(m_notify, &QSocketNotifier::activated, this, &QEvdevKeyboardHandler::readKeycode);
 }
 
 QEvdevKeyboardHandler::~QEvdevKeyboardHandler()
@@ -218,6 +225,8 @@ void QEvdevKeyboardHandler::readKeycode()
 void QEvdevKeyboardHandler::processKeyEvent(int nativecode, int unicode, int qtcode,
                                             Qt::KeyboardModifiers modifiers, bool isPress, bool autoRepeat)
 {
+    QGuiApplicationPrivate::inputDeviceManager()->setKeyboardModifiers(modifiers, qtcode);
+
     QWindowSystemInterface::handleExtendedKeyEvent(0, (isPress ? QEvent::KeyPress : QEvent::KeyRelease),
                                                    qtcode, modifiers, nativecode + 8, 0, int(modifiers),
                                                    (unicode != 0xffff ) ? QString(unicode) : QString(), autoRepeat);
@@ -399,6 +408,8 @@ QEvdevKeyboardHandler::KeycodeAction QEvdevKeyboardHandler::processKeycode(quint
             Qt::KeyboardModifiers qtmods = Qt::KeyboardModifiers(qtcode & modmask);
             qtcode &= ~modmask;
 
+            // qtmods here is the modifier state before the event, i.e. not
+            // including the current key in case it is a modifier.
             qCDebug(qLcEvdevKeyMap, "Processing: uni=%04x, qt=%08x, qtmod=%08x", unicode, qtcode, int(qtmods));
 
             // If NumLockOff and keypad key pressed remap event sent

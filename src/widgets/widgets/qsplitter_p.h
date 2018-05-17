@@ -51,8 +51,10 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qframe_p.h"
-#include "qrubberband.h"
+
+QT_REQUIRE_CONFIG(splitter);
 
 QT_BEGIN_NAMESPACE
 
@@ -80,11 +82,17 @@ class QSplitterPrivate : public QFramePrivate
 {
     Q_DECLARE_PUBLIC(QSplitter)
 public:
-    QSplitterPrivate() : rubberBand(0), opaque(true), firstShow(true),
+    QSplitterPrivate() :
+#if QT_CONFIG(rubberband)
+                         rubberBand(0),
+#endif
+                         opaque(true), firstShow(true),
                          childrenCollapsible(true), compatMode(false), handleWidth(-1), blockChildAdd(false), opaqueResizeSet(false) {}
     ~QSplitterPrivate();
 
+#if QT_CONFIG(rubberband)
     QPointer<QRubberBand> rubberBand;
+#endif
     mutable QList<QSplitterLayoutStruct *> list;
     Qt::Orientation orient;
     bool opaque : 8;
@@ -124,6 +132,7 @@ public:
     int findWidgetJustBeforeOrJustAfter(int index, int delta, int &collapsibleSize) const;
     void updateHandles();
     void setSizes_helper(const QList<int> &sizes, bool clampNegativeSize = false);
+    bool shouldShowWidget(const QWidget *w) const;
 
 };
 

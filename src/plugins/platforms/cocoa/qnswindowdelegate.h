@@ -49,15 +49,12 @@
     QCocoaWindow *m_cocoaWindow;
 }
 
-- (id)initWithQCocoaWindow: (QCocoaWindow *) cocoaWindow;
+- (id)initWithQCocoaWindow:(QCocoaWindow *)cocoaWindow;
 
-- (void)windowDidBecomeKey:(NSNotification *)notification;
-- (void)windowDidResize:(NSNotification *)notification;
-- (void)windowDidMove:(NSNotification *)notification;
-- (void)windowWillMove:(NSNotification *)notification;
 - (BOOL)windowShouldClose:(NSNotification *)notification;
-- (BOOL)windowShouldZoom:(NSWindow *)window toFrame:(NSRect)newFrame;
 
+- (BOOL)window:(NSWindow *)window shouldPopUpDocumentPathMenu:(NSMenu *)menu;
+- (BOOL)window:(NSWindow *)window shouldDragDocumentWithEvent:(NSEvent *)event from:(NSPoint)dragImageLocation withPasteboard:(NSPasteboard *)pasteboard;
 @end
 
 QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSWindowDelegate);

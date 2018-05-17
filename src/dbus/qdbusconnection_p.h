@@ -53,6 +53,7 @@
 #ifndef QDBUSCONNECTION_P_H
 #define QDBUSCONNECTION_P_H
 
+#include <QtDBus/private/qtdbusglobal_p.h>
 #include <qdbuserror.h>
 #include <qdbusconnection.h>
 
@@ -106,7 +107,7 @@ public:
 // QDBusConnectionPrivate holds the DBusConnection and
 // can have many QDBusConnection objects referring to it
 
-class QDBusConnectionPrivate: public QObject
+class Q_AUTOTEST_EXPORT QDBusConnectionPrivate: public QObject
 {
     Q_OBJECT
 public:
@@ -279,7 +280,7 @@ public slots:
     void socketWrite(int);
     void objectDestroyed(QObject *o);
     void relaySignal(QObject *obj, const QMetaObject *, int signalId, const QVariantList &args);
-    void addSignalHook(const QString &key, const SignalHook &hook);
+    bool addSignalHook(const QString &key, const SignalHook &hook);
     bool removeSignalHook(const QString &key, const SignalHook &hook);
 
 private slots:
@@ -292,7 +293,7 @@ signals:
     void dispatchStatusChanged();
     void spyHooksFinished(const QDBusMessage &msg);
     void messageNeedsSending(QDBusPendingCallPrivate *pcall, void *msg, int timeout = -1);
-    void signalNeedsConnecting(const QString &key, const QDBusConnectionPrivate::SignalHook &hook);
+    bool signalNeedsConnecting(const QString &key, const QDBusConnectionPrivate::SignalHook &hook);
     bool signalNeedsDisconnecting(const QString &key, const QDBusConnectionPrivate::SignalHook &hook);
     void serviceOwnerChanged(const QString &name, const QString &oldOwner, const QString &newOwner);
     void callWithCallbackFailed(const QDBusError &error, const QDBusMessage &message);
@@ -347,9 +348,6 @@ public:
                             QObject *receiver, const char *signal, int minMIdx,
                             bool buildSignature);
     static DBusHandlerResult messageFilter(DBusConnection *, DBusMessage *, void *);
-    static bool checkReplyForDelivery(QDBusConnectionPrivate *target, QObject *object,
-                                      int idx, const QList<int> &metaTypes,
-                                      const QDBusMessage &msg);
     static QDBusCallDeliveryEvent *prepareReply(QDBusConnectionPrivate *target, QObject *object,
                                                 int idx, const QVector<int> &metaTypes,
                                                 const QDBusMessage &msg);

@@ -40,12 +40,12 @@
 #ifndef QNETWORKDISKCACHE_H
 #define QNETWORKDISKCACHE_H
 
+#include <QtNetwork/qtnetworkglobal.h>
 #include <QtNetwork/qabstractnetworkcache.h>
 
+QT_REQUIRE_CONFIG(networkdiskcache);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_NETWORKDISKCACHE
 
 class QNetworkDiskCachePrivate;
 class Q_NETWORK_EXPORT QNetworkDiskCache : public QAbstractNetworkCache
@@ -82,8 +82,6 @@ private:
     Q_DECLARE_PRIVATE(QNetworkDiskCache)
     Q_DISABLE_COPY(QNetworkDiskCache)
 };
-
-#endif // QT_NO_NETWORKDISKCACHE
 
 QT_END_NAMESPACE
 

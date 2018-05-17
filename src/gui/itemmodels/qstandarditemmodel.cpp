@@ -91,23 +91,6 @@ public:
 /*!
   \internal
 */
-QStandardItemPrivate::~QStandardItemPrivate()
-{
-    QVector<QStandardItem*>::const_iterator it;
-    for (it = children.constBegin(); it != children.constEnd(); ++it) {
-        QStandardItem *child = *it;
-        if (child)
-            child->d_func()->setModel(0);
-        delete child;
-    }
-    children.clear();
-    if (parent && model)
-        parent->d_func()->childDeleted(q_func());
-}
-
-/*!
-  \internal
-*/
 QPair<int, int> QStandardItemPrivate::position() const
 {
     if (QStandardItem *par = parent) {
@@ -165,8 +148,14 @@ void QStandardItemPrivate::setChild(int row, int column, QStandardItem *item,
     if (model && emitChanged)
         emit model->layoutChanged();
 
-    if (emitChanged && model)
-        model->d_func()->itemChanged(item);
+    if (emitChanged && model) {
+        if (item) {
+            model->d_func()->itemChanged(item);
+        } else {
+            const QModelIndex idx = model->index(row, column, q->index());
+            emit model->dataChanged(idx, idx);
+        }
+    }
 }
 
 
@@ -191,7 +180,9 @@ void QStandardItemPrivate::childDeleted(QStandardItem *child)
 {
     int index = childIndex(child);
     Q_ASSERT(index != -1);
+    const auto modelIndex = child->index();
     children.replace(index, 0);
+    emit model->dataChanged(modelIndex, modelIndex);
 }
 
 /*!
@@ -340,9 +331,6 @@ QStandardItemModelPrivate::QStandardItemModelPrivate()
 */
 QStandardItemModelPrivate::~QStandardItemModelPrivate()
 {
-    delete itemPrototype;
-    qDeleteAll(columnHeaderItems);
-    qDeleteAll(rowHeaderItems);
 }
 
 /*!
@@ -496,6 +484,7 @@ bool QStandardItemPrivate::insertColumns(int column, int count, const QList<QSta
 void QStandardItemModelPrivate::itemChanged(QStandardItem *item)
 {
     Q_Q(QStandardItemModel);
+    Q_ASSERT(item);
     if (item->d_func()->parent == 0) {
         // Header item
         int idx = columnHeaderItems.indexOf(item);
@@ -705,20 +694,16 @@ void QStandardItemModelPrivate::columnsRemoved(QStandardItem *parent,
     Constructs an item.
 */
 QStandardItem::QStandardItem()
-    : d_ptr(new QStandardItemPrivate)
+    : QStandardItem(*new QStandardItemPrivate)
 {
-    Q_D(QStandardItem);
-    d->q_ptr = this;
 }
 
 /*!
     Constructs an item with the given \a text.
 */
 QStandardItem::QStandardItem(const QString &text)
-    : d_ptr(new QStandardItemPrivate)
+    : QStandardItem(*new QStandardItemPrivate)
 {
-    Q_D(QStandardItem);
-    d->q_ptr = this;
     setText(text);
 }
 
@@ -726,22 +711,17 @@ QStandardItem::QStandardItem(const QString &text)
     Constructs an item with the given \a icon and \a text.
 */
 QStandardItem::QStandardItem(const QIcon &icon, const QString &text)
-    : d_ptr(new QStandardItemPrivate)
+    : QStandardItem(text)
 {
-    Q_D(QStandardItem);
-    d->q_ptr = this;
     setIcon(icon);
-    setText(text);
 }
 
 /*!
    Constructs an item with \a rows rows and \a columns columns of child items.
 */
 QStandardItem::QStandardItem(int rows, int columns)
-    : d_ptr(new QStandardItemPrivate)
+    : QStandardItem(*new QStandardItemPrivate)
 {
-    Q_D(QStandardItem);
-    d->q_ptr = this;
     setRowCount(rows);
     setColumnCount(columns);
 }
@@ -789,6 +769,15 @@ QStandardItem &QStandardItem::operator=(const QStandardItem &other)
 */
 QStandardItem::~QStandardItem()
 {
+    Q_D(QStandardItem);
+    for (QStandardItem *child : qAsConst(d->children)) {
+        if (child)
+            child->d_func()->setModel(0);
+        delete child;
+    }
+    d->children.clear();
+    if (d->parent && d->model)
+        d->parent->d_func()->childDeleted(this);
 }
 
 /*!
@@ -1741,6 +1730,8 @@ bool QStandardItem::hasChildren() const
     item) takes ownership of \a item. If necessary, the row count and column
     count are increased to fit the item.
 
+    \note Passing a null pointer as \a item removes the item.
+
     \sa child()
 */
 void QStandardItem::setChild(int row, int column, QStandardItem *item)
@@ -1877,36 +1868,7 @@ bool QStandardItem::operator<(const QStandardItem &other) const
 {
     const int role = model() ? model()->sortRole() : Qt::DisplayRole;
     const QVariant l = data(role), r = other.data(role);
-    // this code is copied from QSortFilterProxyModel::lessThan()
-    if (l.userType() == QVariant::Invalid)
-        return false;
-    if (r.userType() == QVariant::Invalid)
-        return true;
-    switch (l.userType()) {
-    case QVariant::Int:
-        return l.toInt() < r.toInt();
-    case QVariant::UInt:
-        return l.toUInt() < r.toUInt();
-    case QVariant::LongLong:
-        return l.toLongLong() < r.toLongLong();
-    case QVariant::ULongLong:
-        return l.toULongLong() < r.toULongLong();
-    case QMetaType::Float:
-        return l.toFloat() < r.toFloat();
-    case QVariant::Double:
-        return l.toDouble() < r.toDouble();
-    case QVariant::Char:
-        return l.toChar() < r.toChar();
-    case QVariant::Date:
-        return l.toDate() < r.toDate();
-    case QVariant::Time:
-        return l.toTime() < r.toTime();
-    case QVariant::DateTime:
-        return l.toDateTime() < r.toDateTime();
-    case QVariant::String:
-    default:
-        return l.toString().compare(r.toString()) < 0;
-    }
+    return QAbstractItemModelPrivate::isVariantLessThan(l, r);
 }
 
 /*!
@@ -2154,6 +2116,11 @@ QStandardItemModel::QStandardItemModel(QStandardItemModelPrivate &dd, QObject *p
 */
 QStandardItemModel::~QStandardItemModel()
 {
+    Q_D(QStandardItemModel);
+    delete d->itemPrototype;
+    qDeleteAll(d->columnHeaderItems);
+    qDeleteAll(d->rowHeaderItems);
+    d->root.reset();
 }
 
 /*!

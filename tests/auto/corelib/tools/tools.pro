@@ -1,6 +1,7 @@
 TEMPLATE=subdirs
 SUBDIRS=\
     collections \
+    containerapisymmetry \
     qalgorithms \
     qarraydata \
     qarraydata_strictiterators \
@@ -18,7 +19,6 @@ SUBDIRS=\
     qdate \
     qdatetime \
     qeasingcurve \
-    qelapsedtimer \
     qexplicitlyshareddatapointer \
     qfreelist \
     qhash \
@@ -51,11 +51,13 @@ SUBDIRS=\
     qstl \
     qstring \
     qstring_no_cast_from_bytearray \
+    qstringapisymmetry \
     qstringbuilder \
     qstringiterator \
     qstringlist \
     qstringmatcher \
     qstringref \
+    qstringview \
     qtextboundaryfinder \
     qtime \
     qtimezone \
@@ -65,3 +67,4 @@ SUBDIRS=\
     qvector_strictiterators \
     qversionnumber
 
+darwin: SUBDIRS += qmacautoreleasepool

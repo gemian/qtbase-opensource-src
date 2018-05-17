@@ -39,10 +39,10 @@
 
 #include <QtCore/qdebug.h>
 #include "qundostack.h"
+#if QT_CONFIG(undogroup)
 #include "qundogroup.h"
+#endif
 #include "qundostack_p.h"
-
-#ifndef QT_NO_UNDOCOMMAND
 
 QT_BEGIN_NAMESPACE
 
@@ -110,10 +110,8 @@ QT_BEGIN_NAMESPACE
 */
 
 QUndoCommand::QUndoCommand(const QString &text, QUndoCommand *parent)
+    : QUndoCommand(parent)
 {
-    d = new QUndoCommandPrivate;
-    if (parent != 0)
-        parent->d->child_list.append(this);
     setText(text);
 }
 
@@ -144,6 +142,36 @@ QUndoCommand::~QUndoCommand()
 {
     qDeleteAll(d->child_list);
     delete d;
+}
+
+/*!
+    \since 5.9
+
+    Returns whether the command is obsolete.
+
+    The boolean is used for the automatic removal of commands that are not necessary in the
+    stack anymore. The isObsolete function is checked in the functions QUndoStack::push(),
+    QUndoStack::undo(), QUndoStack::redo(), and QUndoStack::setIndex().
+
+    \sa setObsolete(), mergeWith(), QUndoStack::push(), QUndoStack::undo(), QUndoStack::redo()
+*/
+
+bool QUndoCommand::isObsolete() const
+{
+    return d->obsolete;
+}
+
+/*!
+    \since 5.9
+
+    Sets whether the command is obsolete to \a obsolete.
+
+    \sa isObsolete(), mergeWith(), QUndoStack::push(), QUndoStack::undo(), QUndoStack::redo()
+*/
+
+void QUndoCommand::setObsolete(bool obsolete)
+{
+    d->obsolete = obsolete;
 }
 
 /*!
@@ -312,9 +340,7 @@ const QUndoCommand *QUndoCommand::child(int index) const
     return d->child_list.at(index);
 }
 
-#endif // QT_NO_UNDOCOMMAND
-
-#ifndef QT_NO_UNDOSTACK
+#if QT_CONFIG(undostack)
 
 /*!
     \class QUndoStack
@@ -391,6 +417,28 @@ const QUndoCommand *QUndoCommand::child(int index) const
     usually used to enable and disable the save actions in the application,
     and to update the document's title to reflect that it contains unsaved
     changes.
+
+    \section1 Obsolete Commands
+
+    QUndoStack is able to delete commands from the stack if the command is no
+    longer needed. One example may be to delete a command when two commands are
+    merged together in such a way that the merged command has no function. This
+    can be seen with move commands where the user moves their mouse to one part
+    of the screen and then moves it to the original position. The merged command
+    results in a mouse movement of 0. This command can be deleted since it serves
+    no purpose. Another example is with networking commands that fail due to connection
+    issues. In this case, the command is to be removed from the stack because the redo()
+    and undo() functions have no function since there was connection issues.
+
+    A command can be marked obsolete with the QUndoCommand::setObsolete() function.
+    The QUndoCommand::isObsolete() flag is checked in QUndoStack::push(),
+    QUndoStack::undo(), QUndoStack::redo(), and QUndoStack::setIndex() after calling
+    QUndoCommand::undo(), QUndoCommand::redo() and QUndoCommand:mergeWith() where
+    applicable.
+
+    If a command is set obsolete and the clean index is greater than or equal to the
+    current command index, then the clean index will be reset when the command is
+    deleted from the stack.
 
     \sa QUndoCommand, QUndoView
 */
@@ -494,7 +542,7 @@ bool QUndoStackPrivate::checkUndoLimit()
 QUndoStack::QUndoStack(QObject *parent)
     : QObject(*(new QUndoStackPrivate), parent)
 {
-#ifndef QT_NO_UNDOGROUP
+#if QT_CONFIG(undogroup)
     if (QUndoGroup *group = qobject_cast<QUndoGroup*>(parent))
         group->addStack(this);
 #endif
@@ -509,7 +557,7 @@ QUndoStack::QUndoStack(QObject *parent)
 
 QUndoStack::~QUndoStack()
 {
-#ifndef QT_NO_UNDOGROUP
+#if QT_CONFIG(undogroup)
     Q_D(QUndoStack);
     if (d->group != 0)
         d->group->removeStack(this);
@@ -565,6 +613,11 @@ void QUndoStack::clear()
     commands by calling QUndoCommand::mergeWith() on the most recently executed
     command. If QUndoCommand::mergeWith() returns \c true, \a cmd is deleted.
 
+    After calling QUndoCommand::redo() and, if applicable, QUndoCommand::mergeWith(),
+    QUndoCommand::isObsolete() will be called for \a cmd or the merged command.
+    If QUndoCommand::isObsolete() returns \c true, then \a cmd or the merged command
+    will be deleted from the stack.
+
     In all other cases \a cmd is simply pushed on the stack.
 
     If commands were undone before \a cmd was pushed, the current command and
@@ -582,7 +635,8 @@ void QUndoStack::clear()
 void QUndoStack::push(QUndoCommand *cmd)
 {
     Q_D(QUndoStack);
-    cmd->redo();
+    if (!cmd->isObsolete())
+        cmd->redo();
 
     bool macro = !d->macro_stack.isEmpty();
 
@@ -607,13 +661,25 @@ void QUndoStack::push(QUndoCommand *cmd)
 
     if (try_merge && cur->mergeWith(cmd)) {
         delete cmd;
-        if (!macro) {
-            emit indexChanged(d->index);
-            emit canUndoChanged(canUndo());
-            emit undoTextChanged(undoText());
-            emit canRedoChanged(canRedo());
-            emit redoTextChanged(redoText());
+
+        if (macro) {
+            if (cur->isObsolete())
+                delete d->macro_stack.constLast()->d->child_list.takeLast();
+        } else {
+            if (cur->isObsolete()) {
+                delete d->command_list.takeLast();
+
+                d->setIndex(d->index - 1, false);
+            } else {
+                emit indexChanged(d->index);
+                emit canUndoChanged(canUndo());
+                emit undoTextChanged(undoText());
+                emit canRedoChanged(canRedo());
+                emit redoTextChanged(redoText());
+            }
         }
+    } else if (cmd->isObsolete()) {
+        delete cmd; // command should be deleted and NOT added to the stack
     } else {
         if (macro) {
             d->macro_stack.constLast()->d->child_list.append(cmd);
@@ -635,7 +701,7 @@ void QUndoStack::push(QUndoCommand *cmd)
     commands, it emits the signal cleanChanged(). This signal is also
     emitted when the stack leaves the clean state.
 
-    \sa isClean(), cleanIndex()
+    \sa isClean(), resetClean(), cleanIndex()
 */
 
 void QUndoStack::setClean()
@@ -647,6 +713,32 @@ void QUndoStack::setClean()
     }
 
     d->setIndex(d->index, true);
+}
+
+/*!
+    \since 5.8
+
+    Leaves the clean state and emits cleanChanged() if the stack was clean.
+    This method resets the clean index to -1.
+
+    This is typically called in the following cases, when a document has been:
+    \list
+    \li created basing on some template and has not been saved,
+        so no filename has been associated with the document yet.
+    \li restored from a backup file.
+    \li changed outside of the editor and the user did not reload it.
+    \endlist
+
+    \sa isClean(), setClean(), cleanIndex()
+*/
+
+void QUndoStack::resetClean()
+{
+    Q_D(QUndoStack);
+    const bool was_clean = isClean();
+    d->clean_index = -1;
+    if (was_clean)
+        emit cleanChanged(false);
 }
 
 /*!
@@ -670,6 +762,7 @@ bool QUndoStack::isClean() const
     some commands are undone, then a new command is pushed. Since
     push() deletes all the undone commands before pushing the new command, the stack
     can't return to the clean state again. In this case, this function returns -1.
+    The -1 may also be returned after an explicit call to resetClean().
 
     \sa isClean(), setClean()
 */
@@ -687,6 +780,11 @@ int QUndoStack::cleanIndex() const
     If the stack is empty, or if the bottom command on the stack has already been
     undone, this function does nothing.
 
+    After the command is undone, if QUndoCommand::isObsolete() returns \c true,
+    then the command will be deleted from the stack. Additionally, if the clean
+    index is greater than or equal to the current command index, then the clean
+    index is reset.
+
     \sa redo(), index()
 */
 
@@ -702,7 +800,18 @@ void QUndoStack::undo()
     }
 
     int idx = d->index - 1;
-    d->command_list.at(idx)->undo();
+    QUndoCommand *cmd = d->command_list.at(idx);
+
+    if (!cmd->isObsolete())
+        cmd->undo();
+
+    if (cmd->isObsolete()) { // A separate check is done b/c the undo command may set obsolete flag
+        delete d->command_list.takeAt(idx);
+
+        if (d->clean_index > idx)
+            resetClean();
+    }
+
     d->setIndex(idx, false);
 }
 
@@ -712,6 +821,11 @@ void QUndoStack::undo()
 
     If the stack is empty, or if the top command on the stack has already been
     redone, this function does nothing.
+
+    If QUndoCommand::isObsolete() returns true for the current command, then
+    the command will be deleted from the stack. Additionally, if the clean
+    index is greater than or equal to the current command index, then the clean
+    index is reset.
 
     \sa undo(), index()
 */
@@ -727,8 +841,20 @@ void QUndoStack::redo()
         return;
     }
 
-    d->command_list.at(d->index)->redo();
-    d->setIndex(d->index + 1, false);
+    int idx = d->index;
+    QUndoCommand *cmd = d->command_list.at(idx);
+
+    if (!cmd->isObsolete())
+        cmd->redo(); // A separate check is done b/c the undo command may set obsolete flag
+
+    if (cmd->isObsolete()) {
+        delete d->command_list.takeAt(idx);
+
+        if (d->clean_index > idx)
+            resetClean();
+    } else {
+        d->setIndex(d->index + 1, false);
+    }
 }
 
 /*!
@@ -780,10 +906,35 @@ void QUndoStack::setIndex(int idx)
         idx = d->command_list.size();
 
     int i = d->index;
-    while (i < idx)
-        d->command_list.at(i++)->redo();
-    while (i > idx)
-        d->command_list.at(--i)->undo();
+    while (i < idx) {
+        QUndoCommand *cmd = d->command_list.at(i);
+
+        if (!cmd->isObsolete())
+            cmd->redo();  // A separate check is done b/c the undo command may set obsolete flag
+
+        if (cmd->isObsolete()) {
+            delete d->command_list.takeAt(i);
+
+            if (d->clean_index > i)
+                resetClean();
+
+            idx--; // Subtract from idx because we removed a command
+        } else {
+            i++;
+        }
+    }
+
+    while (i > idx) {
+        QUndoCommand *cmd = d->command_list.at(--i);
+
+        cmd->undo();
+        if (cmd->isObsolete()) {
+            delete d->command_list.takeAt(i);
+
+            if (d->clean_index > i)
+                resetClean();
+        }
+    }
 
     d->setIndex(idx, false);
 }
@@ -1094,7 +1245,7 @@ int QUndoStack::undoLimit() const
 
 void QUndoStack::setActive(bool active)
 {
-#ifdef QT_NO_UNDOGROUP
+#if !QT_CONFIG(undogroup)
     Q_UNUSED(active);
 #else
     Q_D(QUndoStack);
@@ -1110,7 +1261,7 @@ void QUndoStack::setActive(bool active)
 
 bool QUndoStack::isActive() const
 {
-#ifdef QT_NO_UNDOGROUP
+#if !QT_CONFIG(undogroup)
     return true;
 #else
     Q_D(const QUndoStack);
@@ -1179,4 +1330,4 @@ QT_END_NAMESPACE
 #include "moc_qundostack.cpp"
 #include "moc_qundostack_p.cpp"
 
-#endif // QT_NO_UNDOSTACK
+#endif // QT_CONFIG(undostack)

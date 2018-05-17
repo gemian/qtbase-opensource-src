@@ -51,12 +51,13 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include "qabstractsocketengine_p.h"
 #include "qnetworkproxy.h"
 
-QT_BEGIN_NAMESPACE
+QT_REQUIRE_CONFIG(socks5);
 
-#ifndef QT_NO_SOCKS5
+QT_BEGIN_NAMESPACE
 
 class QSocks5SocketEnginePrivate;
 
@@ -99,13 +100,13 @@ public:
     bool setMulticastInterface(const QNetworkInterface &iface) Q_DECL_OVERRIDE;
 #endif // QT_NO_NETWORKINTERFACE
 
-    qint64 readDatagram(char *data, qint64 maxlen, QIpPacketHeader * = 0,
-                        PacketHeaderOptions = WantNone) Q_DECL_OVERRIDE;
-    qint64 writeDatagram(const char *data, qint64 len, const QIpPacketHeader &) Q_DECL_OVERRIDE;
     bool hasPendingDatagrams() const Q_DECL_OVERRIDE;
     qint64 pendingDatagramSize() const Q_DECL_OVERRIDE;
 #endif // QT_NO_UDPSOCKET
 
+    qint64 readDatagram(char *data, qint64 maxlen, QIpPacketHeader * = 0,
+                        PacketHeaderOptions = WantNone) Q_DECL_OVERRIDE;
+    qint64 writeDatagram(const char *data, qint64 len, const QIpPacketHeader &) Q_DECL_OVERRIDE;
     qint64 bytesToWrite() const Q_DECL_OVERRIDE;
 
     int option(SocketOption option) const Q_DECL_OVERRIDE;
@@ -247,7 +248,6 @@ public:
     void _q_controlSocketReadNotification();
     void _q_controlSocketError(QAbstractSocket::SocketError);
 #ifndef QT_NO_UDPSOCKET
-    void checkForDatagrams() const;
     void _q_udpSocketReadNotification();
 #endif
     void _q_controlSocketBytesWritten();
@@ -291,7 +291,6 @@ public:
     virtual QAbstractSocketEngine *createSocketEngine(qintptr socketDescriptor, QObject *parent) Q_DECL_OVERRIDE;
 };
 
-
 QT_END_NAMESPACE
-#endif // QT_NO_SOCKS5
+
 #endif // QSOCKS5SOCKETENGINE_H

@@ -109,6 +109,8 @@ private:
 };
 #endif
 
+Q_DECLARE_TYPEINFO(QSettingsKey, Q_MOVABLE_TYPE);
+
 typedef QMap<QSettingsKey, QByteArray> UnparsedSettingsMap;
 typedef QMap<QSettingsKey, QVariant> ParsedSettingsMap;
 
@@ -247,6 +249,7 @@ protected:
     QString groupPrefix;
     bool fallbacks;
     bool pendingChanges;
+    bool atomicSyncOnly = true;
     mutable QSettings::Status status;
 };
 
@@ -282,8 +285,8 @@ private:
     void syncConfFile(QConfFile *confFile);
     bool writeIniFile(QIODevice &device, const ParsedSettingsMap &map);
 #ifdef Q_OS_MAC
-    bool readPlistFile(const QString &fileName, ParsedSettingsMap *map) const;
-    bool writePlistFile(const QString &fileName, const ParsedSettingsMap &map) const;
+    bool readPlistFile(const QByteArray &data, ParsedSettingsMap *map) const;
+    bool writePlistFile(QIODevice &file, const ParsedSettingsMap &map) const;
 #endif
     void ensureAllSectionsParsed(QConfFile *confFile) const;
     void ensureSectionParsed(QConfFile *confFile, const QSettingsKey &key) const;

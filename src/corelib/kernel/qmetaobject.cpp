@@ -1489,6 +1489,57 @@ bool QMetaObject::invokeMethod(QObject *obj,
                          val0, val1, val2, val3, val4, val5, val6, val7, val8, val9);
 }
 
+bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *slot, Qt::ConnectionType type, void *ret)
+{
+    struct Holder {
+        QtPrivate::QSlotObjectBase *obj;
+        ~Holder() { obj->destroyIfLastRef(); }
+    } holder = { slot };
+    Q_UNUSED(holder);
+
+    if (! object)
+        return false;
+
+    QThread *currentThread = QThread::currentThread();
+    QThread *objectThread = object->thread();
+    if (type == Qt::AutoConnection)
+        type = (currentThread == objectThread) ? Qt::DirectConnection : Qt::QueuedConnection;
+
+    void *argv[] = { ret };
+
+    if (type == Qt::DirectConnection) {
+        slot->call(object, argv);
+    } else if (type == Qt::QueuedConnection) {
+        if (argv[0]) {
+            qWarning("QMetaObject::invokeMethod: Unable to invoke methods with return values in "
+                     "queued connections");
+            return false;
+        }
+
+        // args and typesCopy will be deallocated by ~QMetaCallEvent() using free()
+        void **args = static_cast<void **>(calloc(1, sizeof(void *)));
+        Q_CHECK_PTR(args);
+
+        int *types = static_cast<int *>(calloc(1, sizeof(int)));
+        Q_CHECK_PTR(types);
+
+        QCoreApplication::postEvent(object, new QMetaCallEvent(slot, 0, -1, 1, types, args));
+    } else if (type == Qt::BlockingQueuedConnection) {
+#ifndef QT_NO_THREAD
+        if (currentThread == objectThread)
+            qWarning("QMetaObject::invokeMethod: Dead lock detected");
+
+        QSemaphore semaphore;
+        QCoreApplication::postEvent(object, new QMetaCallEvent(slot, 0, -1, 0, 0, argv, &semaphore));
+        semaphore.acquire();
+#endif // QT_NO_THREAD
+    } else {
+        qWarning("QMetaObject::invokeMethod: Unknown connection type");
+        return false;
+    }
+    return true;
+}
+
 /*! \fn bool QMetaObject::invokeMethod(QObject *obj, const char *member,
                                        QGenericReturnArgument ret,
                                        QGenericArgument val0 = QGenericArgument(0),
@@ -1541,6 +1592,44 @@ bool QMetaObject::invokeMethod(QObject *obj,
 
     This overload invokes the member using the connection type Qt::AutoConnection and
     ignores return values.
+*/
+
+/*!
+    \fn bool QMetaObject::invokeMethod(QObject *receiver, PointerToMemberFunction function, Qt::ConnectionType type = Qt::AutoConnection, MemberFunctionReturnType *ret = Q_NULLPTR)
+
+    \since 5.10
+
+    \overload
+*/
+
+/*!
+    \fn bool QMetaObject::invokeMethod(QObject *receiver, PointerToMemberFunction function, MemberFunctionReturnType *ret)
+
+    \since 5.10
+
+    \overload
+
+    This overload invokes the member function using the connection type Qt::AutoConnection.
+*/
+
+/*!
+    \fn bool QMetaObject::invokeMethod(QObject *context, Functor function, Qt::ConnectionType type = Qt::AutoConnection, FunctorReturnType *ret = Q_NULLPTR)
+
+    \since 5.10
+
+    \overload
+
+    Call the functor in the event loop of \a context.
+*/
+
+/*!
+    \fn bool QMetaObject::invokeMethod(QObject *context, Functor function, FunctorReturnType *ret = Q_NULLPTR)
+
+    \since 5.10
+
+    \overload
+
+    Call the functor in the event loop of \a context using the connection type Qt::AutoConnection.
 */
 
 /*!
@@ -2241,12 +2330,10 @@ bool QMetaMethod::invoke(QObject *object,
 
         for (int i = 1; i < paramCount; ++i) {
             types[i] = QMetaType::type(typeNames[i]);
-            if (types[i] != QMetaType::UnknownType) {
-                args[i] = QMetaType::create(types[i], param[i]);
-                ++nargs;
-            } else if (param[i]) {
+            if (types[i] == QMetaType::UnknownType && param[i]) {
                 // Try to register the type and try again before reporting an error.
-                void *argv[] = { &types[i], &i };
+                int index = nargs - 1;
+                void *argv[] = { &types[i], &index };
                 QMetaObject::metacall(object, QMetaObject::RegisterMethodArgumentMetaType,
                                       idx_relative + idx_offset, argv);
                 if (types[i] == -1) {
@@ -2260,6 +2347,10 @@ bool QMetaMethod::invoke(QObject *object,
                     free(args);
                     return false;
                 }
+            }
+            if (types[i] != QMetaType::UnknownType) {
+                args[i] = QMetaType::create(types[i], param[i]);
+                ++nargs;
             }
         }
 
@@ -2557,9 +2648,19 @@ int QMetaEnum::value(int index) const
 */
 bool QMetaEnum::isFlag() const
 {
-    return mobj && mobj->d.data[handle + 1];
+    return mobj && mobj->d.data[handle + 1] & EnumIsFlag;
 }
 
+/*!
+    \since 5.8
+
+    Returns \c true if this enumerator is declared as a C++11 enum class;
+    otherwise returns false.
+*/
+bool QMetaEnum::isScoped() const
+{
+    return mobj && mobj->d.data[handle + 1] & EnumIsScoped;
+}
 
 /*!
     Returns the scope this enumerator was declared in.
@@ -2652,15 +2753,16 @@ int QMetaEnum::keysToValue(const char *keys, bool *ok) const
         return -1;
     if (ok != 0)
         *ok = true;
-    QStringList l = QString::fromLatin1(keys).split(QLatin1Char('|'));
-    if (l.isEmpty())
+    const QString keysString = QString::fromLatin1(keys);
+    const QVector<QStringRef> splitKeys = keysString.splitRef(QLatin1Char('|'));
+    if (splitKeys.isEmpty())
         return 0;
-    //#### TODO write proper code, do not use QStringList
+    // ### TODO write proper code: do not allocate memory, so we can go nothrow
     int value = 0;
     int count = mobj->d.data[handle + 2];
     int data = mobj->d.data[handle + 3];
-    for (int li = 0; li < l.size(); ++li) {
-        QString trimmed = l.at(li).trimmed();
+    for (const QStringRef &untrimmed : splitKeys) {
+        const QStringRef trimmed = untrimmed.trimmed();
         QByteArray qualified_key = trimmed.toLatin1();
         const char *key = qualified_key.constData();
         uint scope = 0;
@@ -3251,7 +3353,21 @@ int QMetaProperty::notifySignalIndex() const
     if (hasNotifySignal()) {
         int offset = priv(mobj->d.data)->propertyData +
                      priv(mobj->d.data)->propertyCount * 3 + idx;
-        return mobj->d.data[offset] + mobj->methodOffset();
+        int methodIndex = mobj->d.data[offset];
+        if (methodIndex & IsUnresolvedSignal) {
+            methodIndex &= ~IsUnresolvedSignal;
+            const QByteArray signalName = stringData(mobj, methodIndex);
+            const QMetaObject *m = mobj;
+            const int idx = indexOfMethodRelative<MethodSignal>(&m, signalName, 0, nullptr);
+            if (idx >= 0) {
+                return idx + m->methodOffset();
+            } else {
+                qWarning("QMetaProperty::notifySignal: cannot find the NOTIFY signal %s in class %s for property '%s'",
+                         signalName.constData(), objectClassName(mobj), name());
+                return -1;
+            }
+        }
+        return methodIndex + mobj->methodOffset();
     } else {
         return -1;
     }

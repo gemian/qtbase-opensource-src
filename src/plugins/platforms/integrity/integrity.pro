@@ -1,19 +1,25 @@
 TARGET = integrityfb
 
-QT += core-private gui-private platformsupport-private
+QT += \
+    core-private gui-private \
+    eventdispatcher_support-private service_support-private \
+    fontdatabase_support-private fb_support-private
 
 SOURCES = \
     main.cpp \
     qintegrityfbintegration.cpp \
-    qintegrityfbscreen.cpp \
-    qintegrityhidmanager.cpp
+    qintegrityfbscreen.cpp
 
 HEADERS = \
     qintegrityfbintegration.h \
-    qintegrityfbscreen.h \
-    qintegrityhidmanager.h
+    qintegrityfbscreen.h
 
-CONFIG += qpa/genericunixfontdatabase
+qtConfig(integrityhid) {
+    SOURCES += \
+        qintegrityhidmanager.cpp
+    HEADERS += \
+        qintegrityhidmanager.h
+}
 
 OTHER_FILES += integrity.json
 

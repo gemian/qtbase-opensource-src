@@ -194,8 +194,11 @@ static QVector<QComposeTableElement> loadCache(const QComposeCacheFileHeader &co
 static bool saveCache(const QComposeCacheFileHeader &info, const QVector<QComposeTableElement> &vec)
 {
     const QString filePath = getCacheFilePath();
+#if QT_CONFIG(temporaryfile)
     QSaveFile outputFile(filePath);
-
+#else
+    QFile outputFile(filePath);
+#endif
     if (!outputFile.open(QIODevice::WriteOnly))
         return false;
     const char *data = reinterpret_cast<const char*>(&info);
@@ -207,7 +210,11 @@ static bool saveCache(const QComposeCacheFileHeader &info, const QVector<QCompos
 
     if (outputFile.write(data, size) != size)
         return false;
+#if QT_CONFIG(temporaryfile)
     return outputFile.commit();
+#else
+    return true;
+#endif
 }
 
 TableGenerator::TableGenerator() : m_state(NoErrors),
@@ -255,6 +262,7 @@ void TableGenerator::initPossibleLocations()
     // never meant for external software to parse compose tables directly. Best we
     // can do is to hardcode search paths. To add an extra system path use
     // the QTCOMPOSE environment variable
+    m_possibleLocations.reserve(7);
     if (qEnvironmentVariableIsSet("QTCOMPOSE"))
         m_possibleLocations.append(QString::fromLocal8Bit(qgetenv("QTCOMPOSE")));
     m_possibleLocations.append(QStringLiteral("/usr/share/X11/locale"));
@@ -512,7 +520,7 @@ static inline int fromBase8(const char *s, const char *end)
 {
     int result = 0;
     while (*s && s != end) {
-        if (*s <= '0' && *s >= '7')
+        if (*s < '0' || *s > '7')
             return 0;
         result *= 8;
         result += *s - '0';
@@ -645,6 +653,6 @@ void TableGenerator::orderComposeTable()
     // Stable-sorting to ensure that the item that appeared before the other in the
     // original container will still appear first after the sort. This property is
     // needed to handle the cases when user re-defines already defined key sequence
-    std::stable_sort(m_composeTable.begin(), m_composeTable.end(), Compare());
+    std::stable_sort(m_composeTable.begin(), m_composeTable.end(), ByKeys());
 }
 

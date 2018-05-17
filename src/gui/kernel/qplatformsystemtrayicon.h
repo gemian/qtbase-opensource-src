@@ -41,6 +41,7 @@
 #ifndef QPLATFORMSYSTEMTRAYICON_H
 #define QPLATFORMSYSTEMTRAYICON_H
 
+#include <QtGui/qtguiglobal.h>
 #include "QtCore/qobject.h"
 
 #ifndef QT_NO_SYSTEMTRAYICON
@@ -48,6 +49,7 @@
 QT_BEGIN_NAMESPACE
 
 class QPlatformMenu;
+class QPlatformScreen;
 class QIcon;
 class QString;
 class QRect;
@@ -87,6 +89,7 @@ public:
 
 Q_SIGNALS:
     void activated(QPlatformSystemTrayIcon::ActivationReason reason);
+    void contextMenuRequested(QPoint globalPos, const QPlatformScreen *screen);
     void messageClicked();
 };
 

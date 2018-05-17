@@ -40,12 +40,12 @@
 #ifndef QGRAPHICSLAYOUT_H
 #define QGRAPHICSLAYOUT_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qgraphicslayoutitem.h>
 
+QT_REQUIRE_CONFIG(graphicsview);
+
 QT_BEGIN_NAMESPACE
-
-
-#if !defined(QT_NO_GRAPHICSVIEW)
 
 class QGraphicsLayoutPrivate;
 class QGraphicsLayoutItem;
@@ -85,9 +85,6 @@ private:
 
 Q_DECLARE_INTERFACE(QGraphicsLayout, "org.qt-project.Qt.QGraphicsLayout")
 
-#endif
-
 QT_END_NAMESPACE
 
 #endif
-

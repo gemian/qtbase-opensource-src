@@ -569,7 +569,7 @@ void QQnxWindow::requestActivateWindow()
         for (int i = 1; i < windowList.size(); ++i)
             windowList.at(i-1)->setFocus(windowList.at(i)->nativeHandle());
 
-        windowList.last()->setFocus(windowList.last()->nativeHandle());
+        windowList.last()->setFocus(windowList.constLast()->nativeHandle());
     }
 
     screen_flush_context(m_screenContext, 0);
@@ -586,7 +586,7 @@ void QQnxWindow::setFocus(screen_window_t newFocusWindow)
     }
 }
 
-void QQnxWindow::setWindowState(Qt::WindowState state)
+void QQnxWindow::setWindowState(Qt::WindowStates state)
 {
     qWindowDebug() << "state =" << state;
 
@@ -694,7 +694,7 @@ void QQnxWindow::initWindow()
 void QQnxWindow::createWindowGroup()
 {
     // Generate a random window group name
-    m_windowGroupName = QUuid::createUuid().toString().toLatin1();
+    m_windowGroupName = QUuid::createUuid().toByteArray();
 
     // Create window group so child windows can be parented by container window
     Q_SCREEN_CHECKERROR(screen_create_window_group(m_window, m_windowGroupName.constData()),
@@ -749,32 +749,19 @@ void QQnxWindow::updateZorder(screen_window_t window, int &topZorder)
 
 void QQnxWindow::applyWindowState()
 {
-    switch (m_windowState) {
-
-    // WindowActive is not an accepted parameter according to the docs
-    case Qt::WindowActive:
-        return;
-
-    case Qt::WindowMinimized:
+    if (m_windowState & Qt::WindowMinimized) {
         minimize();
 
         if (m_unmaximizedGeometry.isValid())
             setGeometry(m_unmaximizedGeometry);
         else
             setGeometry(m_screen->geometry());
-
-        break;
-
-    case Qt::WindowMaximized:
-    case Qt::WindowFullScreen:
+    } else if (m_windowState & (Qt::WindowMaximized | Qt::WindowFullScreen)) {
         m_unmaximizedGeometry = geometry();
-        setGeometry(m_windowState == Qt::WindowMaximized ? m_screen->availableGeometry() : m_screen->geometry());
-        break;
-
-    case Qt::WindowNoState:
-        if (m_unmaximizedGeometry.isValid())
-            setGeometry(m_unmaximizedGeometry);
-        break;
+        setGeometry(m_windowState & Qt::WindowFullScreen ? m_screen->geometry()
+                                                         : m_screen->availableGeometry());
+    } else if (m_unmaximizedGeometry.isValid()) {
+        setGeometry(m_unmaximizedGeometry);
     }
 }
 

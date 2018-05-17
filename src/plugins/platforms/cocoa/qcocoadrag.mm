@@ -43,6 +43,7 @@
 #ifndef QT_NO_WIDGETS
 #include <QtWidgets/qwidget.h>
 #endif
+#include <QtGui/private/qcoregraphics_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,7 +68,7 @@ void QCocoaDrag::setLastMouseEvent(NSEvent *event, NSView *view)
     m_lastView = view;
 }
 
-QMimeData *QCocoaDrag::platformDropData()
+QMimeData *QCocoaDrag::dragMimeData()
 {
     if (m_drag)
         return m_drag->mimeData();
@@ -131,7 +132,7 @@ Qt::DropAction QCocoaDrag::drag(QDrag *o)
     QPixmap pm = dragPixmap(m_drag, hotSpot);
     QSize pmDeviceIndependentSize = pm.size() / pm.devicePixelRatio();
     NSImage *nsimage = qt_mac_create_nsimage(pm);
-    [nsimage setSize : qt_mac_toNSSize(pmDeviceIndependentSize)];
+    [nsimage setSize:NSSizeFromCGSize(pmDeviceIndependentSize.toCGSize())];
 
     QMacPasteboard dragBoard((CFStringRef) NSDragPboard, QMacInternalPasteboardMime::MIME_DND);
     m_drag->mimeData()->setData(QLatin1String("application/x-qt-mime-type-name"), QByteArray("dummy"));
@@ -200,6 +201,10 @@ QPixmap QCocoaDrag::dragPixmap(QDrag *drag, QPoint &hotSpot) const
                             dpr = sourceWindow->devicePixelRatio();
                     }
 #endif
+                    else {
+                        if (const QWindow *focusWindow = qApp->focusWindow())
+                            dpr = focusWindow->devicePixelRatio();
+                    }
                     pm = QPixmap(width * dpr, height * dpr);
                     pm.setDevicePixelRatio(dpr);
                     QPainter p(&pm);

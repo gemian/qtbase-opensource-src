@@ -40,7 +40,7 @@
 #ifndef QCOCOAKEYMAPPER_H
 #define QCOCOAKEYMAPPER_H
 
-#include <qcocoahelpers.h>
+#include "qcocoahelpers.h"
 
 #include <AppKit/AppKit.h>
 #include <Carbon/Carbon.h>
@@ -91,8 +91,6 @@ public:
 private:
     QCFType<TISInputSourceRef> currentInputSource;
 
-    QLocale keyboardInputLocale;
-    Qt::LayoutDirection keyboardInputDirection;
     enum { NullMode, UnicodeMode, OtherMode } keyboard_mode;
     union {
         const UCKeyboardLayout *unicode;

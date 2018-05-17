@@ -48,13 +48,14 @@
 #include <qlineedit.h>
 #include <qlayout.h>
 #include <qmenu.h>
+#include <qrandom.h>
 #include "../../../../../src/widgets/dialogs/qsidebar_p.h"
 #include "../../../../../src/widgets/dialogs/qfilesystemmodel_p.h"
 #include "../../../../../src/widgets/dialogs/qfiledialog_p.h"
 
 #include <qpa/qplatformdialoghelper.h>
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
 #include "../../../network-settings.h"
 #endif
 
@@ -107,7 +108,7 @@ private slots:
 #ifndef Q_OS_MAC
     void task227930_correctNavigationKeyboardBehavior();
 #endif
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
     void task226366_lowerCaseHardDriveWindows();
 #endif
     void completionOnLevelAfterRoot();
@@ -138,9 +139,6 @@ tst_QFileDialog2::tst_QFileDialog2()
     : tempDir(QDir::tempPath() + "/tst_qfiledialog2.XXXXXX")
 {
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
-#if defined(Q_OS_WINCE)
-    qApp->setAutoMaximizeThreshold(-1);
-#endif
 }
 
 void tst_QFileDialog2::cleanupSettingsFile()
@@ -167,9 +165,6 @@ void tst_QFileDialog2::init()
     QFileDialogPrivate::setLastVisitedDirectory(QUrl());
     // populate the sidebar with some default settings
     QFileDialog fd;
-#if defined(Q_OS_WINCE)
-    QTest::qWait(1000);
-#endif
 }
 
 void tst_QFileDialog2::cleanup()
@@ -189,11 +184,7 @@ void tst_QFileDialog2::listRoot()
     fd.show();
     QCOMPARE(qt_test_isFetchedRoot(),false);
     fd.setDirectory("");
-#ifdef Q_OS_WINCE
-    QTest::qWait(1500);
-#else
     QTest::qWait(500);
-#endif
     QCOMPARE(qt_test_isFetchedRoot(),true);
 }
 #endif
@@ -286,7 +277,7 @@ void tst_QFileDialog2::showNameFilterDetails()
 
 void tst_QFileDialog2::unc()
 {
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
     // Only test UNC on Windows./
     QString dir("\\\\"  + QtNetworkSettings::winServerName() + "\\testsharewritable");
 #else
@@ -350,8 +341,7 @@ void tst_QFileDialog2::task143519_deleteAndRenameActionBehavior()
     // test based on task233037_selectingDirectory
 
     struct TestContext {
-        TestContext()
-            : current(QDir::current()) {}
+        explicit TestContext(const QString &path) : current(path) {}
         ~TestContext() {
             file.remove();
             current.rmdir(test.dirName());
@@ -359,7 +349,9 @@ void tst_QFileDialog2::task143519_deleteAndRenameActionBehavior()
         QDir current;
         QDir test;
         QFile file;
-    } ctx;
+    };
+
+    TestContext ctx(tempDir.path());
 
     // setup testbed
     QVERIFY(ctx.current.mkdir("task143519_deleteAndRenameActionBehavior_test")); // ensure at least one item
@@ -373,9 +365,10 @@ void tst_QFileDialog2::task143519_deleteAndRenameActionBehavior()
     QFileDialog fd;
     fd.setViewMode(QFileDialog::List);
     fd.setDirectory(ctx.test.absolutePath());
+    fd.selectFile(ctx.file.fileName());
     fd.show();
 
-    QTest::qWaitForWindowActive(&fd);
+    QVERIFY(QTest::qWaitForWindowActive(&fd));
 
     // grab some internals:
     QAction *rm = fd.findChild<QAction*>("qt_delete_action");
@@ -387,7 +380,7 @@ void tst_QFileDialog2::task143519_deleteAndRenameActionBehavior()
 
     // defaults
     QVERIFY(openContextMenu(fd));
-    QCOMPARE(fd.selectedFiles().size(), 1);
+    QCOMPARE(fd.selectedFiles(), QStringList(ctx.file.fileName()));
     QCOMPARE(rm->isEnabled(), !fd.isReadOnly());
     QCOMPARE(mv->isEnabled(), !fd.isReadOnly());
 
@@ -634,7 +627,7 @@ void tst_QFileDialog2::task227930_correctNavigationKeyboardBehavior()
 }
 #endif
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
 void tst_QFileDialog2::task226366_lowerCaseHardDriveWindows()
 {
     QFileDialog fd;
@@ -664,7 +657,7 @@ void tst_QFileDialog2::task226366_lowerCaseHardDriveWindows()
 void tst_QFileDialog2::completionOnLevelAfterRoot()
 {
     QFileDialog fd;
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
     fd.setDirectory("C:/");
     QDir current = fd.directory();
     QStringList entryList = current.entryList(QStringList(), QDir::Dirs);
@@ -684,7 +677,7 @@ void tst_QFileDialog2::completionOnLevelAfterRoot()
             }
             if (!invalid) {
                 foreach (const QString &check, entryList) {
-                    if (check.startsWith(entry.left(5)) && check != entry) {
+                    if (check.startsWith(entry.left(5), Qt::CaseInsensitive) && check != entry) {
                         invalid = true;
                         break;
                     }
@@ -697,7 +690,7 @@ void tst_QFileDialog2::completionOnLevelAfterRoot()
         }
     }
     if (testDir.isEmpty())
-        QSKIP("This test requires to have an unique directory of at least six ascii characters under c:/");
+        QSKIP("This test requires to have a unique directory of at least six ascii characters under c:/");
 #else
     fd.setFilter(QDir::Hidden | QDir::AllDirs | QDir::Files | QDir::System);
     fd.setDirectory("/");
@@ -708,7 +701,7 @@ void tst_QFileDialog2::completionOnLevelAfterRoot()
     fd.show();
     QLineEdit *edit = fd.findChild<QLineEdit*>("fileNameEdit");
     QTest::qWait(2000);
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
     //I love testlib :D
     for (int i = 0; i < 5; i++)
         QTest::keyClick(edit, testDir.at(i).toLower().toLatin1() - 'a' + Qt::Key_A);
@@ -719,7 +712,7 @@ void tst_QFileDialog2::completionOnLevelAfterRoot()
     QTest::qWait(200);
     QTest::keyClick(edit->completer()->popup(), Qt::Key_Down);
     QTest::qWait(200);
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN)
     QCOMPARE(edit->text(), testDir);
 #else
     QTRY_COMPARE(edit->text(), QString("etc"));
@@ -853,33 +846,21 @@ void tst_QFileDialog2::task228844_ensurePreviousSorting()
     fd.setDirectory(current.absolutePath());
     fd.setViewMode(QFileDialog::Detail);
     fd.show();
-#if defined(Q_OS_WINCE)
-    QTest::qWait(1500);
-#else
     QTest::qWait(500);
-#endif
     QTreeView *tree = fd.findChild<QTreeView*>("treeView");
     tree->header()->setSortIndicator(3,Qt::DescendingOrder);
     QTest::qWait(200);
     QDialogButtonBox *buttonBox = fd.findChild<QDialogButtonBox*>("buttonBox");
     QPushButton *button = buttonBox->button(QDialogButtonBox::Open);
     QTest::mouseClick(button, Qt::LeftButton);
-#if defined(Q_OS_WINCE)
-    QTest::qWait(1500);
-#else
     QTest::qWait(500);
-#endif
     QFileDialog fd2;
     fd2.setFileMode(QFileDialog::Directory);
     fd2.restoreState(fd.saveState());
     current.cd("aaaaaaaaaaaaaaaaaa");
     fd2.setDirectory(current.absolutePath());
     fd2.show();
-#if defined(Q_OS_WINCE)
-    QTest::qWait(1500);
-#else
     QTest::qWait(500);
-#endif
     QTreeView *tree2 = fd2.findChild<QTreeView*>("treeView");
     tree2->setFocus();
 
@@ -889,22 +870,14 @@ void tst_QFileDialog2::task228844_ensurePreviousSorting()
     QPushButton *button2 = buttonBox2->button(QDialogButtonBox::Open);
     fd2.selectFile("g");
     QTest::mouseClick(button2, Qt::LeftButton);
-#if defined(Q_OS_WINCE)
-    QTest::qWait(1500);
-#else
     QTest::qWait(500);
-#endif
     QCOMPARE(fd2.selectedFiles().first(), current.absolutePath() + QLatin1String("/g"));
 
     QFileDialog fd3(0, "This is a third file dialog", tempFile->fileName());
     fd3.restoreState(fd.saveState());
     fd3.setFileMode(QFileDialog::Directory);
     fd3.show();
-#if defined(Q_OS_WINCE)
-    QTest::qWait(1500);
-#else
     QTest::qWait(500);
-#endif
     QTreeView *tree3 = fd3.findChild<QTreeView*>("treeView");
     tree3->setFocus();
 
@@ -913,11 +886,7 @@ void tst_QFileDialog2::task228844_ensurePreviousSorting()
     QDialogButtonBox *buttonBox3 = fd3.findChild<QDialogButtonBox*>("buttonBox");
     QPushButton *button3 = buttonBox3->button(QDialogButtonBox::Open);
     QTest::mouseClick(button3, Qt::LeftButton);
-#if defined(Q_OS_WINCE)
-    QTest::qWait(1500);
-#else
     QTest::qWait(500);
-#endif
     QCOMPARE(fd3.selectedFiles().first(), tempFile->fileName());
 
     current.cd("aaaaaaaaaaaaaaaaaa");
@@ -999,11 +968,7 @@ void tst_QFileDialog2::task251321_sideBarHiddenEntries()
     sidebar->selectUrl(QUrl::fromLocalFile(hiddenSubDir.absolutePath()));
     QTest::mouseClick(sidebar->viewport(), Qt::LeftButton, 0, sidebar->visualRect(sidebar->model()->index(0, 0)).center());
     // give the background processes more time on windows mobile
-#ifdef Q_OS_WINCE
-    QTest::qWait(1000);
-#else
     QTest::qWait(250);
-#endif
 
     QFileSystemModel *model = fd.findChild<QFileSystemModel*>("qt_filesystem_model");
     QCOMPARE(model->rowCount(model->index(hiddenSubDir.absolutePath())), 2);
@@ -1232,7 +1197,7 @@ void tst_QFileDialog2::QTBUG6558_showDirsOnly()
 {
     const QString tempPath = tempDir.path();
     QDir dirTemp(tempPath);
-    const QString tempName = QLatin1String("showDirsOnly.") + QString::number(qrand());
+    const QString tempName = QLatin1String("showDirsOnly.") + QString::number(QRandomGenerator::global()->generate());
     dirTemp.mkdir(tempName);
     dirTemp.cd(tempName);
     QTRY_VERIFY(dirTemp.exists());

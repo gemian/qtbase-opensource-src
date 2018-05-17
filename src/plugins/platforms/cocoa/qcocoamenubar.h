@@ -71,18 +71,22 @@ public:
 
     QList<QCocoaMenuItem*> merged() const;
     NSMenuItem *itemForRole(QPlatformMenuItem::MenuRole r);
+    QCocoaWindow *cocoaWindow() const;
+
+    void syncMenu_helper(QPlatformMenu *menu, bool menubarUpdate);
 
 private:
     static QCocoaWindow *findWindowForMenubar();
     static QCocoaMenuBar *findGlobalMenubar();
 
+    bool needsImmediateUpdate();
     bool shouldDisable(QCocoaWindow *active) const;
 
     NSMenuItem *nativeItemForMenu(QCocoaMenu *menu) const;
 
     QList<QPointer<QCocoaMenu> > m_menus;
     NSMenu *m_nativeMenu;
-    QCocoaWindow *m_window;
+    QPointer<QCocoaWindow> m_window;
 };
 
 QT_END_NAMESPACE

@@ -42,6 +42,7 @@
 #include <qfile.h>
 #include <qhash.h>
 #include <qtextstream.h>
+#include <qregularexpression.h>
 #include <private/qfilesystemengine_p.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -117,7 +118,7 @@ QString QStandardPaths::writableLocation(StandardLocation type)
     }
     case RuntimeLocation:
     {
-        const uid_t myUid = geteuid();
+        const uint myUid = uint(geteuid());
         // http://standards.freedesktop.org/basedir-spec/latest/
         QFileInfo fileInfo;
         QString xdgRuntimeDir = QFile::decodeName(qgetenv("XDG_RUNTIME_DIR"));
@@ -179,11 +180,12 @@ QString QStandardPaths::writableLocation(StandardLocation type)
         QHash<QString, QString> lines;
         QTextStream stream(&file);
         // Only look for lines like: XDG_DESKTOP_DIR="$HOME/Desktop"
-        QRegExp exp(QLatin1String("^XDG_(.*)_DIR=(.*)$"));
+        QRegularExpression exp(QLatin1String("^XDG_(.*)_DIR=(.*)$"));
         while (!stream.atEnd()) {
             const QString &line = stream.readLine();
-            if (exp.indexIn(line) != -1) {
-                const QStringList lst = exp.capturedTexts();
+            QRegularExpressionMatch match = exp.match(line);
+            if (match.hasMatch()) {
+                const QStringList lst = match.capturedTexts();
                 const QString key = lst.at(1);
                 QString value = lst.at(2);
                 if (value.length() > 2
@@ -223,7 +225,7 @@ QString QStandardPaths::writableLocation(StandardLocation type)
             if (!value.isEmpty()) {
                 // value can start with $HOME
                 if (value.startsWith(QLatin1String("$HOME")))
-                    value = QDir::homePath() + value.mid(5);
+                    value = QDir::homePath() + value.midRef(5);
                 if (value.length() > 1 && value.endsWith(QLatin1Char('/')))
                     value.chop(1);
                 return value;
@@ -245,7 +247,7 @@ QString QStandardPaths::writableLocation(StandardLocation type)
         break;
 
     case FontsLocation:
-        path = QDir::homePath() + QLatin1String("/.fonts");
+        path = writableLocation(GenericDataLocation) + QLatin1String("/fonts");
         break;
 
     case MusicLocation:
@@ -339,6 +341,9 @@ QStringList QStandardPaths::standardLocations(StandardLocation type)
         dirs = xdgDataDirs();
         for (int i = 0; i < dirs.count(); ++i)
             appendOrganizationAndApp(dirs[i]);
+        break;
+    case FontsLocation:
+        dirs += QDir::homePath() + QLatin1String("/.fonts");
         break;
     default:
         break;

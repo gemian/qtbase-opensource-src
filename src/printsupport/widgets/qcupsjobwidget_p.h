@@ -53,12 +53,14 @@
 //
 //
 
-#include <ui_qcupsjobwidget.h>
+#include <QtPrintSupport/private/qtprintsupportglobal_p.h>
 #include <private/qcups_p.h>
 
-QT_BEGIN_NAMESPACE
+QT_REQUIRE_CONFIG(cupsjobwidget);
 
-#if !defined(QT_NO_PRINTER) && !defined(QT_NO_CUPS)
+#include <ui_qcupsjobwidget.h>
+
+QT_BEGIN_NAMESPACE
 
 class QString;
 class QTime;
@@ -69,7 +71,7 @@ class QCupsJobWidget : public QWidget
     Q_OBJECT
 
 public:
-    explicit QCupsJobWidget(QWidget *parent = 0);
+    explicit QCupsJobWidget(QWidget *parent = nullptr);
     ~QCupsJobWidget();
     void setPrinter(QPrinter *printer);
     void setupPrinter();
@@ -105,8 +107,6 @@ private:
 
     Q_DISABLE_COPY(QCupsJobWidget)
 };
-
-#endif // QT_NO_PRINTER / QT_NO_CUPS
 
 QT_END_NAMESPACE
 

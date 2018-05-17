@@ -52,6 +52,7 @@
 // We mean it.
 //
 
+#include <QtNetwork/private/qtnetworkglobal_p.h>
 #include <QObject>
 #include <QThreadStorage>
 #include <QNetworkProxy>
@@ -62,9 +63,10 @@
 #include "qhttpnetworkrequest_p.h"
 #include "qhttpnetworkconnection_p.h"
 #include <QSharedPointer>
-#include "qsslconfiguration.h"
+#include <QScopedPointer>
 #include "private/qnoncontiguousbytedevice_p.h"
 #include "qnetworkaccessauthenticationmanager_p.h"
+#include <QtNetwork/private/http2protocol_p.h>
 
 #ifndef QT_NO_HTTP
 
@@ -87,7 +89,7 @@ public:
     // incoming
     bool ssl;
 #ifndef QT_NO_SSL
-    QSslConfiguration incomingSslConfiguration;
+    QScopedPointer<QSslConfiguration> incomingSslConfiguration;
 #endif
     QHttpNetworkRequest httpRequest;
     qint64 downloadBufferMaximumSize;
@@ -111,8 +113,10 @@ public:
     bool isPipeliningUsed;
     bool isSpdyUsed;
     qint64 incomingContentLength;
+    qint64 removedContentLength;
     QNetworkReply::NetworkError incomingErrorCode;
     QString incomingErrorDetail;
+    Http2::ProtocolParameters http2Parameters;
 #ifndef QT_NO_BEARERMANAGEMENT
     QSharedPointer<QNetworkSession> networkSession;
 #endif
@@ -140,7 +144,7 @@ signals:
     void preSharedKeyAuthenticationRequired(QSslPreSharedKeyAuthenticator *);
 #endif
     void downloadMetaData(const QList<QPair<QByteArray,QByteArray> > &, int, const QString &, bool,
-                          QSharedPointer<char>, qint64, bool);
+                          QSharedPointer<char>, qint64, qint64, bool);
     void downloadProgress(qint64, qint64);
     void downloadData(const QByteArray &);
     void error(QNetworkReply::NetworkError, const QString &);

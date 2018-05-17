@@ -42,15 +42,22 @@
 #ifndef QT_NO_TOOLBAR
 
 #include <qapplication.h>
+#if QT_CONFIG(combobox)
 #include <qcombobox.h>
+#endif
 #include <qevent.h>
 #include <qlayout.h>
 #include <qmainwindow.h>
 #include <qmenu.h>
+#if QT_CONFIG(menubar)
 #include <qmenubar.h>
+#endif
+#if QT_CONFIG(rubberband)
 #include <qrubberband.h>
+#endif
 #include <qsignalmapper.h>
 #include <qstylepainter.h>
+#include <qstyleoption.h>
 #include <qtoolbutton.h>
 #include <qwidgetaction.h>
 #include <qtimer.h>
@@ -85,7 +92,6 @@ void QToolBarPrivate::init()
     q->setBackgroundRole(QPalette::Button);
     q->setAttribute(Qt::WA_Hover);
     q->setAttribute(Qt::WA_X11NetWmWindowTypeToolBar);
-    q->setProperty("_q_platform_MacUseNSWindow", QVariant(true));
 
     QStyle *style = q->style();
     int e = style->pixelMetric(QStyle::PM_ToolBarIconSize, 0, q);
@@ -322,7 +328,7 @@ bool QToolBarPrivate::mouseMoveEvent(QMouseEvent *event)
 
             startDrag(moving);
             if (!moving && !wasDragging) {
-#ifdef Q_DEAD_CODE_FROM_QT4_WIN
+#if 0 // Used to be included in Qt4 for Q_WS_WIN
                 grabMouseWhileInWindow();
 #else
                 q->grabMouse();
@@ -520,10 +526,8 @@ QToolBar::QToolBar(QWidget *parent)
     \sa setWindowTitle()
 */
 QToolBar::QToolBar(const QString &title, QWidget *parent)
-    : QWidget(*new QToolBarPrivate, parent, 0)
+    : QToolBar(parent)
 {
-    Q_D(QToolBar);
-    d->init();
     setWindowTitle(title);
 }
 
@@ -1115,6 +1119,8 @@ static bool waitForPopup(QToolBar *tb, QWidget *popup)
 static void enableMacToolBar(QToolBar *toolbar, bool enable)
 {
     QPlatformNativeInterface *nativeInterface = QApplication::platformNativeInterface();
+    if (!nativeInterface)
+        return;
     QPlatformNativeInterface::NativeResourceForIntegrationFunction function =
         nativeInterface->nativeResourceFunctionForIntegration("setContentBorderAreaEnabled");
     if (!function)
@@ -1145,7 +1151,7 @@ bool QToolBar::event(QEvent *event)
     case QEvent::Hide:
         if (!isHidden())
             break;
-        // fallthrough intended
+        Q_FALLTHROUGH();
     case QEvent::Show:
         d->toggleViewAction->setChecked(event->type() == QEvent::Show);
 #ifdef Q_OS_OSX
@@ -1186,17 +1192,6 @@ bool QToolBar::event(QEvent *event)
         if (d->mouseMoveEvent(static_cast<QMouseEvent*>(event)))
             return true;
         break;
-#ifdef Q_OS_WINCE
-    case QEvent::ContextMenu:
-        {
-            QContextMenuEvent* contextMenuEvent = static_cast<QContextMenuEvent*>(event);
-            QWidget* child = childAt(contextMenuEvent->pos());
-            QAbstractButton* button = qobject_cast<QAbstractButton*>(child);
-            if (button)
-                button->setDown(false);
-        }
-        break;
-#endif
     case QEvent::Leave:
         if (d->state != 0 && d->state->dragging) {
 #ifdef Q_OS_WIN

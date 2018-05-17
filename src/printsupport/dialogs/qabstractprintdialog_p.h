@@ -51,15 +51,14 @@
 // We mean it.
 //
 
+#include <QtPrintSupport/private/qtprintsupportglobal_p.h>
+
 #include "private/qdialog_p.h"
-
-#ifndef QT_NO_PRINTDIALOG
-
 #include "QtPrintSupport/qabstractprintdialog.h"
 
-QT_BEGIN_NAMESPACE
+QT_REQUIRE_CONFIG(printdialog);
 
-#ifndef QT_NO_PRINTER
+QT_BEGIN_NAMESPACE
 
 class QPrinter;
 class QPrinterPrivate;
@@ -70,7 +69,7 @@ class QAbstractPrintDialogPrivate : public QDialogPrivate
 
 public:
     QAbstractPrintDialogPrivate()
-        : printer(0), pd(0), ownsPrinter(false)
+        : printer(nullptr), pd(nullptr), ownsPrinter(false)
         , options(QAbstractPrintDialog::PrintToFile | QAbstractPrintDialog::PrintPageRange |
                 QAbstractPrintDialog::PrintCollateCopies | QAbstractPrintDialog::PrintShowPageSize),
           minPage(0), maxPage(INT_MAX)
@@ -91,10 +90,6 @@ public:
     int maxPage;
 };
 
-#endif //QT_NO_PRINTER
-
 QT_END_NAMESPACE
-
-#endif // QT_NO_PRINTDIALOG
 
 #endif // QABSTRACTPRINTDIALOG_P_H

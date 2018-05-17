@@ -41,23 +41,34 @@
 #include "qitemeditorfactory.h"
 #include "qitemeditorfactory_p.h"
 
-#ifndef QT_NO_ITEMVIEWS
-
+#if QT_CONFIG(combobox)
 #include <qcombobox.h>
+#endif
+#if QT_CONFIG(datetimeedit)
 #include <qdatetimeedit.h>
+#endif
+#if QT_CONFIG(label)
 #include <qlabel.h>
+#endif
+#if QT_CONFIG(lineedit)
 #include <qlineedit.h>
+#endif
+#if QT_CONFIG(spinbox)
 #include <qspinbox.h>
+#endif
+#include <qstyle.h>
+#include <qstyleoption.h>
 #include <limits.h>
 #include <float.h>
 #include <qapplication.h>
 #include <qdebug.h>
 
+#include <vector>
 #include <algorithm>
 QT_BEGIN_NAMESPACE
 
 
-#ifndef QT_NO_COMBOBOX
+#if QT_CONFIG(combobox)
 
 class QBooleanComboBox : public QComboBox
 {
@@ -70,10 +81,10 @@ public:
     bool value() const;
 };
 
-#endif // QT_NO_COMBOBOX
+#endif // QT_CONFIG(combobox)
 
 
-#ifndef QT_NO_SPINBOX
+#if QT_CONFIG(spinbox)
 
 class QUIntSpinBox : public QSpinBox
 {
@@ -100,7 +111,7 @@ Q_SIGNALS:
     void uintValueChanged();
 };
 
-#endif // QT_NO_SPINBOX
+#endif // QT_CONFIG(spinbox)
 
 /*!
     \class QItemEditorFactory
@@ -189,9 +200,11 @@ QByteArray QItemEditorFactory::valuePropertyName(int userType) const
 QItemEditorFactory::~QItemEditorFactory()
 {
     //we make sure we delete all the QItemEditorCreatorBase
-    //this has to be done only once, hence the QSet
-    QSet<QItemEditorCreatorBase*> set = creatorMap.values().toSet();
-    qDeleteAll(set);
+    //this has to be done only once, hence the sort-unique idiom
+    std::vector<QItemEditorCreatorBase*> creators(creatorMap.cbegin(), creatorMap.cend());
+    std::sort(creators.begin(), creators.end());
+    const auto it = std::unique(creators.begin(), creators.end());
+    qDeleteAll(creators.begin(), it);
 }
 
 /*!
@@ -227,13 +240,13 @@ public:
 QWidget *QDefaultItemEditorFactory::createEditor(int userType, QWidget *parent) const
 {
     switch (userType) {
-#ifndef QT_NO_COMBOBOX
+#if QT_CONFIG(combobox)
     case QVariant::Bool: {
         QBooleanComboBox *cb = new QBooleanComboBox(parent);
         cb->setFrame(false);
         return cb; }
 #endif
-#ifndef QT_NO_SPINBOX
+#if QT_CONFIG(spinbox)
     case QVariant::UInt: {
         QSpinBox *sb = new QUIntSpinBox(parent);
         sb->setFrame(false);
@@ -247,7 +260,7 @@ QWidget *QDefaultItemEditorFactory::createEditor(int userType, QWidget *parent) 
         sb->setMaximum(INT_MAX);
         return sb; }
 #endif
-#ifndef QT_NO_DATETIMEEDIT
+#if QT_CONFIG(datetimeedit)
     case QVariant::Date: {
         QDateTimeEdit *ed = new QDateEdit(parent);
         ed->setFrame(false);
@@ -261,9 +274,11 @@ QWidget *QDefaultItemEditorFactory::createEditor(int userType, QWidget *parent) 
         ed->setFrame(false);
         return ed; }
 #endif
+#if QT_CONFIG(label)
     case QVariant::Pixmap:
         return new QLabel(parent);
-#ifndef QT_NO_SPINBOX
+#endif
+#if QT_CONFIG(spinbox)
     case QVariant::Double: {
         QDoubleSpinBox *sb = new QDoubleSpinBox(parent);
         sb->setFrame(false);
@@ -271,7 +286,7 @@ QWidget *QDefaultItemEditorFactory::createEditor(int userType, QWidget *parent) 
         sb->setMaximum(DBL_MAX);
         return sb; }
 #endif
-#ifndef QT_NO_LINEEDIT
+#if QT_CONFIG(lineedit)
     case QVariant::String:
     default: {
         // the default editor is a lineedit
@@ -291,17 +306,17 @@ QWidget *QDefaultItemEditorFactory::createEditor(int userType, QWidget *parent) 
 QByteArray QDefaultItemEditorFactory::valuePropertyName(int userType) const
 {
     switch (userType) {
-#ifndef QT_NO_COMBOBOX
+#if QT_CONFIG(combobox)
     case QVariant::Bool:
         return "currentIndex";
 #endif
-#ifndef QT_NO_SPINBOX
+#if QT_CONFIG(spinbox)
     case QVariant::UInt:
     case QVariant::Int:
     case QVariant::Double:
         return "value";
 #endif
-#ifndef QT_NO_DATETIMEEDIT
+#if QT_CONFIG(datetimeedit)
     case QVariant::Date:
         return "date";
     case QVariant::Time:
@@ -524,7 +539,7 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
     \reimp
 */
 
-#ifndef QT_NO_LINEEDIT
+#if QT_CONFIG(lineedit)
 
 QExpandingLineEdit::QExpandingLineEdit(QWidget *parent)
     : QLineEdit(parent), originalWidth(-1), widgetOwnsGeometry(false)
@@ -584,9 +599,9 @@ void QExpandingLineEdit::resizeToContents()
     }
 }
 
-#endif // QT_NO_LINEEDIT
+#endif // QT_CONFIG(lineedit)
 
-#ifndef QT_NO_COMBOBOX
+#if QT_CONFIG(combobox)
 
 QBooleanComboBox::QBooleanComboBox(QWidget *parent)
     : QComboBox(parent)
@@ -605,14 +620,12 @@ bool QBooleanComboBox::value() const
     return (currentIndex() == 1);
 }
 
-#endif // QT_NO_COMBOBOX
+#endif // QT_CONFIG(combobox)
 
 QT_END_NAMESPACE
 
-#if !defined(QT_NO_LINEEDIT) || !defined(QT_NO_COMBOBOX)
+#if QT_CONFIG(lineedit) || QT_CONFIG(combobox)
 #include "qitemeditorfactory.moc"
 #endif
 
 #include "moc_qitemeditorfactory_p.cpp"
-
-#endif // QT_NO_ITEMVIEWS

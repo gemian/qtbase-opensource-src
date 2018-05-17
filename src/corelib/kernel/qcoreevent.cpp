@@ -170,10 +170,10 @@ QT_BEGIN_NAMESPACE
     \value LeaveEditFocus                   An editor widget loses focus for editing. QT_KEYPAD_NAVIGATION must be defined.
     \value LeaveWhatsThisMode               Send to toplevel widgets when the application leaves "What's This?" mode.
     \value LocaleChange                     The system locale has changed.
-    \value NonClientAreaMouseButtonDblClick A mouse double click occurred outside the client area.
-    \value NonClientAreaMouseButtonPress    A mouse button press occurred outside the client area.
-    \value NonClientAreaMouseButtonRelease  A mouse button release occurred outside the client area.
-    \value NonClientAreaMouseMove           A mouse move occurred outside the client area.
+    \value NonClientAreaMouseButtonDblClick A mouse double click occurred outside the client area (QMouseEvent).
+    \value NonClientAreaMouseButtonPress    A mouse button press occurred outside the client area (QMouseEvent).
+    \value NonClientAreaMouseButtonRelease  A mouse button release occurred outside the client area (QMouseEvent).
+    \value NonClientAreaMouseMove           A mouse move occurred outside the client area (QMouseEvent).
     \value MacSizeChange                    The user changed his widget sizes (\macos only).
     \value MetaCall                         An asynchronous method invocation via QMetaObject::invokeMethod().
     \value ModifiedChange                   Widgets modification state has been changed.
@@ -216,6 +216,7 @@ QT_BEGIN_NAMESPACE
     \omitvalue OkRequest
     \value TabletEnterProximity             Wacom tablet enter proximity event (QTabletEvent), sent to QApplication.
     \value TabletLeaveProximity             Wacom tablet leave proximity event (QTabletEvent), sent to QApplication.
+    \value TabletTrackingChange             The Wacom tablet tracking state has changed (since Qt 5.9).
     \omitvalue ThemeChange
     \value ThreadChange                     The object is moved to another thread. This is the last event sent to this object in the previous thread. See QObject::moveToThread().
     \value Timer                            Regular timer events (QTimerEvent).
@@ -651,3 +652,5 @@ QDeferredDeleteEvent::~QDeferredDeleteEvent()
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qcoreevent.cpp"

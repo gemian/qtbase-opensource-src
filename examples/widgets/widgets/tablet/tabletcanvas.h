@@ -95,14 +95,15 @@ public:
         { return a > b ? a : b; }
 
 protected:
-    void tabletEvent(QTabletEvent *event) Q_DECL_OVERRIDE;
-    void paintEvent(QPaintEvent *event) Q_DECL_OVERRIDE;
-    void resizeEvent(QResizeEvent *event) Q_DECL_OVERRIDE;
+    void tabletEvent(QTabletEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private:
     void initPixmap();
     void paintPixmap(QPainter &painter, QTabletEvent *event);
     Qt::BrushStyle brushPattern(qreal value);
+    qreal pressureToWidth(qreal pressure);
     void updateBrush(const QTabletEvent *event);
     void updateCursor(const QTabletEvent *event);
 
@@ -117,6 +118,7 @@ private:
 
     struct Point {
         QPointF pos;
+        qreal pressure;
         qreal rotation;
     } lastPoint;
 };

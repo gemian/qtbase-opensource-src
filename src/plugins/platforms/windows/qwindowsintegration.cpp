@@ -41,18 +41,19 @@
 #include "qwindowsintegration.h"
 #include "qwindowswindow.h"
 #include "qwindowscontext.h"
+#include "qwin10helpers.h"
+#include "qwindowsmenu.h"
 #include "qwindowsopenglcontext.h"
 
 #include "qwindowsscreen.h"
 #include "qwindowstheme.h"
 #include "qwindowsservices.h"
 #ifndef QT_NO_FREETYPE
-#  include "qwindowsfontdatabase_ft.h"
+#  include <QtFontDatabaseSupport/private/qwindowsfontdatabase_ft_p.h>
 #endif
-#include "qwindowsfontdatabase.h"
-#ifndef QT_NO_CLIPBOARD
+#if QT_CONFIG(clipboard)
 #  include "qwindowsclipboard.h"
-#  ifndef QT_NO_DRAGANDDROP
+#  if QT_CONFIG(draganddrop)
 #    include "qwindowsdrag.h"
 #  endif
 #endif
@@ -64,15 +65,16 @@
 
 #include <qpa/qplatformnativeinterface.h>
 #include <qpa/qwindowsysteminterface.h>
-#if !defined(Q_OS_WINCE) && !defined(QT_NO_SESSIONMANAGER)
+#if QT_CONFIG(sessionmanager)
 #  include "qwindowssessionmanager.h"
 #endif
 #include <QtGui/qtouchdevice.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qhighdpiscaling_p.h>
 #include <QtGui/qpa/qplatforminputcontextfactory_p.h>
+#include <QtGui/qpa/qplatformcursor.h>
 
-#include <QtPlatformSupport/private/qwindowsguieventdispatcher_p.h>
+#include <QtEventDispatcherSupport/private/qwindowsguieventdispatcher_p.h>
 
 #include <QtCore/QDebug>
 #include <QtCore/QVariant>
@@ -88,6 +90,11 @@
 
 #include "qwindowsopengltester.h"
 
+static inline void initOpenGlBlacklistResources()
+{
+    Q_INIT_RESOURCE(openglblacklists);
+}
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -102,7 +109,7 @@ QT_BEGIN_NAMESPACE
 
     It should compile with:
     \list
-    \li Microsoft Visual Studio 2008 or later (using the Microsoft Windows SDK,
+    \li Microsoft Visual Studio 2013 or later (using the Microsoft Windows SDK,
         (\c Q_CC_MSVC).
     \li Stock \l{http://mingw.org/}{MinGW} (\c Q_CC_MINGW).
         This version ships with headers that are missing a lot of WinAPI.
@@ -112,14 +119,7 @@ QT_BEGIN_NAMESPACE
         (\c Q_CC_MINGW and \c __MINGW64_VERSION_MAJOR indicating the version).
         MinGW-w64 provides more complete headers (compared to stock MinGW from mingw.org),
         including a considerable part of the Windows SDK.
-    \li Visual Studio 2008 for Windows Embedded (\c Q_OS_WINCE).
     \endlist
-
-    The file \c qtwindows_additional.h contains defines and declarations that
-    are missing in MinGW. When encountering missing declarations, it should
-    be added there so that \c #ifdefs for MinGW can be avoided. Similarly,
-    \c qplatformfunctions_wince.h contains defines and declarations for
-    Windows Embedded.
 
     When using a function from the WinAPI, the minimum supported Windows version
     and Windows Embedded support should be checked. If the function is not supported
@@ -136,12 +136,12 @@ struct QWindowsIntegrationPrivate
     explicit QWindowsIntegrationPrivate(const QStringList &paramList);
     ~QWindowsIntegrationPrivate();
 
-    unsigned m_options;
+    unsigned m_options = 0;
     QWindowsContext m_context;
-    QPlatformFontDatabase *m_fontDatabase;
-#ifndef QT_NO_CLIPBOARD
+    QPlatformFontDatabase *m_fontDatabase = nullptr;
+#if QT_CONFIG(clipboard)
     QWindowsClipboard m_clipboard;
-#  ifndef QT_NO_DRAGANDDROP
+#  if QT_CONFIG(draganddrop)
     QWindowsDrag m_drag;
 #  endif
 #endif
@@ -208,6 +208,10 @@ static inline unsigned parseOptions(const QStringList &paramList,
         } else if (parseIntOption(param, QLatin1String("verbose"), 0, INT_MAX, &QWindowsContext::verbose)
             || parseIntOption(param, QLatin1String("tabletabsoluterange"), 0, INT_MAX, tabletAbsoluteRange)
             || parseIntOption(param, QLatin1String("dpiawareness"), QtWindows::ProcessDpiUnaware, QtWindows::ProcessPerMonitorDpiAware, dpiAwareness)) {
+        } else if (param == QLatin1String("menus=native")) {
+            options |= QWindowsIntegration::AlwaysUseNativeMenus;
+        } else if (param == QLatin1String("menus=none")) {
+            options |= QWindowsIntegration::NoNativeMenus;
         } else {
             qWarning() << "Unknown option" << param;
         }
@@ -216,12 +220,8 @@ static inline unsigned parseOptions(const QStringList &paramList,
 }
 
 QWindowsIntegrationPrivate::QWindowsIntegrationPrivate(const QStringList &paramList)
-    : m_options(0)
-    , m_fontDatabase(0)
 {
-#ifndef Q_OS_WINCE
-    Q_INIT_RESOURCE(openglblacklists);
-#endif
+    initOpenGlBlacklistResources();
 
     static bool dpiAwarenessSet = false;
     int tabletAbsoluteRange = -1;
@@ -229,6 +229,7 @@ QWindowsIntegrationPrivate::QWindowsIntegrationPrivate(const QStringList &paramL
     // are connected to Windows 8.1
     QtWindows::ProcessDpiAwareness dpiAwareness = QtWindows::ProcessPerMonitorDpiAware;
     m_options = parseOptions(paramList, &tabletAbsoluteRange, &dpiAwareness);
+    QWindowsFontDatabase::setFontOptions(m_options);
     if (tabletAbsoluteRange >= 0)
         m_context.setTabletAbsoluteRange(tabletAbsoluteRange);
     if (!dpiAwarenessSet) { // Set only once in case of repeated instantiations of QGuiApplication.
@@ -242,6 +243,7 @@ QWindowsIntegrationPrivate::QWindowsIntegrationPrivate(const QStringList &paramL
     }
 
     m_context.initTouch(m_options);
+    QPlatformCursor::setCapability(QPlatformCursor::OverrideCursor);
 }
 
 QWindowsIntegrationPrivate::~QWindowsIntegrationPrivate()
@@ -256,7 +258,7 @@ QWindowsIntegration::QWindowsIntegration(const QStringList &paramList) :
     d(new QWindowsIntegrationPrivate(paramList))
 {
     m_instance = this;
-#ifndef QT_NO_CLIPBOARD
+#if QT_CONFIG(clipboard)
     d->m_clipboard.registerViewer();
 #endif
     d->m_context.screenManager().handleScreenChanges();
@@ -314,24 +316,6 @@ QPlatformWindow *QWindowsIntegration::createPlatformWindow(QWindow *window) cons
         return result;
     }
 
-    if (window->type() == Qt::ForeignWindow) {
-        const HWND hwnd = reinterpret_cast<HWND>(window->winId());
-        if (!IsWindow(hwnd)) {
-           qWarning("Windows QPA: Invalid foreign window ID %p.", hwnd);
-           return nullptr;
-        }
-        QWindowsForeignWindow *result = new QWindowsForeignWindow(window, hwnd);
-        const QRect obtainedGeometry = result->geometry();
-        QScreen *screen = Q_NULLPTR;
-        if (const QPlatformScreen *pScreen = result->screenForGeometry(obtainedGeometry))
-            screen = pScreen->screen();
-        if (screen && screen != window->screen())
-            window->setScreen(screen);
-        qCDebug(lcQpaWindows) << "Foreign window:" << window << showbase << hex
-            << result->winId() << noshowbase << dec << obtainedGeometry << screen;
-        return result;
-    }
-
     QWindowsWindowData requested;
     requested.flags = window->flags();
     requested.geometry = QHighDpi::toNativePixels(window->geometry(), window);
@@ -357,21 +341,28 @@ QPlatformWindow *QWindowsIntegration::createPlatformWindow(QWindow *window) cons
     QWindowsWindow *result = createPlatformWindowHelper(window, obtained);
     Q_ASSERT(result);
 
-    if (requested.flags != obtained.flags)
-        window->setFlags(obtained.flags);
-    // Trigger geometry change (unless it has a special state in which case setWindowState()
-    // will send the message) and screen change signals of QWindow.
-    if ((obtained.flags & Qt::Desktop) != Qt::Desktop) {
-        const Qt::WindowState state = window->windowState();
-        if (state != Qt::WindowMaximized && state != Qt::WindowFullScreen
-            && requested.geometry != obtained.geometry) {
-            QWindowSystemInterface::handleGeometryChange(window, obtained.geometry);
-        }
-        QPlatformScreen *screen = result->screenForGeometry(obtained.geometry);
-        if (screen && result->screen() != screen)
-            QWindowSystemInterface::handleWindowScreenChanged(window, screen->screen());
-    }
+    if (QWindowsMenuBar *menuBarToBeInstalled = QWindowsMenuBar::menuBarOf(window))
+        menuBarToBeInstalled->install(result);
 
+    return result;
+}
+
+QPlatformWindow *QWindowsIntegration::createForeignWindow(QWindow *window, WId nativeHandle) const
+{
+    const HWND hwnd = reinterpret_cast<HWND>(nativeHandle);
+    if (!IsWindow(hwnd)) {
+       qWarning("Windows QPA: Invalid foreign window ID %p.", hwnd);
+       return nullptr;
+    }
+    QWindowsForeignWindow *result = new QWindowsForeignWindow(window, hwnd);
+    const QRect obtainedGeometry = result->geometry();
+    QScreen *screen = Q_NULLPTR;
+    if (const QPlatformScreen *pScreen = result->screenForGeometry(obtainedGeometry))
+        screen = pScreen->screen();
+    if (screen && screen != window->screen())
+        window->setScreen(screen);
+    qCDebug(lcQpaWindows) << "Foreign window:" << window << showbase << hex
+        << result->winId() << noshowbase << dec << obtainedGeometry << screen;
     return result;
 }
 
@@ -483,46 +474,16 @@ QWindowsStaticOpenGLContext *QWindowsIntegration::staticOpenGLContext()
 }
 #endif // !QT_NO_OPENGL
 
-/* Workaround for QTBUG-24205: In 'Auto', pick the FreeType engine for
- * QML2 applications. */
-
-#ifdef Q_OS_WINCE
-// It's not easy to detect if we are running a QML application
-// Let's try to do so by checking if the Qt Quick module is loaded.
-inline bool isQMLApplication()
-{
-    // check if the Qt Quick module is loaded
-#ifdef _DEBUG
-    HMODULE handle = GetModuleHandle(L"Qt5Quick" QT_LIBINFIX L"d.dll");
-#else
-    HMODULE handle = GetModuleHandle(L"Qt5Quick" QT_LIBINFIX L".dll");
-#endif
-    return (handle != NULL);
-}
-#endif
-
 QPlatformFontDatabase *QWindowsIntegration::fontDatabase() const
 {
     if (!d->m_fontDatabase) {
 #ifdef QT_NO_FREETYPE
         d->m_fontDatabase = new QWindowsFontDatabase();
 #else // QT_NO_FREETYPE
-        if (d->m_options & QWindowsIntegration::FontDatabaseFreeType) {
+        if (d->m_options & QWindowsIntegration::FontDatabaseFreeType)
             d->m_fontDatabase = new QWindowsFontDatabaseFT;
-        } else if (d->m_options & QWindowsIntegration::FontDatabaseNative){
+        else
             d->m_fontDatabase = new QWindowsFontDatabase;
-        } else {
-#ifndef Q_OS_WINCE
-            d->m_fontDatabase = new QWindowsFontDatabase;
-#else
-            if (isQMLApplication()) {
-                qCDebug(lcQpaFonts) << "QML application detected, using FreeType rendering";
-                d->m_fontDatabase = new QWindowsFontDatabaseFT;
-            }
-            else
-                d->m_fontDatabase = new QWindowsFontDatabase;
-#endif
-        }
 #endif // QT_NO_FREETYPE
     }
     return d->m_fontDatabase;
@@ -549,6 +510,7 @@ QVariant QWindowsIntegration::styleHint(QPlatformIntegration::StyleHint hint) co
     case KeyboardAutoRepeatRate:
         return QVariant(keyBoardAutoRepeatRateMS());
 #endif
+    case QPlatformIntegration::ShowIsMaximized:
     case QPlatformIntegration::StartDragTime:
     case QPlatformIntegration::StartDragDistance:
     case QPlatformIntegration::KeyboardInputInterval:
@@ -580,12 +542,12 @@ QList<int> QWindowsIntegration::possibleKeys(const QKeyEvent *e) const
     return d->m_context.possibleKeys(e);
 }
 
-#ifndef QT_NO_CLIPBOARD
+#if QT_CONFIG(clipboard)
 QPlatformClipboard * QWindowsIntegration::clipboard() const
 {
     return &d->m_clipboard;
 }
-#  ifndef QT_NO_DRAGANDDROP
+#  if QT_CONFIG(draganddrop)
 QPlatformDrag *QWindowsIntegration::drag() const
 {
     return &d->m_drag;
@@ -610,7 +572,7 @@ unsigned QWindowsIntegration::options() const
     return d->m_options;
 }
 
-#if !defined(Q_OS_WINCE) && !defined(QT_NO_SESSIONMANAGER)
+#if QT_CONFIG(sessionmanager)
 QPlatformSessionManager *QWindowsIntegration::createPlatformSessionManager(const QString &id, const QString &key) const
 {
     return new QWindowsSessionManager(id, key);
@@ -643,5 +605,12 @@ void QWindowsIntegration::beep() const
 {
     MessageBeep(MB_OK);  // For QApplication
 }
+
+#if QT_CONFIG(vulkan)
+QPlatformVulkanInstance *QWindowsIntegration::createPlatformVulkanInstance(QVulkanInstance *instance) const
+{
+    return new QWindowsVulkanInstance(instance);
+}
+#endif
 
 QT_END_NAMESPACE

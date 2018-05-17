@@ -51,11 +51,12 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtWidgets/qtoolbutton.h"
 
-QT_BEGIN_NAMESPACE
+QT_REQUIRE_CONFIG(toolbutton);
 
-#ifndef QT_NO_TOOLBUTTON
+QT_BEGIN_NAMESPACE
 
 class Q_AUTOTEST_EXPORT QToolBarExtension : public QToolButton
 {
@@ -69,8 +70,6 @@ public:
 public Q_SLOTS:
     void setOrientation(Qt::Orientation o);
 };
-
-#endif // QT_NO_TOOLBUTTON
 
 QT_END_NAMESPACE
 

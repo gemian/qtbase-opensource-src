@@ -63,21 +63,21 @@ class DropArea : public QLabel
     Q_OBJECT
 
 public:
-    DropArea(QWidget *parent = 0);
+    explicit DropArea(QWidget *parent = nullptr);
 
 public slots:
     void clear();
 
 signals:
-    void changed(const QMimeData *mimeData = 0);
+    void changed(const QMimeData *mimeData = nullptr);
 //! [DropArea header part1]
 
 //! [DropArea header part2]
 protected:
-    void dragEnterEvent(QDragEnterEvent *event) Q_DECL_OVERRIDE;
-    void dragMoveEvent(QDragMoveEvent *event) Q_DECL_OVERRIDE;
-    void dragLeaveEvent(QDragLeaveEvent *event) Q_DECL_OVERRIDE;
-    void dropEvent(QDropEvent *event) Q_DECL_OVERRIDE;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dragMoveEvent(QDragMoveEvent *event) override;
+    void dragLeaveEvent(QDragLeaveEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 private:
     QLabel *label;

@@ -57,19 +57,15 @@
 #include <QtPlatformHeaders/qxcbintegrationfunctions.h>
 #include <QtPlatformHeaders/qxcbscreenfunctions.h>
 
-#ifndef QT_NO_DBUS
-#include "QtPlatformSupport/private/qdbusmenuconnection_p.h"
-#endif
-
-#ifdef XCB_USE_XLIB
-#  include <X11/Xlib.h>
-#else
-#  include <stdio.h>
-#endif
+#include <stdio.h>
 
 #include <algorithm>
 
 #include "qxcbnativeinterfacehandler.h"
+
+#if QT_CONFIG(vulkan)
+#include "qxcbvulkanwindow.h"
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -85,9 +81,12 @@ static int resourceType(const QByteArray &key)
         QByteArrayLiteral("gettimestamp"), QByteArrayLiteral("x11screen"),
         QByteArrayLiteral("rootwindow"),
         QByteArrayLiteral("subpixeltype"), QByteArrayLiteral("antialiasingenabled"),
-        QByteArrayLiteral("nofonthinting"),
         QByteArrayLiteral("atspibus"),
-        QByteArrayLiteral("compositingenabled")
+        QByteArrayLiteral("compositingenabled"),
+        QByteArrayLiteral("vksurface"),
+        QByteArrayLiteral("generatepeekerid"),
+        QByteArrayLiteral("removepeekerid"),
+        QByteArrayLiteral("peekeventqueue")
     };
     const QByteArray *end = names + sizeof(names) / sizeof(names[0]);
     const QByteArray *result = std::find(names, end, key);
@@ -95,8 +94,7 @@ static int resourceType(const QByteArray &key)
 }
 
 QXcbNativeInterface::QXcbNativeInterface() :
-    m_genericEventFilterType(QByteArrayLiteral("xcb_generic_event_t")),
-    m_sysTraySelectionAtom(XCB_ATOM_NONE)
+    m_genericEventFilterType(QByteArrayLiteral("xcb_generic_event_t"))
 {
 }
 
@@ -127,28 +125,19 @@ xcb_window_t QXcbNativeInterface::locateSystemTray(xcb_connection_t *conn, const
 {
     if (m_sysTraySelectionAtom == XCB_ATOM_NONE) {
         const QByteArray net_sys_tray = QString::fromLatin1("_NET_SYSTEM_TRAY_S%1").arg(screen->screenNumber()).toLatin1();
-        xcb_intern_atom_cookie_t intern_c =
-            xcb_intern_atom_unchecked(conn, true, net_sys_tray.length(), net_sys_tray);
-
-        xcb_intern_atom_reply_t *intern_r = xcb_intern_atom_reply(conn, intern_c, 0);
-
+        auto intern_r = Q_XCB_REPLY_UNCHECKED(xcb_intern_atom, conn,
+                                              true, net_sys_tray.length(), net_sys_tray);
         if (!intern_r)
             return XCB_WINDOW_NONE;
 
         m_sysTraySelectionAtom = intern_r->atom;
-        free(intern_r);
     }
 
-    xcb_get_selection_owner_cookie_t sel_owner_c = xcb_get_selection_owner_unchecked(conn, m_sysTraySelectionAtom);
-    xcb_get_selection_owner_reply_t *sel_owner_r = xcb_get_selection_owner_reply(conn, sel_owner_c, 0);
-
+    auto sel_owner_r = Q_XCB_REPLY_UNCHECKED(xcb_get_selection_owner, conn, m_sysTraySelectionAtom);
     if (!sel_owner_r)
         return XCB_WINDOW_NONE;
 
-    xcb_window_t selection_window = sel_owner_r->owner;
-    free(sel_owner_r);
-
-    return selection_window;
+    return sel_owner_r->owner;
 }
 
 bool QXcbNativeInterface::systrayVisualHasAlphaChannel()
@@ -216,7 +205,7 @@ void *QXcbNativeInterface::nativeResourceForScreen(const QByteArray &resourceStr
     const QXcbScreen *xcbScreen = static_cast<QXcbScreen *>(screen->handle());
     switch (resourceType(lowerCaseResource)) {
     case Display:
-#ifdef XCB_USE_XLIB
+#if QT_CONFIG(xcb_xlib)
         result = xcbScreen->connection()->xlib_display();
 #endif
         break;
@@ -241,9 +230,6 @@ void *QXcbNativeInterface::nativeResourceForScreen(const QByteArray &resourceStr
         break;
     case GetTimestamp:
         result = getTimestamp(xcbScreen);
-        break;
-    case NoFontHinting:
-        result = xcbScreen->noFontHinting() ? this : 0; //qboolptr...
         break;
     case RootWindow:
         result = reinterpret_cast<void *>(xcbScreen->root());
@@ -275,6 +261,14 @@ void *QXcbNativeInterface::nativeResourceForWindow(const QByteArray &resourceStr
     case Screen:
         result = screenForWindow(window);
         break;
+#if QT_CONFIG(vulkan)
+    case VkSurface:
+        if (window->surfaceType() == QSurface::VulkanSurface && window->handle()) {
+            // return a pointer to the VkSurfaceKHR value, not the value itself
+            result = static_cast<QXcbVulkanWindow *>(window->handle())->surface();
+        }
+        break;
+#endif
     default:
         break;
     }
@@ -313,6 +307,13 @@ QPlatformNativeInterface::NativeResourceForIntegrationFunction QXcbNativeInterfa
 
     if (lowerCaseResource == "setstartupid")
         return NativeResourceForIntegrationFunction(setStartupId);
+    if (lowerCaseResource == "generatepeekerid")
+        return NativeResourceForIntegrationFunction(generatePeekerId);
+    if (lowerCaseResource == "removepeekerid")
+            return NativeResourceForIntegrationFunction(removePeekerId);
+    if (lowerCaseResource == "peekeventqueue")
+            return NativeResourceForIntegrationFunction(peekEventQueue);
+
     return 0;
 }
 
@@ -445,7 +446,7 @@ void *QXcbNativeInterface::rootWindow()
 
 void *QXcbNativeInterface::display()
 {
-#ifdef XCB_USE_XLIB
+#if QT_CONFIG(xcb_xlib)
     QXcbIntegration *integration = QXcbIntegration::instance();
     QXcbConnection *defaultConnection = integration->defaultConnection();
     if (defaultConnection)
@@ -466,21 +467,13 @@ void *QXcbNativeInterface::atspiBus()
     QXcbConnection *defaultConnection = integration->defaultConnection();
     if (defaultConnection) {
         xcb_atom_t atspiBusAtom = defaultConnection->internAtom("AT_SPI_BUS");
-        xcb_get_property_cookie_t cookie = Q_XCB_CALL2(xcb_get_property(
-                                                           defaultConnection->xcb_connection(),
-                                                           false, defaultConnection->rootWindow(),
-                                                           atspiBusAtom, XCB_ATOM_STRING, 0, 128),
-                                                       defaultConnection);
-        xcb_get_property_reply_t *reply = Q_XCB_CALL2(xcb_get_property_reply(
-                                                          defaultConnection->xcb_connection(),
-                                                          cookie, 0),
-                                                      defaultConnection);
+        auto reply = Q_XCB_REPLY(xcb_get_property, defaultConnection->xcb_connection(),
+                                     false, defaultConnection->rootWindow(),
+                                     atspiBusAtom, XCB_ATOM_STRING, 0, 128);
         Q_ASSERT(!reply->bytes_after);
-        char *data = (char *)xcb_get_property_value(reply);
-        int length = xcb_get_property_value_length(reply);
-        QByteArray *busAddress = new QByteArray(data, length);
-        free(reply);
-        return busAddress;
+        char *data = (char *)xcb_get_property_value(reply.get());
+        int length = xcb_get_property_value_length(reply.get());
+        return new QByteArray(data, length);
     }
     return 0;
 }
@@ -497,6 +490,25 @@ void QXcbNativeInterface::setAppUserTime(QScreen* screen, xcb_timestamp_t time)
     if (screen) {
         static_cast<QXcbScreen *>(screen->handle())->connection()->setNetWmUserTime(time);
     }
+}
+
+qint32 QXcbNativeInterface::generatePeekerId()
+{
+    QXcbIntegration *integration = QXcbIntegration::instance();
+    return integration->defaultConnection()->generatePeekerId();
+}
+
+bool QXcbNativeInterface::removePeekerId(qint32 peekerId)
+{
+    QXcbIntegration *integration = QXcbIntegration::instance();
+    return integration->defaultConnection()->removePeekerId(peekerId);
+}
+
+bool QXcbNativeInterface::peekEventQueue(QXcbConnection::PeekerCallback peeker, void *peekerData,
+                                         QXcbConnection::PeekOptions option, qint32 peekerId)
+{
+    QXcbIntegration *integration = QXcbIntegration::instance();
+    return integration->defaultConnection()->peekEventQueue(peeker, peekerData, option, peekerId);
 }
 
 void QXcbNativeInterface::setStartupId(const char *data)
@@ -523,7 +535,7 @@ QXcbScreen *QXcbNativeInterface::qPlatformScreenForWindow(QWindow *window)
 
 void *QXcbNativeInterface::displayForWindow(QWindow *window)
 {
-#if defined(XCB_USE_XLIB)
+#if QT_CONFIG(xcb_xlib)
     QXcbScreen *screen = qPlatformScreenForWindow(window);
     return screen ? screen->connection()->xlib_display() : Q_NULLPTR;
 #else

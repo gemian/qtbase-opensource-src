@@ -73,7 +73,7 @@ void RCCResourceLibrary::writeByteArray(const QByteArray &other)
 
 static inline QString msgOpenReadFailed(const QString &fname, const QString &why)
 {
-    return QString::fromLatin1("Unable to open %1 for reading: %2\n").arg(fname).arg(why);
+    return QString::fromLatin1("Unable to open %1 for reading: %2\n").arg(fname, why);
 }
 
 
@@ -203,6 +203,14 @@ void RCCFileInfo::writeDataInfo(RCCResourceLibrary &lib)
     }
     if (text || pass1)
         lib.writeChar('\n');
+
+    if (lib.formatVersion() >= 2) {
+        // last modified time stamp
+        const QDateTime lastModified = m_fileInfo.lastModified();
+        lib.writeNumber8(quint64(lastModified.isValid() ? lastModified.toMSecsSinceEpoch() : 0));
+        if (text || pass1)
+            lib.writeChar('\n');
+    }
 }
 
 qint64 RCCFileInfo::writeDataBlob(RCCResourceLibrary &lib, qint64 offset,
@@ -335,7 +343,7 @@ RCCResourceLibrary::Strings::Strings() :
 {
 }
 
-RCCResourceLibrary::RCCResourceLibrary()
+RCCResourceLibrary::RCCResourceLibrary(quint8 formatVersion)
   : m_root(0),
     m_format(C_Code),
     m_verbose(false),
@@ -346,7 +354,8 @@ RCCResourceLibrary::RCCResourceLibrary()
     m_dataOffset(0),
     m_useNameSpace(CONSTANT_USENAMESPACE),
     m_errorDevice(0),
-    m_outDevice(0)
+    m_outDevice(0),
+    m_formatVersion(formatVersion)
 {
     m_out.reserve(30 * 1000 * 1000);
 }
@@ -493,7 +502,8 @@ bool RCCResourceLibrary::interpretResourceFile(QIODevice *inputDevice,
                 QFileInfo file(absFileName);
                 if (!file.exists()) {
                     m_failedResources.push_back(absFileName);
-                    const QString msg = QString::fromLatin1("RCC: Error in '%1': Cannot find file '%2'\n").arg(fname).arg(fileName);
+                    const QString msg = QString::fromLatin1("RCC: Error in '%1': Cannot find file '%2'\n")
+                                        .arg(fname, fileName);
                     m_errorDevice->write(msg.toUtf8());
                     if (ignoreErrors)
                         continue;
@@ -705,9 +715,7 @@ static void resourceDataFileMapRecursion(const RCCFileInfo *m_root, const QStrin
     const ChildConstIterator cend = m_root->m_children.constEnd();
     for (ChildConstIterator it = m_root->m_children.constBegin(); it != cend; ++it) {
         const RCCFileInfo *child = it.value();
-        QString childName = path;
-        childName += slash;
-        childName += child->m_name;
+        const QString childName = path + slash + child->m_name;
         if (child->m_flags & RCCFileInfo::Directory) {
             resourceDataFileMapRecursion(child, childName, m);
         } else {
@@ -828,6 +836,38 @@ void RCCResourceLibrary::writeNumber4(quint32 number)
         writeChar(number >> 8);
         writeChar(number);
     } else {
+        writeHex(number >> 24);
+        writeHex(number >> 16);
+        writeHex(number >> 8);
+        writeHex(number);
+    }
+}
+
+void RCCResourceLibrary::writeNumber8(quint64 number)
+{
+    if (m_format == RCCResourceLibrary::Pass2) {
+        m_outDevice->putChar(char(number >> 56));
+        m_outDevice->putChar(char(number >> 48));
+        m_outDevice->putChar(char(number >> 40));
+        m_outDevice->putChar(char(number >> 32));
+        m_outDevice->putChar(char(number >> 24));
+        m_outDevice->putChar(char(number >> 16));
+        m_outDevice->putChar(char(number >> 8));
+        m_outDevice->putChar(char(number));
+    } else if (m_format == RCCResourceLibrary::Binary) {
+        writeChar(number >> 56);
+        writeChar(number >> 48);
+        writeChar(number >> 40);
+        writeChar(number >> 32);
+        writeChar(number >> 24);
+        writeChar(number >> 16);
+        writeChar(number >> 8);
+        writeChar(number);
+    } else {
+        writeHex(number >> 56);
+        writeHex(number >> 48);
+        writeHex(number >> 40);
+        writeHex(number >> 32);
         writeHex(number >> 24);
         writeHex(number >> 16);
         writeHex(number >> 8);
@@ -1078,7 +1118,9 @@ bool RCCResourceLibrary::writeInitializer()
         if (m_root) {
             writeString("    ");
             writeAddNamespaceFunction("qRegisterResourceData");
-            writeString("\n        (0x01, qt_resource_struct, "
+            writeString("\n        (");
+            writeHex(m_formatVersion);
+            writeString(" qt_resource_struct, "
                        "qt_resource_name, qt_resource_data);\n");
         }
         writeString("    return 1;\n");
@@ -1099,7 +1141,9 @@ bool RCCResourceLibrary::writeInitializer()
         if (m_root) {
             writeString("    ");
             writeAddNamespaceFunction("qUnregisterResourceData");
-            writeString("\n       (0x01, qt_resource_struct, "
+            writeString("\n       (");
+            writeHex(m_formatVersion);
+            writeString(" qt_resource_struct, "
                       "qt_resource_name, qt_resource_data);\n");
         }
         writeString("    return 1;\n");
@@ -1116,10 +1160,10 @@ bool RCCResourceLibrary::writeInitializer()
     } else if (m_format == Binary) {
         int i = 4;
         char *p = m_out.data();
-        p[i++] = 0; // 0x01
         p[i++] = 0;
         p[i++] = 0;
-        p[i++] = 1;
+        p[i++] = 0;
+        p[i++] = m_formatVersion;
 
         p[i++] = (m_treeOffset >> 24) & 0xff;
         p[i++] = (m_treeOffset >> 16) & 0xff;

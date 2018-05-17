@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
+** Copyright (C) 2017 The Qt Company Ltd.
+** Copyright (C) 2017 Intel Corporation.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
@@ -44,20 +44,13 @@
 
 #include "qdiriterator.h"
 #include "qplatformdefs.h"
+#include "private/qtemporaryfile_p.h"
 #include <QDebug>
 #include <QPair>
+#include <QRandomGenerator>
 
 #if defined(QT_BUILD_CORE_LIB)
 #include "qcoreapplication.h"
-#endif
-
-#if !defined(Q_OS_QNX) && !defined(Q_OS_WIN) && !defined(Q_OS_ANDROID) && !defined(Q_OS_INTEGRITY)
-#  define USE_SYSTEM_MKDTEMP
-#endif
-
-#include <stdlib.h> // mkdtemp
-#ifndef USE_SYSTEM_MKDTEMP
-#include <private/qfilesystemengine_p.h>
 #endif
 
 #if !defined(Q_OS_WIN)
@@ -102,38 +95,12 @@ static QString defaultTemplateName()
     return QDir::tempPath() + QLatin1Char('/') + baseName + QLatin1String("-XXXXXX");
 }
 
-#ifndef USE_SYSTEM_MKDTEMP
-static int nextRand(int &v)
+void QTemporaryDirPrivate::create(const QString &templateName)
 {
-    int r = v % 62;
-    v /= 62;
-    if (v < 62)
-        v = qrand();
-    return r;
-}
-
-QPair<QString, bool> q_mkdtemp(QString templateName)
-{
-    Q_ASSERT(templateName.endsWith(QLatin1String("XXXXXX")));
-
-    static const char letters[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-    const int length = templateName.size();
-
-    QChar *XXXXXX = templateName.data() + length - 6;
-
+    QTemporaryFileName tfn(templateName);
     for (int i = 0; i < 256; ++i) {
-        int v = qrand();
-
-        /* Fill in the random bits.  */
-        XXXXXX[0] = QLatin1Char(letters[nextRand(v)]);
-        XXXXXX[1] = QLatin1Char(letters[nextRand(v)]);
-        XXXXXX[2] = QLatin1Char(letters[nextRand(v)]);
-        XXXXXX[3] = QLatin1Char(letters[nextRand(v)]);
-        XXXXXX[4] = QLatin1Char(letters[nextRand(v)]);
-        XXXXXX[5] = QLatin1Char(letters[v % 62]);
-
-        QFileSystemEntry fileSystemEntry(templateName);
+        tfn.generateNext();
+        QFileSystemEntry fileSystemEntry(tfn.path, QFileSystemEntry::FromNativePath());
         if (QFileSystemEngine::createDirectory(fileSystemEntry, false)) {
             QSystemError error;
             QFileSystemEngine::setPermissions(fileSystemEntry,
@@ -145,7 +112,9 @@ QPair<QString, bool> q_mkdtemp(QString templateName)
                     qWarning() << "Unable to remove unused directory" << templateName;
                 continue;
             }
-            return qMakePair(templateName, true);
+            success = true;
+            pathOrError = fileSystemEntry.filePath();
+            return;
         }
 #  ifdef Q_OS_WIN
         const int exists = ERROR_ALREADY_EXISTS;
@@ -155,36 +124,10 @@ QPair<QString, bool> q_mkdtemp(QString templateName)
         int code = errno;
 #  endif
         if (code != exists)
-            return qMakePair(qt_error_string(code), false);
+            break;
     }
-    return qMakePair(qt_error_string(), false);
-}
-
-#else // !USE_SYSTEM_MKDTEMP
-
-QPair<QString, bool> q_mkdtemp(char *templateName)
-{
-    bool ok = (mkdtemp(templateName) != 0);
-    return qMakePair(ok ? QFile::decodeName(templateName) : qt_error_string(), ok);
-}
-
-#endif // USE_SYSTEM_MKDTEMP
-
-void QTemporaryDirPrivate::create(const QString &templateName)
-{
-#ifndef USE_SYSTEM_MKDTEMP
-    QString buffer = templateName;
-    if (!buffer.endsWith(QLatin1String("XXXXXX")))
-        buffer += QLatin1String("XXXXXX");
-    const QPair<QString, bool> result = q_mkdtemp(buffer);
-#else // !USE_SYSTEM_MKDTEMP
-    QByteArray buffer = QFile::encodeName(templateName);
-    if (!buffer.endsWith("XXXXXX"))
-        buffer += "XXXXXX";
-    QPair<QString, bool> result = q_mkdtemp(buffer.data()); // modifies buffer
-#endif // USE_SYSTEM_MKDTEMP
-    pathOrError = result.first;
-    success = result.second;
+    pathOrError = qt_error_string();
+    success = false;
 }
 
 //************* QTemporaryDir
@@ -198,10 +141,10 @@ void QTemporaryDirPrivate::create(const QString &templateName)
     \ingroup io
 
 
-    QTemporaryDir is used to create unique temporary dirs safely.
-    The dir itself is created by the constructor. The name of the
+    QTemporaryDir is used to create unique temporary directories safely.
+    The directory itself is created by the constructor. The name of the
     temporary directory is guaranteed to be unique (i.e., you are
-    guaranteed to not overwrite an existing dir), and the directory will
+    guaranteed to not overwrite an existing directory), and the directory will
     subsequently be removed upon destruction of the QTemporaryDir
     object. The directory name is either auto-generated, or created based
     on a template, which is passed to QTemporaryDir's constructor.
@@ -214,7 +157,7 @@ void QTemporaryDirPrivate::create(const QString &templateName)
     created, using isValid(). Do not use \l {QDir::exists()}{exists()}, since a default-constructed
     QDir represents the current directory, which exists.
 
-    The path to the temporary dir can be found by calling path().
+    The path to the temporary directory can be found by calling path().
 
     A temporary directory will have some static part of the name and some
     part that is calculated to be unique. The default path will be
@@ -302,6 +245,33 @@ QString QTemporaryDir::errorString() const
 QString QTemporaryDir::path() const
 {
     return d_ptr->success ? d_ptr->pathOrError : QString();
+}
+
+/*!
+    \since 5.9
+
+    Returns the path name of a file in the temporary directory.
+    Does \e not check if the file actually exists in the directory.
+    Redundant multiple separators or "." and ".." directories in
+    \a fileName are not removed (see QDir::cleanPath()). Absolute
+    paths are not allowed.
+*/
+QString QTemporaryDir::filePath(const QString &fileName) const
+{
+    if (QDir::isAbsolutePath(fileName)) {
+        qWarning("QTemporaryDir::filePath: Absolute paths are not allowed: %s", qUtf8Printable(fileName));
+        return QString();
+    }
+
+    if (!d_ptr->success)
+        return QString();
+
+    QString ret = d_ptr->pathOrError;
+    if (!fileName.isEmpty()) {
+        ret += QLatin1Char('/');
+        ret += fileName;
+    }
+    return ret;
 }
 
 /*!

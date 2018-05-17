@@ -43,6 +43,7 @@
 
 #ifndef QT_NO_TEXTCODEC
 
+#include "qbytearraymatcher.h"
 #include "qlist.h"
 #include "qfile.h"
 #include "qstringlist.h"
@@ -58,10 +59,10 @@
 #if !defined(QT_BOOTSTRAPPED)
 #  include "qtsciicodec_p.h"
 #  include "qisciicodec_p.h"
-#if defined(QT_USE_ICU)
+#if QT_CONFIG(icu)
 #include "qicucodec_p.h"
 #else
-#if !defined(QT_NO_ICONV)
+#if QT_CONFIG(iconv)
 #  include "qiconvcodec_p.h"
 #endif
 #ifdef Q_OS_WIN
@@ -79,7 +80,7 @@
 #  endif // !Q_OS_INTEGRITY
 #endif // !QT_NO_BIG_CODECS
 
-#endif // QT_USE_ICU
+#endif // icu
 #endif // QT_BOOTSTRAPPED
 
 #include "qmutex.h"
@@ -99,7 +100,7 @@ typedef QList<QByteArray>::ConstIterator ByteArrayListConstIt;
 Q_GLOBAL_STATIC_WITH_ARGS(QMutex, textCodecsMutex, (QMutex::Recursive));
 QMutex *qTextCodecsMutex() { return textCodecsMutex(); }
 
-#if !defined(QT_USE_ICU)
+#if !QT_CONFIG(icu)
 static char qtolower(char c)
 { if (c >= 'A' && c <= 'Z') return c + 0x20; return c; }
 static bool qisalnum(char c)
@@ -132,7 +133,7 @@ bool qTextCodecNameMatch(const char *n, const char *h)
 }
 
 
-#if !defined(Q_OS_WIN32) && !defined(Q_OS_WINCE) && !defined(QT_LOCALE_IS_UTF8)
+#if !defined(Q_OS_WIN32) && !defined(QT_LOCALE_IS_UTF8)
 static QTextCodec *checkForCodec(const QByteArray &name) {
     QTextCodec *c = QTextCodec::codecForName(name);
     if (!c) {
@@ -169,7 +170,7 @@ static QTextCodec *setupLocaleMapper()
 
 #if defined(QT_LOCALE_IS_UTF8)
     locale = QTextCodec::codecForName("UTF-8");
-#elif defined(Q_OS_WIN) || defined(Q_OS_WINCE)
+#elif defined(Q_OS_WIN)
     locale = QTextCodec::codecForName("System");
 #else
 
@@ -184,7 +185,7 @@ static QTextCodec *setupLocaleMapper()
     if (charset)
         locale = QTextCodec::codecForName(charset);
 #endif
-#if !defined(QT_NO_ICONV) && !defined(QT_BOOTSTRAPPED)
+#if QT_CONFIG(iconv)
     if (!locale) {
         // no builtin codec for the locale found, let's try using iconv
         (void) new QIconvCodec();
@@ -286,10 +287,10 @@ static void setup()
     (void)new QBig5Codec;
     (void)new QBig5hkscsCodec;
 #  endif // !QT_NO_BIG_CODECS && !Q_OS_INTEGRITY
-#if !defined(QT_NO_ICONV)
+#if QT_CONFIG(iconv)
     (void) new QIconvCodec;
 #endif
-#if defined(Q_OS_WIN32) || defined(Q_OS_WINCE)
+#if defined(Q_OS_WIN32)
     (void) new QWindowsLocalCodec;
 #endif // Q_OS_WIN32
 #endif // !QT_NO_CODECS && !QT_BOOTSTRAPPED
@@ -306,7 +307,7 @@ static void setup()
 }
 #else
 static void setup() {}
-#endif // QT_USE_ICU
+#endif // icu
 
 /*!
     \enum QTextCodec::ConversionFlag
@@ -519,7 +520,7 @@ QTextCodec *QTextCodec::codecForName(const QByteArray &name)
         return 0;
     setup();
 
-#ifndef QT_USE_ICU
+#if !QT_CONFIG(icu)
     QTextCodecCache *cache = &globalData->codecCache;
     QTextCodec *codec;
     if (cache) {
@@ -586,7 +587,7 @@ QTextCodec* QTextCodec::codecForMib(int mib)
         }
     }
 
-#ifdef QT_USE_ICU
+#if QT_CONFIG(icu)
     return QIcuCodec::codecForMibUnlocked(mib);
 #else
     return 0;
@@ -618,7 +619,7 @@ QList<QByteArray> QTextCodec::availableCodecs()
         codecs += (*it)->aliases();
     }
 
-#ifdef QT_USE_ICU
+#if QT_CONFIG(icu)
     codecs += QIcuCodec::availableCodecs();
 #endif
 
@@ -634,7 +635,7 @@ QList<QByteArray> QTextCodec::availableCodecs()
 */
 QList<int> QTextCodec::availableMibs()
 {
-#ifdef QT_USE_ICU
+#if QT_CONFIG(icu)
     return QIcuCodec::availableMibs();
 #else
     QMutexLocker locker(textCodecsMutex());
@@ -688,7 +689,7 @@ QTextCodec* QTextCodec::codecForLocale()
 
     QTextCodec *codec = globalData->codecForLocale.loadAcquire();
     if (!codec) {
-#ifdef QT_USE_ICU
+#if QT_CONFIG(icu)
         textCodecsMutex()->lock();
         codec = QIcuCodec::defaultCodecUnlocked();
         textCodecsMutex()->unlock();
@@ -803,6 +804,7 @@ QTextEncoder* QTextCodec::makeEncoder(QTextCodec::ConversionFlags flags) const
     The \a state of the convertor used is updated.
 */
 
+#if QT_STRINGVIEW_LEVEL < 2
 /*!
     Converts \a str from Unicode to the encoding of this codec, and
     returns the result in a QByteArray.
@@ -810,6 +812,19 @@ QTextEncoder* QTextCodec::makeEncoder(QTextCodec::ConversionFlags flags) const
 QByteArray QTextCodec::fromUnicode(const QString& str) const
 {
     return convertFromUnicode(str.constData(), str.length(), 0);
+}
+#endif
+
+/*!
+    \overload
+    \since 5.10
+
+    Converts \a str from Unicode to the encoding of this codec, and
+    returns the result in a QByteArray.
+*/
+QByteArray QTextCodec::fromUnicode(QStringView str) const
+{
+    return convertFromUnicode(str.data(), str.length(), nullptr);
 }
 
 /*!
@@ -844,6 +859,7 @@ bool QTextCodec::canEncode(QChar ch) const
     return (state.invalidChars == 0);
 }
 
+#if QT_STRINGVIEW_LEVEL < 2
 /*!
     \overload
 
@@ -856,7 +872,22 @@ bool QTextCodec::canEncode(const QString& s) const
     convertFromUnicode(s.constData(), s.length(), &state);
     return (state.invalidChars == 0);
 }
+#endif
 
+/*!
+    \overload
+    \since 5.10
+
+    Returns \c true if the Unicode string \a s can be fully encoded
+    with this codec; otherwise returns \c false.
+*/
+bool QTextCodec::canEncode(QStringView s) const
+{
+    ConverterState state;
+    state.flags = ConvertInvalidToNull;
+    convertFromUnicode(s.data(), s.length(), &state);
+    return !state.invalidChars;
+}
 /*!
     \overload
 
@@ -921,6 +952,7 @@ bool QTextEncoder::hasFailure() const
     return state.invalidChars != 0;
 }
 
+#if QT_STRINGVIEW_LEVEL < 2
 /*!
     Converts the Unicode string \a str into an encoded QByteArray.
 */
@@ -928,6 +960,17 @@ QByteArray QTextEncoder::fromUnicode(const QString& str)
 {
     QByteArray result = c->fromUnicode(str.constData(), str.length(), &state);
     return result;
+}
+#endif
+
+/*!
+    \overload
+    \since 5.10
+    Converts the Unicode string \a str into an encoded QByteArray.
+*/
+QByteArray QTextEncoder::fromUnicode(QStringView str)
+{
+    return c->fromUnicode(str.data(), str.length(), &state);
 }
 
 /*!
@@ -1050,10 +1093,12 @@ QTextCodec *QTextCodec::codecForHtml(const QByteArray &ba, QTextCodec *defaultCo
     // determine charset
     QTextCodec *c = QTextCodec::codecForUtfText(ba, 0);
     if (!c) {
+        static Q_RELAXED_CONSTEXPR auto matcher = qMakeStaticByteArrayMatcher("meta ");
         QByteArray header = ba.left(1024).toLower();
-        int pos = header.indexOf("meta ");
+        int pos = matcher.indexIn(header);
         if (pos != -1) {
-            pos = header.indexOf("charset=", pos);
+            static Q_RELAXED_CONSTEXPR auto matcher = qMakeStaticByteArrayMatcher("charset=");
+            pos = matcher.indexIn(header, pos);
             if (pos != -1) {
                 pos += qstrlen("charset=");
 

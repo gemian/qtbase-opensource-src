@@ -48,8 +48,6 @@
 #include <QtPrintSupport/qprintengine.h>
 #include <qpa/qplatformprintdevice.h>
 
-#ifndef QT_NO_PRINTDIALOG
-
 QT_BEGIN_NAMESPACE
 
 extern qreal qt_pointMultiplier(QPageLayout::Unit unit);
@@ -103,7 +101,7 @@ QT_USE_NAMESPACE
     QPrintDialog *dialog = static_cast<QPrintDialog *>(contextInfo);
     QPrinter *printer = dialog->printer();
 
-    if (returnCode == NSOKButton) {
+    if (returnCode == NSModalResponseOK) {
         PMPrintSession session = static_cast<PMPrintSession>([printInfo PMPrintSession]);
         PMPrintSettings settings = static_cast<PMPrintSettings>([printInfo PMPrintSettings]);
 
@@ -192,7 +190,7 @@ QT_USE_NAMESPACE
         printer->setPageSize(pageSize);
     printer->setOrientation(orientation == kPMLandscape ? QPrinter::Landscape : QPrinter::Portrait);
 
-    dialog->done((returnCode == NSOKButton) ? QDialog::Accepted : QDialog::Rejected);
+    dialog->done((returnCode == NSModalResponseOK) ? QDialog::Accepted : QDialog::Rejected);
 }
 @end
 
@@ -358,5 +356,3 @@ void QPrintDialog::setVisible(bool visible)
 QT_END_NAMESPACE
 
 #include "moc_qprintdialog.cpp"
-
-#endif // QT_NO_PRINTDIALOG

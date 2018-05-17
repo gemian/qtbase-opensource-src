@@ -40,6 +40,7 @@
 #ifndef QWINRTBACKINGSTORE_H
 #define QWINRTBACKINGSTORE_H
 
+#define GL_GLEXT_PROTOTYPES
 #include <qpa/qplatformbackingstore.h>
 #include <QtCore/QScopedPointer>
 #include <QtCore/QLoggingCategory>
@@ -57,12 +58,12 @@ class QWinRTBackingStore : public QPlatformBackingStore
 public:
     explicit QWinRTBackingStore(QWindow *window);
     ~QWinRTBackingStore();
-    QPaintDevice *paintDevice();
-    void beginPaint(const QRegion &);
-    void endPaint();
-    void flush(QWindow *window, const QRegion &region, const QPoint &offset);
-    void resize(const QSize &size, const QRegion &staticContents);
-    QImage toImage() const Q_DECL_OVERRIDE;
+    QPaintDevice *paintDevice() override;
+    void beginPaint(const QRegion &) override;
+    void endPaint() override;
+    void flush(QWindow *window, const QRegion &region, const QPoint &offset) override;
+    void resize(const QSize &size, const QRegion &staticContents) override;
+    QImage toImage() const override;
 
 private:
     bool initialize();

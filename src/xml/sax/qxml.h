@@ -116,7 +116,22 @@ class Q_XML_EXPORT QXmlAttributes
 {
 public:
     QXmlAttributes();
-    virtual ~QXmlAttributes();
+#ifdef Q_COMPILER_DEFAULT_MEMBERS
+    QXmlAttributes(const QXmlAttributes &) = default;
+    QXmlAttributes(QXmlAttributes &&) Q_DECL_NOTHROW = default;
+    QXmlAttributes &operator=(const QXmlAttributes &) = default;
+    QXmlAttributes &operator=(QXmlAttributes &&) Q_DECL_NOTHROW = default;
+#endif // default members
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    virtual // ### Qt 6: this value class don't need no virtual dtor
+#endif
+    ~QXmlAttributes();
+
+    void swap(QXmlAttributes &other) Q_DECL_NOTHROW
+    {
+        qSwap(attList, other.attList);
+        qSwap(d, other.d);
+    }
 
     int index(const QString& qName) const;
     int index(QLatin1String qName) const;
@@ -141,11 +156,14 @@ private:
     struct Attribute {
         QString qname, uri, localname, value;
     };
+    friend class QTypeInfo<Attribute>;
     typedef QList<Attribute> AttributeList;
     AttributeList attList;
 
     QXmlAttributesPrivate *d;
 };
+Q_DECLARE_TYPEINFO(QXmlAttributes::Attribute, Q_MOVABLE_TYPE);
+Q_DECLARE_SHARED_NOT_MOVABLE_UNTIL_QT6(QXmlAttributes)
 
 //
 // SAX Input Source

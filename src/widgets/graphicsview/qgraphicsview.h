@@ -40,15 +40,15 @@
 #ifndef QGRAPHICSVIEW_H
 #define QGRAPHICSVIEW_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qmetatype.h>
 #include <QtGui/qpainter.h>
 #include <QtWidgets/qscrollarea.h>
 #include <QtWidgets/qgraphicsscene.h>
 
+QT_REQUIRE_CONFIG(graphicsview);
+
 QT_BEGIN_NAMESPACE
-
-
-#if !defined(QT_NO_GRAPHICSVIEW)
 
 class QGraphicsItem;
 class QPainterPath;
@@ -71,7 +71,7 @@ class Q_WIDGETS_EXPORT QGraphicsView : public QAbstractScrollArea
     Q_PROPERTY(ViewportAnchor transformationAnchor READ transformationAnchor WRITE setTransformationAnchor)
     Q_PROPERTY(ViewportAnchor resizeAnchor READ resizeAnchor WRITE setResizeAnchor)
     Q_PROPERTY(ViewportUpdateMode viewportUpdateMode READ viewportUpdateMode WRITE setViewportUpdateMode)
-#ifndef QT_NO_RUBBERBAND
+#if QT_CONFIG(rubberband)
     Q_PROPERTY(Qt::ItemSelectionMode rubberBandSelectionMode READ rubberBandSelectionMode WRITE setRubberBandSelectionMode)
 #endif
     Q_PROPERTY(OptimizationFlags optimizationFlags READ optimizationFlags WRITE setOptimizationFlags)
@@ -143,7 +143,7 @@ public:
     DragMode dragMode() const;
     void setDragMode(DragMode mode);
 
-#ifndef QT_NO_RUBBERBAND
+#if QT_CONFIG(rubberband)
     Qt::ItemSelectionMode rubberBandSelectionMode() const;
     void setRubberBandSelectionMode(Qt::ItemSelectionMode mode);
     QRect rubberBandRect() const;
@@ -227,7 +227,7 @@ public Q_SLOTS:
     void invalidateScene(const QRectF &rect = QRectF(), QGraphicsScene::SceneLayers layers = QGraphicsScene::AllLayers);
     void updateSceneRect(const QRectF &rect);
 
-#ifndef QT_NO_RUBBERBAND
+#if QT_CONFIG(rubberband)
 Q_SIGNALS:
     void rubberBandChanged(QRect viewportRect, QPointF fromScenePoint, QPointF toScenePoint);
 #endif
@@ -243,10 +243,12 @@ protected:
 #ifndef QT_NO_CONTEXTMENU
     void contextMenuEvent(QContextMenuEvent *event) Q_DECL_OVERRIDE;
 #endif
+#if QT_CONFIG(draganddrop)
     void dragEnterEvent(QDragEnterEvent *event) Q_DECL_OVERRIDE;
     void dragLeaveEvent(QDragLeaveEvent *event) Q_DECL_OVERRIDE;
     void dragMoveEvent(QDragMoveEvent *event) Q_DECL_OVERRIDE;
     void dropEvent(QDropEvent *event) Q_DECL_OVERRIDE;
+#endif
     void focusInEvent(QFocusEvent *event) Q_DECL_OVERRIDE;
     bool focusNextPrevChild(bool next) Q_DECL_OVERRIDE;
     void focusOutEvent(QFocusEvent *event) Q_DECL_OVERRIDE;
@@ -256,7 +258,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
     void mouseMoveEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
     void mouseReleaseEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     void wheelEvent(QWheelEvent *event) Q_DECL_OVERRIDE;
 #endif
     void paintEvent(QPaintEvent *event) Q_DECL_OVERRIDE;
@@ -309,8 +311,6 @@ inline QPoint QGraphicsView::mapFromScene(qreal ax, qreal ay) const
 { return mapFromScene(QPointF(ax, ay)); }
 inline QPolygon QGraphicsView::mapFromScene(qreal ax, qreal ay, qreal w, qreal h) const
 { return mapFromScene(QRectF(ax, ay, w, h)); }
-
-#endif // QT_NO_GRAPHICSVIEW
 
 QT_END_NAMESPACE
 

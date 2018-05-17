@@ -36,7 +36,7 @@ class tst_QResourceEngine: public QObject
 
 public:
     tst_QResourceEngine()
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
         : m_runtimeResourceRcc(QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/runtime_resource.rcc")).absoluteFilePath())
 #else
         : m_runtimeResourceRcc(QFINDTESTDATA("runtime_resource.rcc"))
@@ -55,6 +55,7 @@ private slots:
     void searchPath();
     void doubleSlashInRoot();
     void setLocale();
+    void lastModified();
 
 private:
     const QString m_runtimeResourceRcc;
@@ -63,7 +64,7 @@ private:
 
 void tst_QResourceEngine::initTestCase()
 {
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
     QString sourcePath(QStringLiteral(":/android_testdata/"));
     QString dataPath(QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
 
@@ -120,7 +121,7 @@ void tst_QResourceEngine::checkStructure_data()
                  << QLatin1String("test")
                  << QLatin1String("withoutslashes");
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
     rootContents.insert(1, QLatin1String("android_testdata"));
 #endif
 
@@ -487,6 +488,20 @@ void tst_QResourceEngine::setLocale()
 
     // the reset the default locale back
     QLocale::setDefault(QLocale::system());
+}
+
+void tst_QResourceEngine::lastModified()
+{
+    {
+        QFileInfo fi(":/");
+        QVERIFY(fi.exists());
+        QVERIFY2(!fi.lastModified().isValid(), qPrintable(fi.lastModified().toString()));
+    }
+    {
+        QFileInfo fi(":/search_file.txt");
+        QVERIFY(fi.exists());
+        QVERIFY(fi.lastModified().isValid());
+    }
 }
 
 QTEST_MAIN(tst_QResourceEngine)

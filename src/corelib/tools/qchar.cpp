@@ -101,7 +101,7 @@ QT_BEGIN_NAMESPACE
     In Qt, Unicode characters are 16-bit entities without any markup
     or structure. This class represents such an entity. It is
     lightweight, so it can be used everywhere. Most compilers treat
-    it like a \c{unsigned short}.
+    it like an \c{unsigned short}.
 
     QChar provides a full complement of testing/classification
     functions, converting to and from other formats, converting from
@@ -424,7 +424,7 @@ QT_BEGIN_NAMESPACE
     \enum QChar::Direction
 
     This enum type defines the Unicode direction attributes. See the
-    \l{http://www.unicode.org/}{Unicode Standard} for a description
+    \l{http://www.unicode.org/reports/tr9/tr9-35.html#Table_Bidirectional_Character_Types}{Unicode Standard} for a description
     of the values.
 
     In order to conform to C/C++ naming conventions "Dir" is prepended
@@ -608,6 +608,24 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \fn QChar::QChar(char16_t ch)
+    \since 5.10
+
+    Constructs a QChar corresponding to the UTF-16 character \a ch.
+
+    \note This constructor is not available on MSVC 2013.
+*/
+
+/*!
+    \fn QChar::QChar(wchar_t ch)
+    \since 5.10
+
+    Constructs a QChar corresponding to the wide character \a ch.
+
+    \note This constructor is only available on Windows.
+*/
+
+/*!
     \fn QChar::QChar(char ch)
 
     Constructs a QChar corresponding to ASCII/Latin-1 character \a ch.
@@ -624,9 +642,9 @@ QT_BEGIN_NAMESPACE
     Constructs a QChar corresponding to ASCII/Latin-1 character \a ch.
 
     \note This constructor is not available when \c QT_NO_CAST_FROM_ASCII
-    is defined.
+    or QT_RESTRICTED_CAST_FROM_ASCII is defined.
 
-    \sa QT_NO_CAST_FROM_ASCII
+    \sa QT_NO_CAST_FROM_ASCII, QT_RESTRICTED_CAST_FROM_ASCII
 */
 
 /*!
@@ -1530,6 +1548,11 @@ static inline uint foldCase(uint ch, uint &last) Q_DECL_NOTHROW
 static inline ushort foldCase(ushort ch) Q_DECL_NOTHROW
 {
     return convertCase_helper<QUnicodeTables::CasefoldTraits>(ch);
+}
+
+static inline QChar foldCase(QChar ch) Q_DECL_NOTHROW
+{
+    return QChar(foldCase(ch.unicode()));
 }
 
 /*!

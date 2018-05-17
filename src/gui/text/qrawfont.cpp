@@ -261,9 +261,13 @@ void QRawFont::loadFromData(const QByteArray &fontData,
    \a glyphIndex in the underlying font, using the \a transform specified.
    If the QRawFont is not valid, this function will return an invalid QImage.
 
-   If \a antialiasingType is set to QRawFont::SubPixelAntialiasing, then the resulting image will be
-   in QImage::Format_RGB32 and the RGB values of each pixel will represent the subpixel opacities of
-   the pixel in the rasterization of the glyph. Otherwise, the image will be in the format of
+   If the font is a color font, then the resulting image will contain the rendered
+   glyph at the current pixel size. In this case, the \a antialiasingType will be
+   ignored.
+
+   Otherwise, if \a antialiasingType is set to QRawFont::SubPixelAntialiasing, then the resulting image
+   will be in QImage::Format_RGB32 and the RGB values of each pixel will represent the subpixel opacities
+   of the pixel in the rasterization of the glyph. Otherwise, the image will be in the format of
    QImage::Format_Indexed8 and each pixel will contain the opacity of the pixel in the
    rasterization.
 
@@ -274,6 +278,9 @@ QImage QRawFont::alphaMapForGlyph(quint32 glyphIndex, AntialiasingType antialias
 {
     if (!d->isValid())
         return QImage();
+
+    if (d->fontEngine->glyphFormat == QFontEngine::Format_ARGB)
+        return d->fontEngine->bitmapForGlyph(glyphIndex, QFixed(), transform);
 
     if (antialiasingType == SubPixelAntialiasing)
         return d->fontEngine->alphaRGBMapForGlyph(glyphIndex, QFixed(), transform);
@@ -309,6 +316,19 @@ bool QRawFont::operator==(const QRawFont &other) const
 }
 
 /*!
+    Returns the hash value for \a font. If specified, \a seed is used
+    to initialize the hash.
+
+    \relates QRawFont
+    \since 5.8
+*/
+uint qHash(const QRawFont &font, uint seed) Q_DECL_NOTHROW
+{
+    return qHash(QRawFontPrivate::get(font)->fontEngine, seed);
+}
+
+
+/*!
     \fn bool QRawFont::operator!=(const QRawFont &other) const
 
     Returns \c true if this QRawFont is not equal to \a other. Otherwise, returns \c false.
@@ -329,6 +349,23 @@ bool QRawFont::operator==(const QRawFont &other) const
 qreal QRawFont::ascent() const
 {
     return d->isValid() ? d->fontEngine->ascent().toReal() : 0.0;
+}
+
+/*!
+   Returns the cap height of this QRawFont in pixel units.
+
+   \since 5.8
+
+   The cap height of a font is the height of a capital letter above
+   the baseline. It specifically is the height of capital letters
+   that are flat - such as H or I - as opposed to round letters such
+   as O, or pointed letters like A, both of which may display overshoot.
+
+   \sa QFontMetricsF::capHeight()
+*/
+qreal QRawFont::capHeight() const
+{
+    return d->isValid() ? d->fontEngine->capHeight().toReal() : 0.0;
 }
 
 /*!

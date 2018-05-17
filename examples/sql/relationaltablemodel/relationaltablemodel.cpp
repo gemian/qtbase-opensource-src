@@ -110,14 +110,15 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     if (!createConnection())
-        return 1;
+        return EXIT_FAILURE;
+
     createRelationalTables();
 
     QSqlRelationalTableModel model;
 
     initializeModel(&model);
 
-    QTableView *view = createView(QObject::tr("Relational Table Model"), &model);
+    QScopedPointer<QTableView> view(createView(QObject::tr("Relational Table Model"), &model));
     view->show();
 
     return app.exec();

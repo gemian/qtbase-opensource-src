@@ -299,7 +299,7 @@ static QByteArray windowsSystemZoneId()
         id = readRegistryString(key, L"TimeZoneKeyName");
         RegCloseKey(key);
         if (!id.isEmpty())
-            return id.toUtf8();
+            return std::move(id).toUtf8();
     }
 
     // On XP we have to iterate over the zones until we find a match on
@@ -383,17 +383,11 @@ static void calculateTransitionsForYear(const QWinTimeZonePrivate::QWinTransitio
 
 static QLocale::Country userCountry()
 {
-#if defined(Q_OS_WINCE)
-    // Guess that the syslem locale country is the right one to use
-    // TODO Find if WinCE has equivalent api
-    return QLocale::system().country();
-#else
     const GEOID id = GetUserGeoID(GEOCLASS_NATION);
     wchar_t code[3];
     const int size = GetGeoInfo(id, GEO_ISO2, code, 3, 0);
-    return (size == 3) ? QLocalePrivate::codeToCountry(reinterpret_cast<const QChar*>(code), size)
+    return (size == 3) ? QLocalePrivate::codeToCountry(QStringView(code, size))
                        : QLocale::AnyCountry;
-#endif // Q_OS_WINCE
 }
 
 // Create the system default time zone
@@ -421,7 +415,7 @@ QWinTimeZonePrivate::~QWinTimeZonePrivate()
 {
 }
 
-QTimeZonePrivate *QWinTimeZonePrivate::clone()
+QWinTimeZonePrivate *QWinTimeZonePrivate::clone() const
 {
     return new QWinTimeZonePrivate(*this);
 }

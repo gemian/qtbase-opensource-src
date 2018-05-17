@@ -40,6 +40,7 @@
 #ifndef QAPPLICATION_H
 #define QAPPLICATION_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtGui/qwindowdefs.h>
 #include <QtCore/qpoint.h>
@@ -75,7 +76,7 @@ class Q_WIDGETS_EXPORT QApplication : public QGuiApplication
     Q_PROPERTY(int cursorFlashTime READ cursorFlashTime WRITE setCursorFlashTime)
     Q_PROPERTY(int doubleClickInterval  READ doubleClickInterval WRITE setDoubleClickInterval)
     Q_PROPERTY(int keyboardInputInterval READ keyboardInputInterval WRITE setKeyboardInputInterval)
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     Q_PROPERTY(int wheelScrollLines  READ wheelScrollLines WRITE setWheelScrollLines)
 #endif
     Q_PROPERTY(QSize globalStrut READ globalStrut WRITE setGlobalStrut)
@@ -83,9 +84,6 @@ class Q_WIDGETS_EXPORT QApplication : public QGuiApplication
     Q_PROPERTY(int startDragDistance  READ startDragDistance WRITE setStartDragDistance)
 #ifndef QT_NO_STYLE_STYLESHEET
     Q_PROPERTY(QString styleSheet READ styleSheet WRITE setStyleSheet)
-#endif
-#ifdef Q_OS_WINCE
-    Q_PROPERTY(int autoMaximizeThreshold READ autoMaximizeThreshold WRITE setAutoMaximizeThreshold)
 #endif
     Q_PROPERTY(bool autoSipEnabled READ autoSipEnabled WRITE setAutoSipEnabled)
 
@@ -101,8 +99,10 @@ public:
     static void setStyle(QStyle*);
     static QStyle *setStyle(const QString&);
     enum ColorSpec { NormalColor=0, CustomColor=1, ManyColor=2 };
-    static int colorSpec();
-    static void setColorSpec(int);
+#if QT_DEPRECATED_SINCE(5, 8)
+    QT_DEPRECATED static int colorSpec();
+    QT_DEPRECATED static void setColorSpec(int);
+#endif // QT_DEPRECATED_SINCE(5, 8)
 #if QT_DEPRECATED_SINCE(5, 0)
     QT_DEPRECATED static inline void setGraphicsSystem(const QString &) {}
 #endif
@@ -154,7 +154,7 @@ public:
     static void setKeyboardInputInterval(int);
     static int keyboardInputInterval();
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     static void setWheelScrollLines(int);
     static int wheelScrollLines();
 #endif
@@ -194,10 +194,6 @@ public:
 public Q_SLOTS:
 #ifndef QT_NO_STYLE_STYLESHEET
     void setStyleSheet(const QString& sheet);
-#endif
-#ifdef Q_OS_WINCE
-    void setAutoMaximizeThreshold(const int threshold);
-    int autoMaximizeThreshold() const;
 #endif
     void setAutoSipEnabled(const bool enabled);
     bool autoSipEnabled() const;

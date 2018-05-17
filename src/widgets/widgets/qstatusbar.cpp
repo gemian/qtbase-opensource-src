@@ -38,7 +38,6 @@
 ****************************************************************************/
 
 #include "qstatusbar.h"
-#ifndef QT_NO_STATUSBAR
 
 #include "qlist.h"
 #include "qdebug.h"
@@ -48,8 +47,12 @@
 #include "qtimer.h"
 #include "qstyle.h"
 #include "qstyleoption.h"
+#if QT_CONFIG(sizegrip)
 #include "qsizegrip.h"
+#endif
+#if QT_CONFIG(mainwindow)
 #include "qmainwindow.h"
+#endif
 
 #ifndef QT_NO_ACCESSIBILITY
 #include "qaccessible.h"
@@ -80,14 +83,14 @@ public:
     QBoxLayout * box;
     QTimer * timer;
 
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     QSizeGrip * resizer;
     bool showSizeGrip;
 #endif
 
     int savedStrut;
 
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
+#if 0 // Used to be included in Qt4 for Q_WS_MAC
     QPoint dragStart;
 #endif
 
@@ -102,7 +105,7 @@ public:
         return i;
     }
 
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     void tryToShowSizeGrip()
     {
         if (!showSizeGrip)
@@ -128,7 +131,7 @@ QRect QStatusBarPrivate::messageRect() const
     int left = 6;
     int right = q->width() - 12;
 
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     if (resizer && resizer->isVisible()) {
         if (rtl)
             left = resizer->x() + resizer->width();
@@ -233,7 +236,7 @@ QStatusBar::QStatusBar(QWidget * parent)
     d->box = 0;
     d->timer = 0;
 
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     d->resizer = 0;
     setSizeGripEnabled(true); // causes reformat()
 #else
@@ -430,7 +433,7 @@ void QStatusBar::removeWidget(QWidget *widget)
 
 bool QStatusBar::isSizeGripEnabled() const
 {
-#ifdef QT_NO_SIZEGRIP
+#if !QT_CONFIG(sizegrip)
     return false;
 #else
     Q_D(const QStatusBar);
@@ -440,7 +443,7 @@ bool QStatusBar::isSizeGripEnabled() const
 
 void QStatusBar::setSizeGripEnabled(bool enabled)
 {
-#ifdef QT_NO_SIZEGRIP
+#if !QT_CONFIG(sizegrip)
     Q_UNUSED(enabled);
 #else
     Q_D(QStatusBar);
@@ -476,7 +479,7 @@ void QStatusBar::reformat()
         delete d->box;
 
     QBoxLayout *vbox;
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     if (d->resizer) {
         d->box = new QHBoxLayout(this);
         d->box->setMargin(0);
@@ -517,7 +520,7 @@ void QStatusBar::reformat()
         int itemH = qMin(qSmartMinSize(item->w).height(), item->w->maximumHeight());
         maxH = qMax(maxH, itemH);
     }
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     if (d->resizer) {
         maxH = qMax(maxH, d->resizer->sizeHint().height());
         d->box->addSpacing(1);
@@ -648,7 +651,7 @@ void QStatusBar::hideOrShow()
  */
 void QStatusBar::showEvent(QShowEvent *)
 {
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
     Q_D(QStatusBar);
     if (d->resizer && d->showSizeGrip)
         d->tryToShowSizeGrip();
@@ -721,7 +724,7 @@ bool QStatusBar::event(QEvent *e)
             maxH = qMax(maxH, itemH);
         }
 
-#ifndef QT_NO_SIZEGRIP
+#if QT_CONFIG(sizegrip)
         if (d->resizer)
             maxH = qMax(maxH, d->resizer->sizeHint().height());
 #endif
@@ -746,12 +749,9 @@ bool QStatusBar::event(QEvent *e)
 
 // On Mac OS X Leopard it is possible to drag the window by clicking
 // on the tool bar on most applications.
-#ifndef Q_DEAD_CODE_FROM_QT4_MAC
+#if 1 // Used to be excluded in Qt4 for Q_WS_MAC
     return QWidget::event(e);
 #else
-    if (QSysInfo::MacintoshVersion <= QSysInfo::MV_10_4)
-        return QWidget::event(e);
-
     // Enable drag-click only if the status bar is the status bar for a
     // QMainWindow with a unifed toolbar.
     if (parent() == 0 || qobject_cast<QMainWindow *>(parent()) == 0 ||
@@ -790,5 +790,3 @@ bool QStatusBar::event(QEvent *e)
 QT_END_NAMESPACE
 
 #include "moc_qstatusbar.cpp"
-
-#endif

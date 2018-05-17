@@ -52,6 +52,7 @@ namespace ABI {
             namespace Core {
                 struct IAutomationProviderRequestedEventArgs;
                 struct ICharacterReceivedEventArgs;
+                struct ICorePointerRedirector;
                 struct ICoreWindow;
                 struct ICoreWindowEventArgs;
                 struct IKeyEventArgs;
@@ -83,31 +84,39 @@ class QTouchDevice;
 class QWinRTCursor;
 class QWinRTInputContext;
 class QWinRTScreenPrivate;
+class QWinRTWindow;
 class QWinRTScreen : public QPlatformScreen
 {
 public:
     explicit QWinRTScreen();
     ~QWinRTScreen();
 
-    QRect geometry() const Q_DECL_OVERRIDE;
-    QRect availableGeometry() const Q_DECL_OVERRIDE;
-    int depth() const Q_DECL_OVERRIDE;
-    QImage::Format format() const Q_DECL_OVERRIDE;
-    QSizeF physicalSize() const Q_DECL_OVERRIDE;
-    QDpi logicalDpi() const Q_DECL_OVERRIDE;
-    qreal pixelDensity() const Q_DECL_OVERRIDE;
+    QRect geometry() const override;
+    QRect availableGeometry() const override;
+    int depth() const override;
+    QImage::Format format() const override;
+    QSizeF physicalSize() const override;
+    QDpi logicalDpi() const override;
+    qreal pixelDensity() const override;
     qreal scaleFactor() const;
-    QPlatformCursor *cursor() const Q_DECL_OVERRIDE;
+    QPlatformCursor *cursor() const override;
     Qt::KeyboardModifiers keyboardModifiers() const;
 
-    Qt::ScreenOrientation nativeOrientation() const Q_DECL_OVERRIDE;
-    Qt::ScreenOrientation orientation() const Q_DECL_OVERRIDE;
+    Qt::ScreenOrientation nativeOrientation() const override;
+    Qt::ScreenOrientation orientation() const override;
 
     QWindow *topWindow() const;
+    QWindow *windowAt(const QPoint &pos);
     void addWindow(QWindow *window);
     void removeWindow(QWindow *window);
     void raise(QWindow *window);
     void lower(QWindow *window);
+
+    bool setMouseGrabWindow(QWinRTWindow *window, bool grab);
+    QWinRTWindow* mouseGrabWindow() const;
+
+    bool setKeyboardGrabWindow(QWinRTWindow *window, bool grab);
+    QWinRTWindow* keyboardGrabWindow() const;
 
     void updateWindowTitle(const QString &title);
 
@@ -115,6 +124,9 @@ public:
     ABI::Windows::UI::Xaml::IDependencyObject *canvas() const;
 
     void initialize();
+
+    void setCursorRect(const QRectF &cursorRect);
+    void setKeyboardRect(const QRectF &keyboardRect);
 
 private:
     void handleExpose();
@@ -138,8 +150,10 @@ private:
 #else
     HRESULT onWindowSizeChanged(ABI::Windows::UI::Core::ICoreWindow *, ABI::Windows::UI::Core::IWindowSizeChangedEventArgs *);
 #endif
+    HRESULT onRedirectReleased(ABI::Windows::UI::Core::ICorePointerRedirector *, ABI::Windows::UI::Core::IPointerEventArgs *);
 
     QScopedPointer<QWinRTScreenPrivate> d_ptr;
+    QRectF mCursorRect;
     Q_DECLARE_PRIVATE(QWinRTScreen)
 };
 

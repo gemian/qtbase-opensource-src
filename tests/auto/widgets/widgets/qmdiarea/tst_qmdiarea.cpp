@@ -106,7 +106,8 @@ static bool tabBetweenSubWindowsIn(QMdiArea *mdiArea, int tabCount = -1, bool re
             }
             QMdiSubWindow *subWindow = subWindows.at(reverse ? subWindows.size() -1 - i : i);
             if (rubberBand->geometry() != subWindow->geometry()) {
-                qWarning("Rubber band has different geometry");
+                qWarning().nospace() << "Rubber band of tab " << i << " has different geometry: "
+                    << rubberBand->geometry() << " (sub window: " << subWindow->geometry() << ").";
                 return false;
             }
         }
@@ -228,7 +229,6 @@ class tst_QMdiArea : public QObject
 public:
     tst_QMdiArea();
 public slots:
-    void initTestCase();
     void cleanup();
 
 protected slots:
@@ -291,13 +291,6 @@ tst_QMdiArea::tst_QMdiArea()
     : activeWindow(0)
 {
     qRegisterMetaType<QMdiSubWindow *>();
-}
-
-void tst_QMdiArea::initTestCase()
-{
-#ifdef Q_OS_WINCE //disable magic for WindowsCE
-    qApp->setAutoMaximizeThreshold(-1);
-#endif
 }
 
 void tst_QMdiArea::cleanup()
@@ -482,7 +475,7 @@ void tst_QMdiArea::subWindowActivated2()
     // Check that we only emit _one_ signal and the active window
     // is unchanged after hide/show.
     mdiArea.hide();
-#ifdef Q_DEAD_CODE_FROM_QT4_X11
+#if 0 // Used to be included in Qt4 for Q_WS_X11
     qt_x11_wait_for_window_manager(&mdiArea);
 #endif
     QTest::qWait(100);
@@ -508,9 +501,6 @@ void tst_QMdiArea::subWindowActivated2()
 #if defined (Q_OS_MAC)
     if (!macHasAccessToWindowsServer())
         QEXPECT_FAIL("", "showMinimized doesn't really minimize if you don't have access to the server", Abort);
-#endif
-#ifdef Q_OS_WINCE
-    QSKIP("Not fixed yet. See Task 197453");
 #endif
 #ifdef Q_OS_MAC
     QSKIP("QTBUG-25298: This test is unstable on Mac.");
@@ -649,7 +639,7 @@ void tst_QMdiArea::changeWindowTitle()
 #else
     widget->setWindowState(Qt::WindowMaximized);
 #endif
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_DARWIN)
     QTRY_COMPARE( mw->windowTitle(), windowTitle(mwc, wc) );
 #endif
 
@@ -658,7 +648,7 @@ void tst_QMdiArea::changeWindowTitle()
     mw->show();
     QVERIFY(QTest::qWaitForWindowExposed(mw));
 
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_DARWIN)
     QTRY_COMPARE( mw->windowTitle(), windowTitle(mwc, wc) );
 #endif
 
@@ -676,7 +666,7 @@ void tst_QMdiArea::changeWindowTitle()
     widget->setWindowState(Qt::WindowMaximized);
 #endif
     qApp->processEvents();
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_DARWIN)
     QTRY_COMPARE( mw->windowTitle(), windowTitle(mwc, wc) );
     widget->setWindowTitle( wc2 );
     QCOMPARE( mw->windowTitle(), windowTitle(mwc, wc2) );
@@ -694,7 +684,7 @@ void tst_QMdiArea::changeWindowTitle()
 #endif
 
     qApp->processEvents();
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_DARWIN)
     QCOMPARE( mw->windowTitle(), windowTitle(mwc2, wc2) );
 #endif
 #ifdef USE_SHOW
@@ -703,7 +693,7 @@ void tst_QMdiArea::changeWindowTitle()
     widget->setWindowState(Qt::WindowNoState);
 #endif
     qApp->processEvents();
-#if defined(Q_OS_MAC) || defined(Q_OS_WINCE)
+#if defined(Q_OS_DARWIN)
     QCOMPARE(mw->windowTitle(), mwc);
 #else
     QCOMPARE( mw->windowTitle(), mwc2 );
@@ -715,7 +705,7 @@ void tst_QMdiArea::changeWindowTitle()
     widget->setWindowState(Qt::WindowMaximized);
 #endif
     qApp->processEvents();
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_DARWIN)
     QCOMPARE( mw->windowTitle(), windowTitle(mwc2, wc2) );
 #endif
 
@@ -764,7 +754,7 @@ void tst_QMdiArea::changeModified()
     QCOMPARE( mw->isWindowModified(), false);
     QCOMPARE( widget->isWindowModified(), true);
     widget->setWindowState(Qt::WindowMaximized);
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_DARWIN)
     QCOMPARE( mw->isWindowModified(), true);
 #endif
     QCOMPARE( widget->isWindowModified(), true);
@@ -774,7 +764,7 @@ void tst_QMdiArea::changeModified()
     QCOMPARE( widget->isWindowModified(), true);
 
     widget->setWindowState(Qt::WindowMaximized);
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_DARWIN)
     QCOMPARE( mw->isWindowModified(), true);
 #endif
     QCOMPARE( widget->isWindowModified(), true);
@@ -784,7 +774,7 @@ void tst_QMdiArea::changeModified()
     QCOMPARE( widget->isWindowModified(), false);
 
     widget->setWindowModified(true);
-#if !defined(Q_OS_MAC) && !defined(Q_OS_WINCE)
+#if !defined(Q_OS_DARWIN)
     QCOMPARE( mw->isWindowModified(), true);
 #endif
     QCOMPARE( widget->isWindowModified(), true);
@@ -1517,6 +1507,10 @@ void tst_QMdiArea::setBackground()
 
 void tst_QMdiArea::setViewport()
 {
+#ifdef Q_OS_MACOS
+    QSKIP("Sometimes crashes in the CI, see QTBUG-58520");
+#endif
+
     QMdiArea workspace;
     workspace.show();
 
@@ -1598,9 +1592,7 @@ void tst_QMdiArea::tileSubWindows()
         qApp->processEvents();
     }
     workspace.setActiveSubWindow(0);
-#ifndef Q_OS_WINCE //See Task 197453 ToDo
     QCOMPARE(workspace.viewport()->childrenRect(), workspace.viewport()->rect());
-#endif
 
     QMdiSubWindow *window = windows.at(0);
 
@@ -1724,9 +1716,6 @@ void tst_QMdiArea::tileSubWindows()
         frameWidth = workspace.style()->pixelMetric(QStyle::PM_DefaultFrameWidth);
     const int spacing = 2 * frameWidth + 2;
     const QSize expectedViewportSize(3 * minSize.width() + spacing, 3 * minSize.height() + spacing);
-#ifdef Q_OS_WINCE
-    QSKIP("Not fixed yet! See task 197453");
-#endif
     QTRY_COMPARE(workspace.viewport()->rect().size(), expectedViewportSize);
 
     // Restore original scrollbar behavior for test below
@@ -2005,7 +1994,7 @@ void tst_QMdiArea::delayedPlacement()
 
 void tst_QMdiArea::iconGeometryInMenuBar()
 {
-#if !defined (Q_OS_MAC) && !defined(Q_OS_WINCE)
+#if !defined (Q_OS_DARWIN)
     QMainWindow mainWindow;
     QMenuBar *menuBar = mainWindow.menuBar();
     menuBar->setNativeMenuBar(false);
@@ -2063,11 +2052,7 @@ void tst_QMdiArea::resizeTimer()
     mdiArea.show();
     QVERIFY(QTest::qWaitForWindowActive(&mdiArea));
 
-#ifndef Q_OS_WINCE
     int time = 250;
-#else
-    int time = 1000;
-#endif
 
     EventSpy timerEventSpy(subWindow, QEvent::Timer);
     QCOMPARE(timerEventSpy.count(), 0);

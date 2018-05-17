@@ -41,7 +41,9 @@
 
 #include "qapplication.h"
 #include "qlayoutengine_p.h"
+#if QT_CONFIG(menubar)
 #include "qmenubar.h"
+#endif
 #include "qtoolbar.h"
 #include "qevent.h"
 #include "qstyle.h"
@@ -767,7 +769,7 @@ QWidgetItemV2::QWidgetItemV2(QWidget *widget)
 QWidgetItemV2::~QWidgetItemV2()
 {
     if (wid) {
-        QWidgetPrivate *wd = wid->d_func();
+        auto *wd = static_cast<QWidgetPrivate *>(QObjectPrivate::get(wid));
         if (wd->widgetItem == this)
             wd->widgetItem = 0;
     }

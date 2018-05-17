@@ -44,13 +44,14 @@
 //  W A R N I N G
 //  -------------
 //
-// This file is not part of the Qt API.  It exists for the convenience
-// of the QLibrary class.  This header file may change from
-// version to version without notice, or even be removed.
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
 //
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QtCore/QStringList>
 #include <QtCore/QVector>
 #include <QtCore/QVariant>
@@ -73,6 +74,10 @@ QT_END_NAMESPACE
 #endif
 #if defined(Q_OS_INTEGRITY)
 #  undef Value
+#endif
+// Hurd has #define TILDE 0x00080000 from <sys/ioctl.h>
+#if defined(TILDE)
+#  undef TILDE
 #endif
 
 #define QT_CSS_DECLARE_TYPEINFO(Class, Type) \
@@ -538,8 +543,11 @@ struct AttributeSelector
     enum ValueMatchType {
         NoMatch,
         MatchEqual,
-        MatchContains,
-        MatchBeginsWith
+        MatchIncludes,
+        MatchDashMatch,
+        MatchBeginsWith,
+        MatchEndsWith,
+        MatchContains
     };
     inline AttributeSelector() : valueMatchCriterium(NoMatch) {}
 
@@ -557,7 +565,8 @@ struct BasicSelector
         NoRelation,
         MatchNextSelectorIfAncestor,
         MatchNextSelectorIfParent,
-        MatchNextSelectorIfPreceeds
+        MatchNextSelectorIfDirectAdjecent,
+        MatchNextSelectorIfIndirectAdjecent,
     };
 
     QString elementName;
@@ -678,11 +687,15 @@ enum TokenType {
     CDC,
     INCLUDES,
     DASHMATCH,
+    BEGINSWITH,
+    ENDSWITH,
+    CONTAINS,
 
     LBRACE,
     PLUS,
     GREATER,
     COMMA,
+    TILDE,
 
     STRING,
     INVALID,
@@ -782,7 +795,7 @@ public:
     inline bool testImport() { return testTokenAndEndsWith(ATKEYWORD_SYM, QLatin1String("import")); }
     inline bool testMedia() { return testTokenAndEndsWith(ATKEYWORD_SYM, QLatin1String("media")); }
     inline bool testPage() { return testTokenAndEndsWith(ATKEYWORD_SYM, QLatin1String("page")); }
-    inline bool testCombinator() { return test(PLUS) || test(GREATER) || test(S); }
+    inline bool testCombinator() { return test(PLUS) || test(GREATER) || test(TILDE) || test(S); }
     inline bool testProperty() { return test(IDENT); }
     bool testTerm();
     inline bool testExpr() { return testTerm(); }

@@ -40,6 +40,7 @@
 #ifndef QPAGEDPAINTDEVICE_H
 #define QPAGEDPAINTDEVICE_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtGui/qpaintdevice.h>
 #include <QtGui/qpagelayout.h>
 
@@ -211,6 +212,8 @@ public:
         EnvelopeDL = DLE,
         Envelope10 = Comm10E
     };
+
+    enum PdfVersion { PdfVersion_1_4, PdfVersion_A1b };
 
     // ### Qt6 Make these virtual
     bool setPageLayout(const QPageLayout &pageLayout);

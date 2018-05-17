@@ -70,14 +70,17 @@ class QWinRTInputContext : public QPlatformInputContext
 public:
     explicit QWinRTInputContext(QWinRTScreen *);
 
-    QRectF keyboardRect() const;
+    QRectF keyboardRect() const override;
 
-    bool isInputPanelVisible() const;
+    bool isInputPanelVisible() const override;
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PHONE_APP)
-    void showInputPanel();
-    void hideInputPanel();
+    void showInputPanel() override;
+    void hideInputPanel() override;
 #endif
+
+private slots:
+    void updateScreenCursorRect();
 
 private:
     HRESULT onShowing(ABI::Windows::UI::ViewManagement::IInputPane *,
@@ -89,6 +92,7 @@ private:
 
     QWinRTScreen *m_screen;
     QRectF m_keyboardRect;
+    QRectF m_cursorRect;
     bool m_isInputPanelVisible;
 };
 

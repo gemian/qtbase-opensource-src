@@ -39,8 +39,6 @@
 
 #include "qcalendarwidget.h"
 
-#ifndef QT_NO_CALENDARWIDGET
-
 #include <qabstractitemmodel.h>
 #include <qitemdelegate.h>
 #include <qdatetime.h>
@@ -213,10 +211,9 @@ QString QCalendarDayValidator::text(const QDate &date, int repeat) const
         return formatNumber(date.day(), 2);
     } else if (repeat == 3) {
         return m_locale.dayName(date.dayOfWeek(), QLocale::ShortFormat);
-    } else if (repeat >= 4) {
+    } else /* repeat >= 4 */ {
         return m_locale.dayName(date.dayOfWeek(), QLocale::LongFormat);
     }
-    return QString();
 }
 
 //////////////////////////////////
@@ -766,13 +763,15 @@ bool QCalendarTextNavigator::eventFilter(QObject *o, QEvent *e)
     if (m_widget) {
         if (e->type() == QEvent::KeyPress || e->type() == QEvent::KeyRelease) {
             QKeyEvent* ke = (QKeyEvent*)e;
-            if ((ke->text().length() > 0 && ke->text()[0].isPrint()) || m_dateFrame) {
+            if ((ke->text().length() > 0 && ke->text().at(0).isPrint()) || m_dateFrame) {
                 if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter || ke->key() == Qt::Key_Select) {
                     applyDate();
                     emit editingFinished();
                     removeDateLabel();
+#if QT_CONFIG(shortcut)
                 } else if (ke->matches(QKeySequence::Cancel)) {
                     removeDateLabel();
+#endif
                 } else if (e->type() == QEvent::KeyPress) {
                     createDateLabel();
                     m_dateValidator->handleKeyEvent(ke);
@@ -831,7 +830,12 @@ class StaticDayOfWeekAssociativeArray {
     static Q_DECL_CONSTEXPR int day2idx(Qt::DayOfWeek day) Q_DECL_NOTHROW { return int(day) - 1; } // alt: day % 7
 public:
     Q_DECL_CONSTEXPR StaticDayOfWeekAssociativeArray() Q_DECL_NOEXCEPT_EXPR(noexcept(T()))
-        : contained(), data() {}
+#ifdef Q_COMPILER_CONSTEXPR
+        : contained{}, data{}   // arrays require uniform initialization
+#else
+        : contained(), data()
+#endif
+    {}
 
     Q_DECL_CONSTEXPR bool contains(Qt::DayOfWeek day) const Q_DECL_NOTHROW { return contained[day2idx(day)]; }
     Q_DECL_CONSTEXPR const T &value(Qt::DayOfWeek day) const Q_DECL_NOTHROW { return data[day2idx(day)]; }
@@ -956,7 +960,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
     void mouseMoveEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
     void mouseReleaseEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     void wheelEvent(QWheelEvent *event) Q_DECL_OVERRIDE;
 #endif
     void keyPressEvent(QKeyEvent *event) Q_DECL_OVERRIDE;
@@ -1411,7 +1415,7 @@ void QCalendarView::keyPressEvent(QKeyEvent *event)
     QTableView::keyPressEvent(event);
 }
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 void QCalendarView::wheelEvent(QWheelEvent *event)
 {
     const int numDegrees = event->delta() / 8;
@@ -1579,7 +1583,7 @@ protected:
     {
         Q_UNUSED(e)
 
-#ifndef Q_DEAD_CODE_FROM_QT4_MAC
+#if 1 // Used to be excluded in Qt4 for Q_WS_MAC
         QStyleOptionToolButton opt;
         initStyleOption(&opt);
 
@@ -3030,6 +3034,7 @@ bool QCalendarWidget::event(QEvent *event)
     switch (event->type()) {
         case QEvent::LayoutDirectionChange:
             d->updateButtonIcons();
+            break;
         case QEvent::LocaleChange:
             d->m_model->setFirstColumnDay(locale().firstDayOfWeek());
             d->cachedSizeHint = QSize();
@@ -3107,12 +3112,14 @@ void QCalendarWidget::resizeEvent(QResizeEvent * event)
 */
 void QCalendarWidget::keyPressEvent(QKeyEvent * event)
 {
+#if QT_CONFIG(shortcut)
     Q_D(QCalendarWidget);
     if (d->yearEdit->isVisible()&& event->matches(QKeySequence::Cancel)) {
         d->yearEdit->setValue(yearShown());
         d->_q_yearEditingFinished();
         return;
     }
+#endif
     QWidget::keyPressEvent(event);
 }
 
@@ -3120,5 +3127,3 @@ QT_END_NAMESPACE
 
 #include "qcalendarwidget.moc"
 #include "moc_qcalendarwidget.cpp"
-
-#endif //QT_NO_CALENDARWIDGET

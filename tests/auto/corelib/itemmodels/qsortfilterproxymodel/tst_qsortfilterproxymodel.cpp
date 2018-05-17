@@ -94,6 +94,7 @@ private slots:
     void changeSourceDataKeepsStableSorting_qtbug1548();
     void changeSourceDataForwardsRoles_qtbug35440();
     void resortingDoesNotBreakTreeModels();
+    void dynamicFilterWithoutSort();
     void sortFilterRole();
     void selectionFilteredOut();
     void match_data();
@@ -144,6 +145,12 @@ private slots:
     void forwardDropApi();
     void canDropMimeData();
     void filterHint();
+
+    void sourceLayoutChangeLeavesValidPersistentIndexes();
+    void rowMoveLeavesValidPersistentIndexes();
+
+    void emitLayoutChangedOnlyIfSortingChanged_data();
+    void emitLayoutChangedOnlyIfSortingChanged();
 
 protected:
     void buildHierarchy(const QStringList &data, QAbstractItemModel *model);
@@ -2054,8 +2061,6 @@ static void checkSortedTableModel(const QAbstractItemModel *model, const QString
 
 void tst_QSortFilterProxyModel::changeSourceDataKeepsStableSorting_qtbug1548()
 {
-    QSKIP("This test will fail, see QTBUG-1548");
-
     // Check that emitting dataChanged from the source model
     // for a change of a role which is not the sorting role
     // doesn't alter the sorting. In this case, we sort on the DisplayRole,
@@ -3565,6 +3570,13 @@ void tst_QSortFilterProxyModel::testParentLayoutChanged()
             parentItem = item;
         }
     }
+    // item 0
+    // item 10
+    //  - item 1
+    //  - item 11
+    //    - item 2
+    //    - item 12
+    // ...
 
     QSortFilterProxyModel proxy;
     proxy.sort(0, Qt::AscendingOrder);
@@ -3606,11 +3618,12 @@ void tst_QSortFilterProxyModel::testParentLayoutChanged()
     QVERIFY(proxy2ParentsChangedSpy.isValid());
 
     QStandardItem *item = model.invisibleRootItem()->child(1)->child(1);
+    QCOMPARE(item->text(), QStringLiteral("item 11"));
 
     // Ensure mapped:
     proxy.mapFromSource(model.indexFromItem(item));
 
-    item->setData("Changed");
+    item->setText("Changed");
 
     QCOMPARE(dataChangedSpy.size(), 1);
     QCOMPARE(layoutAboutToBeChangedSpy.size(), 1);
@@ -3880,7 +3893,7 @@ void tst_QSortFilterProxyModel::hierarchyFilterInvalidation()
     view.setCurrentIndex(proxy.index(2, 0).child(0, 0));
 
     view.show();
-    QTest::qWaitForWindowExposed(&view);
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
 
     proxy.setMode(true);
 }
@@ -3937,7 +3950,7 @@ void tst_QSortFilterProxyModel::simpleFilterInvalidation()
     view.setModel(&proxy);
 
     view.show();
-    QTest::qWaitForWindowExposed(&view);
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
 
     proxy.setMode(true);
     model.insertRow(0, new QStandardItem("extra"));
@@ -3991,21 +4004,21 @@ class DropOnOddRows : public QAbstractListModel
 public:
     DropOnOddRows(QObject *parent = 0) : QAbstractListModel(parent) {}
 
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override
     {
         if (role == Qt::DisplayRole)
             return (index.row() % 2 == 0) ? "A" : "B";
         return QVariant();
     }
 
-    int rowCount(const QModelIndex &parent = QModelIndex()) const
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override
     {
         Q_UNUSED(parent);
         return 10;
     }
 
     bool canDropMimeData(const QMimeData *, Qt::DropAction,
-                         int row, int column, const QModelIndex &parent) const Q_DECL_OVERRIDE
+                         int row, int column, const QModelIndex &parent) const override
     {
         Q_UNUSED(row);
         Q_UNUSED(column);
@@ -4023,7 +4036,7 @@ public:
 
     }
 
-    QModelIndex mapToSource(const QModelIndex &proxyIndex) const
+    QModelIndex mapToSource(const QModelIndex &proxyIndex) const override
     {
       Q_ASSERT(sourceModel());
       return QSortFilterProxyModel::mapToSource(proxyIndex);
@@ -4179,6 +4192,322 @@ void tst_QSortFilterProxyModel::filterHint()
     QCOMPARE(proxy2AfterSpy.size(), 1);
     QCOMPARE(proxy2AfterSpy.first().at(1).value<QAbstractItemModel::LayoutChangeHint>(),
              QAbstractItemModel::NoLayoutChangeHint);
+}
+
+/**
+
+  Creates a model where each item has one child, to a set depth,
+  and the last item has no children.  For a model created with
+  setDepth(4):
+
+    - 1
+    - - 2
+    - - - 3
+    - - - - 4
+*/
+class StepTreeModel : public QAbstractItemModel
+{
+    Q_OBJECT
+public:
+    StepTreeModel(QObject * parent = 0)
+        : QAbstractItemModel(parent), m_depth(0) {}
+
+    int columnCount(const QModelIndex& = QModelIndex()) const override { return 1; }
+
+    int rowCount(const QModelIndex& parent = QModelIndex()) const override
+    {
+        quintptr parentId = (parent.isValid()) ? parent.internalId() : 0;
+        return (parentId < m_depth) ? 1 : 0;
+    }
+
+    QVariant data(const QModelIndex & index, int role = Qt::DisplayRole) const override
+    {
+        if (role != Qt::DisplayRole)
+            return QVariant();
+
+        return QString::number(index.internalId());
+    }
+
+    QModelIndex index(int, int, const QModelIndex& parent = QModelIndex()) const override
+    {
+        quintptr parentId = (parent.isValid()) ? parent.internalId() : 0;
+        if (parentId >= m_depth)
+            return QModelIndex();
+
+        return createIndex(0, 0, parentId + 1);
+    }
+
+    QModelIndex parent(const QModelIndex& index) const override
+    {
+        if (index.internalId() == 0)
+            return QModelIndex();
+
+        return createIndex(0, 0, index.internalId() - 1);
+    }
+
+    void setDepth(quintptr depth)
+    {
+        int parentIdWithLayoutChange = (m_depth < depth) ? m_depth : depth;
+
+        QList<QPersistentModelIndex> parentsOfLayoutChange;
+        parentsOfLayoutChange.push_back(createIndex(0, 0, parentIdWithLayoutChange));
+
+        layoutAboutToBeChanged(parentsOfLayoutChange);
+
+        auto existing = persistentIndexList();
+
+        QList<QModelIndex> updated;
+
+        for (auto idx : existing) {
+            if (indexDepth(idx) <= depth)
+                updated.push_back(idx);
+            else
+                updated.push_back({});
+        }
+
+        m_depth = depth;
+
+        changePersistentIndexList(existing, updated);
+
+        layoutChanged(parentsOfLayoutChange);
+    }
+
+private:
+    static quintptr indexDepth(QModelIndex const& index)
+    {
+        return (index.isValid()) ? 1 + indexDepth(index.parent()) : 0;
+    }
+
+private:
+    quintptr m_depth;
+};
+
+void tst_QSortFilterProxyModel::sourceLayoutChangeLeavesValidPersistentIndexes()
+{
+    StepTreeModel model;
+    Q_SET_OBJECT_NAME(model);
+    model.setDepth(4);
+
+    QSortFilterProxyModel proxy1;
+    proxy1.setSourceModel(&model);
+    Q_SET_OBJECT_NAME(proxy1);
+
+    proxy1.setFilterRegExp("1|2");
+
+    // The current state of things:
+    //  model         proxy
+    //   - 1           - 1
+    //   - - 2         - - 2
+    //   - - - 3
+    //   - - - - 4
+
+    // The setDepth call below removes '4' with a layoutChanged call.
+    // Because the proxy filters that out anyway, the proxy doesn't need
+    // to emit any signals or update persistent indexes.
+
+    QPersistentModelIndex persistentIndex = proxy1.index(0, 0, proxy1.index(0, 0));
+
+    model.setDepth(3);
+
+    // Calling parent() causes the internalPointer to be used.
+    // Before fixing QTBUG-47711, that could be a dangling pointer.
+    // The use of qDebug here makes sufficient use of the heap to
+    // cause corruption at runtime with normal use on linux (before
+    // the fix). valgrind confirms the fix.
+    qDebug() << persistentIndex.parent();
+    QVERIFY(persistentIndex.parent().isValid());
+}
+
+void tst_QSortFilterProxyModel::rowMoveLeavesValidPersistentIndexes()
+{
+    DynamicTreeModel model;
+    Q_SET_OBJECT_NAME(model);
+
+    QList<int> ancestors;
+    for (auto i = 0; i < 5; ++i)
+    {
+        Q_UNUSED(i);
+        ModelInsertCommand insertCommand(&model);
+        insertCommand.setAncestorRowNumbers(ancestors);
+        insertCommand.setStartRow(0);
+        insertCommand.setEndRow(0);
+        insertCommand.doCommand();
+        ancestors.push_back(0);
+    }
+
+    QSortFilterProxyModel proxy1;
+    proxy1.setSourceModel(&model);
+    Q_SET_OBJECT_NAME(proxy1);
+
+    proxy1.setFilterRegExp("1|2");
+
+    auto item5 = model.match(model.index(0, 0), Qt::DisplayRole, "5", 1, Qt::MatchRecursive).first();
+    auto item3 = model.match(model.index(0, 0), Qt::DisplayRole, "3", 1, Qt::MatchRecursive).first();
+
+    Q_ASSERT(item5.isValid());
+    Q_ASSERT(item3.isValid());
+
+    QPersistentModelIndex persistentIndex = proxy1.match(proxy1.index(0, 0), Qt::DisplayRole, "2", 1, Qt::MatchRecursive).first();
+
+    ModelMoveCommand moveCommand(&model, 0);
+    moveCommand.setAncestorRowNumbers(QList<int>{0, 0, 0, 0});
+    moveCommand.setStartRow(0);
+    moveCommand.setEndRow(0);
+    moveCommand.setDestRow(0);
+    moveCommand.setDestAncestors(QList<int>{0, 0, 0});
+    moveCommand.doCommand();
+
+    // Calling parent() causes the internalPointer to be used.
+    // Before fixing QTBUG-47711 (moveRows case), that could be
+    // a dangling pointer.
+    QVERIFY(persistentIndex.parent().isValid());
+}
+
+void tst_QSortFilterProxyModel::emitLayoutChangedOnlyIfSortingChanged_data()
+{
+    QTest::addColumn<int>("changedRow");
+    QTest::addColumn<Qt::ItemDataRole>("changedRole");
+    QTest::addColumn<QString>("newData");
+    QTest::addColumn<QString>("expectedSourceRowTexts");
+    QTest::addColumn<QString>("expectedProxyRowTexts");
+    QTest::addColumn<int>("expectedLayoutChanged");
+
+    // Starting point:
+    // a source model with 8,7,6,5,4,3,2,1
+    // a proxy model keeping only even rows and sorting them, therefore showing 2,4,6,8
+
+    // When setData changes ordering, layoutChanged should be emitted
+    QTest::newRow("ordering_change") << 0 << Qt::DisplayRole << "0" << "07654321" << "0246" << 1;
+
+    // When setData on visible row doesn't change ordering, layoutChanged should not be emitted
+    QTest::newRow("no_ordering_change") << 6 << Qt::DisplayRole << "0" << "87654301" << "0468" << 0;
+
+    // When setData happens on a filtered out row, layoutChanged should not be emitted
+    QTest::newRow("filtered_out") << 1 << Qt::DisplayRole << "9" << "89654321" << "2468" << 0;
+
+    // When setData makes a row visible, layoutChanged should not be emitted (rowsInserted is emitted instead)
+    QTest::newRow("make_row_visible") << 7 << Qt::DisplayRole << "0" << "87654320" << "02468" << 0;
+
+    // When setData makes a row hidden, layoutChanged should not be emitted (rowsRemoved is emitted instead)
+    QTest::newRow("make_row_hidden") << 4 << Qt::DisplayRole << "1" << "87651321" << "268" << 0;
+
+    // When setData happens on an unrelated role, layoutChanged should not be emitted
+    QTest::newRow("unrelated_role") << 0 << Qt::DecorationRole << "" << "87654321" << "2468" << 0;
+
+    // When many changes happen together... and trigger removal, insertion, and layoutChanged
+    QTest::newRow("many_changes") << -1 << Qt::DisplayRole << "3,4,2,5,6,0,7,9" << "34256079" << "0246" << 1;
+
+    // When many changes happen together... and trigger removal, insertion, but no change in ordering of visible rows => no layoutChanged
+    QTest::newRow("many_changes_no_layoutChanged") << -1 << Qt::DisplayRole << "7,5,4,3,2,1,0,8" << "75432108" << "0248" << 0;
+}
+
+void tst_QSortFilterProxyModel::emitLayoutChangedOnlyIfSortingChanged()
+{
+    QFETCH(int, changedRow);
+    QFETCH(QString, newData);
+    QFETCH(Qt::ItemDataRole, changedRole);
+    QFETCH(QString, expectedSourceRowTexts);
+    QFETCH(QString, expectedProxyRowTexts);
+    QFETCH(int, expectedLayoutChanged);
+
+    // Custom version of QStringListModel which supports emitting dataChanged for many rows at once
+    class CustomStringListModel : public QAbstractListModel
+    {
+    public:
+        bool setData(const QModelIndex &index, const QVariant &value, int role) override
+        {
+            if (index.row() >= 0 && index.row() < lst.size()
+                && (role == Qt::EditRole || role == Qt::DisplayRole)) {
+                lst.replace(index.row(), value.toString());
+                emit dataChanged(index, index, {Qt::DisplayRole, Qt::EditRole});
+                return true;
+            }
+            return false;
+        }
+        QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override
+        {
+            if (role == Qt::DisplayRole || role == Qt::EditRole)
+                return lst.at(index.row());
+            return QVariant();
+        }
+        int rowCount(const QModelIndex & = QModelIndex()) const override
+        {
+            return lst.count();
+        }
+
+        void replaceData(const QStringList &newData)
+        {
+            lst = newData;
+            emit dataChanged(index(0, 0), index(rowCount()-1, 0), {Qt::DisplayRole, Qt::EditRole});
+        }
+
+        void emitDecorationChangedSignal()
+        {
+            const QModelIndex idx = index(0, 0);
+            emit dataChanged(idx, idx, {Qt::DecorationRole});
+        }
+    private:
+        QStringList lst;
+    };
+    CustomStringListModel model;
+    QStringList strings;
+    for (auto i = 8; i >= 1; --i)
+        strings.append(QString::number(i));
+    model.replaceData(strings);
+    QCOMPARE(rowTexts(&model), QStringLiteral("87654321"));
+
+    class FilterEvenRowsProxyModel : public QSortFilterProxyModel
+    {
+    public:
+        bool filterAcceptsRow(int srcRow, const QModelIndex& srcParent) const override
+        {
+            return sourceModel()->index(srcRow, 0, srcParent).data().toInt() % 2 == 0;
+        }
+    };
+
+    FilterEvenRowsProxyModel proxy;
+    proxy.sort(0);
+    proxy.setSourceModel(&model);
+    QCOMPARE(rowTexts(&proxy), QStringLiteral("2468"));
+
+    QSignalSpy modelDataChangedSpy(&model, &QAbstractItemModel::dataChanged);
+    QSignalSpy proxyLayoutChangedSpy(&proxy, &QAbstractItemModel::layoutChanged);
+
+    if (changedRole == Qt::DecorationRole)
+        model.emitDecorationChangedSignal();
+    else if (changedRow == -1)
+        model.replaceData(newData.split(QLatin1Char(',')));
+    else
+        model.setData(model.index(changedRow, 0), newData, changedRole);
+
+    QCOMPARE(rowTexts(&model), expectedSourceRowTexts);
+    QCOMPARE(rowTexts(&proxy), expectedProxyRowTexts);
+    QCOMPARE(modelDataChangedSpy.size(), 1);
+    QCOMPARE(proxyLayoutChangedSpy.size(), expectedLayoutChanged);
+}
+
+void tst_QSortFilterProxyModel::dynamicFilterWithoutSort()
+{
+    QStringListModel model;
+    const QStringList initial = QString("bravo charlie delta echo").split(QLatin1Char(' '));
+    model.setStringList(initial);
+    QSortFilterProxyModel proxy;
+    proxy.setDynamicSortFilter(true);
+    proxy.setSourceModel(&model);
+
+    QSignalSpy layoutChangeSpy(&proxy, &QAbstractItemModel::layoutChanged);
+    QSignalSpy resetSpy(&proxy, &QAbstractItemModel::modelReset);
+
+    QVERIFY(layoutChangeSpy.isValid());
+    QVERIFY(resetSpy.isValid());
+
+    model.setStringList(QStringList() << "Monday" << "Tuesday" << "Wednesday" << "Thursday" << "Friday");
+
+    QVERIFY(layoutChangeSpy.isEmpty());
+
+    QCOMPARE(model.stringList(), QStringList() << "Monday" << "Tuesday" << "Wednesday" << "Thursday" << "Friday");
+
+    QCOMPARE(resetSpy.count(), 1);
 }
 
 QTEST_MAIN(tst_QSortFilterProxyModel)

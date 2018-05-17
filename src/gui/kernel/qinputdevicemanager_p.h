@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QtCore/qobject.h>
 
 QT_BEGIN_NAMESPACE
@@ -77,8 +78,11 @@ public:
 
     void setCursorPos(const QPoint &pos);
 
+    Qt::KeyboardModifiers keyboardModifiers() const;
+    void setKeyboardModifiers(Qt::KeyboardModifiers modsBeforeEvent, int key);
+
 signals:
-    void deviceListChanged(DeviceType type);
+    void deviceListChanged(QInputDeviceManager::DeviceType type);
     void cursorPositionChangeRequested(const QPoint &pos);
 };
 

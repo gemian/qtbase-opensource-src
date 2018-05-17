@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtCore/private/qglobal_p.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qbytearray.h>
 
@@ -93,14 +94,20 @@ public:
 
 #if defined(Q_OS_WIN)
     bool isDriveRoot() const;
+    static bool isDriveRootPath(const QString &path);
 #endif
     bool isRoot() const;
 
-    bool isEmpty() const;
+    bool isEmpty() const
+    {
+        return m_filePath.isEmpty() && m_nativeFilePath.isEmpty();
+    }
     void clear()
     {
         *this = QFileSystemEntry();
     }
+
+    Q_CORE_EXPORT static bool isRootPath(const QString &path);
 
 private:
     // creates the QString version out of the bytearray version

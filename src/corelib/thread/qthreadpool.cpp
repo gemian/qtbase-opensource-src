@@ -73,8 +73,10 @@ public:
     \internal
 */
 QThreadPoolThread::QThreadPoolThread(QThreadPoolPrivate *manager)
-    :manager(manager), runnable(0)
-{ }
+    :manager(manager), runnable(nullptr)
+{
+    setStackSize(manager->stackSize);
+}
 
 /*
     \internal
@@ -84,7 +86,7 @@ void QThreadPoolThread::run()
     QMutexLocker locker(&manager->mutex);
     for(;;) {
         QRunnable *r = runnable;
-        runnable = 0;
+        runnable = nullptr;
 
         do {
             if (r) {
@@ -116,8 +118,19 @@ void QThreadPoolThread::run()
             if (manager->tooManyThreadsActive())
                 break;
 
-            r = !manager->queue.isEmpty() ? manager->queue.takeFirst().first : 0;
-        } while (r != 0);
+            if (manager->queue.isEmpty()) {
+                r = nullptr;
+                break;
+            }
+
+            QueuePage *page = manager->queue.first();
+            r = page->pop();
+
+            if (page->isFinished()) {
+                manager->queue.removeFirst();
+                delete page;
+            }
+        } while (true);
 
         if (manager->isExiting) {
             registerThreadInactive();
@@ -154,15 +167,11 @@ void QThreadPoolThread::registerThreadInactive()
     \internal
 */
 QThreadPoolPrivate:: QThreadPoolPrivate()
-    : isExiting(false),
-      expiryTimeout(30000),
-      maxThreadCount(qAbs(QThread::idealThreadCount())),
-      reservedThreads(0),
-      activeThreads(0)
 { }
 
 bool QThreadPoolPrivate::tryStart(QRunnable *task)
 {
+    Q_ASSERT(task != nullptr);
     if (allThreads.isEmpty()) {
         // always create at least one thread
         startThread(task);
@@ -183,7 +192,7 @@ bool QThreadPoolPrivate::tryStart(QRunnable *task)
     if (!expiredThreads.isEmpty()) {
         // restart an expired thread
         QThreadPoolThread *thread = expiredThreads.dequeue();
-        Q_ASSERT(thread->runnable == 0);
+        Q_ASSERT(thread->runnable == nullptr);
 
         ++activeThreads;
 
@@ -199,22 +208,25 @@ bool QThreadPoolPrivate::tryStart(QRunnable *task)
     return true;
 }
 
-inline bool operator<(int priority, const QPair<QRunnable *, int> &p)
-{ return p.second < priority; }
-inline bool operator<(const QPair<QRunnable *, int> &p, int priority)
-{ return priority < p.second; }
+inline bool comparePriority(int priority, const QueuePage *p)
+{
+    return p->priority() < priority;
+}
 
 void QThreadPoolPrivate::enqueueTask(QRunnable *runnable, int priority)
 {
+    Q_ASSERT(runnable != nullptr);
     if (runnable->autoDelete())
         ++runnable->ref;
 
-    // put it on the queue
-    QVector<QPair<QRunnable *, int> >::const_iterator begin = queue.constBegin();
-    QVector<QPair<QRunnable *, int> >::const_iterator it = queue.constEnd();
-    if (it != begin && priority > (*(it - 1)).second)
-        it = std::upper_bound(begin, --it, priority);
-    queue.insert(it - begin, qMakePair(runnable, priority));
+    for (QueuePage *page : qAsConst(queue)) {
+        if (page->priority() == priority && !page->isFull()) {
+            page->push(runnable);
+            return;
+        }
+    }
+    auto it = std::upper_bound(queue.constBegin(), queue.constEnd(), priority, comparePriority);
+    queue.insert(std::distance(queue.constBegin(), it), new QueuePage(runnable, priority));
 }
 
 int QThreadPoolPrivate::activeThreadCount() const
@@ -228,8 +240,18 @@ int QThreadPoolPrivate::activeThreadCount() const
 void QThreadPoolPrivate::tryToStartMoreThreads()
 {
     // try to push tasks on the queue to any available threads
-    while (!queue.isEmpty() && tryStart(queue.constFirst().first))
-        queue.removeFirst();
+    while (!queue.isEmpty()) {
+        QueuePage *page = queue.first();
+        if (!tryStart(page->first()))
+            break;
+
+        page->pop();
+
+        if (page->isFinished()) {
+            queue.removeFirst();
+            delete page;
+        }
+    }
 }
 
 bool QThreadPoolPrivate::tooManyThreadsActive() const
@@ -243,9 +265,11 @@ bool QThreadPoolPrivate::tooManyThreadsActive() const
 */
 void QThreadPoolPrivate::startThread(QRunnable *runnable)
 {
+    Q_ASSERT(runnable != nullptr);
     QScopedPointer <QThreadPoolThread> thread(new QThreadPoolThread(this));
     thread->setObjectName(QLatin1String("Thread (pooled)"));
-    allThreads.insert(thread.data());
+    Q_ASSERT(!allThreads.contains(thread.data())); // if this assert hits, we have an ABA problem (deleted threads don't get removed here)
+    allThreads.append(thread.data());
     ++activeThreads;
 
     if (runnable->autoDelete())
@@ -265,7 +289,7 @@ void QThreadPoolPrivate::reset()
 
     while (!allThreads.empty()) {
         // move the contents of the set out so that we can iterate without the lock
-        QSet<QThreadPoolThread *> allThreadsCopy;
+        QList<QThreadPoolThread *> allThreadsCopy;
         allThreadsCopy.swap(allThreads);
         locker.unlock();
 
@@ -305,35 +329,53 @@ bool QThreadPoolPrivate::waitForDone(int msecs)
 void QThreadPoolPrivate::clear()
 {
     QMutexLocker locker(&mutex);
-    for (QVector<QPair<QRunnable *, int> >::const_iterator it = queue.constBegin();
-         it != queue.constEnd(); ++it) {
-        QRunnable* r = it->first;
-        if (r->autoDelete() && !--r->ref)
-            delete r;
+    for (QueuePage *page : qAsConst(queue)) {
+        while (!page->isFinished()) {
+            QRunnable *r = page->pop();
+            if (r && r->autoDelete() && !--r->ref)
+                delete r;
+        }
     }
+    qDeleteAll(queue);
     queue.clear();
 }
 
 /*!
-    \internal
-    Searches for \a runnable in the queue, removes it from the queue and
-    returns \c true if it was found in the queue
+    \since 5.9
+
+    Attempts to remove the specified \a runnable from the queue if it is not yet started.
+    If the runnable had not been started, returns \c true, and ownership of \a runnable
+    is transferred to the caller (even when \c{runnable->autoDelete() == true}).
+    Otherwise returns \c false.
+
+    \note If \c{runnable->autoDelete() == true}, this function may remove the wrong
+    runnable. This is known as the \l{https://en.wikipedia.org/wiki/ABA_problem}{ABA problem}:
+    the original \a runnable may already have executed and has since been deleted.
+    The memory is re-used for another runnable, which then gets removed instead of
+    the intended one. For this reason, we recommend calling this function only for
+    runnables that are not auto-deleting.
+
+    \sa start(), QRunnable::autoDelete()
 */
-bool QThreadPoolPrivate::stealRunnable(QRunnable *runnable)
+bool QThreadPool::tryTake(QRunnable *runnable)
 {
-    if (runnable == 0)
+    Q_D(QThreadPool);
+
+    if (runnable == nullptr)
         return false;
     {
-        QMutexLocker locker(&mutex);
-        QVector<QPair<QRunnable *, int> >::iterator it = queue.begin();
-        QVector<QPair<QRunnable *, int> >::iterator end = queue.end();
+        QMutexLocker locker(&d->mutex);
 
-        while (it != end) {
-            if (it->first == runnable) {
-                queue.erase(it);
+        for (QueuePage *page : qAsConst(d->queue)) {
+            if (page->tryTake(runnable)) {
+                if (page->isFinished()) {
+                    d->queue.removeOne(page);
+                    delete page;
+                }
+                if (runnable->autoDelete())
+                    --runnable->ref; // undo ++ref in start()
                 return true;
             }
-            ++it;
         }
     }
 
@@ -348,10 +390,10 @@ bool QThreadPoolPrivate::stealRunnable(QRunnable *runnable)
      */
 void QThreadPoolPrivate::stealAndRunRunnable(QRunnable *runnable)
 {
-    if (!stealRunnable(runnable))
+    Q_Q(QThreadPool);
+    if (!q->tryTake(runnable))
         return;
-    const bool autoDelete = runnable->autoDelete();
-    bool del = autoDelete && !--runnable->ref;
+    const bool del = runnable->autoDelete() && !runnable->ref; // tryTake already deref'ed
 
     runnable->run();
 
@@ -591,6 +633,32 @@ void QThreadPool::reserveThread()
     ++d->reservedThreads;
 }
 
+/*! \property QThreadPool::stackSize
+
+    This property contains the stack size for the thread pool worker
+    threads.
+
+    The value of the property is only used when the thread pool creates
+    new threads. Changing it has no effect for already created
+    or running threads.
+
+    The default value is 0, which makes QThread use the operating
+    system default stack size.
+
+    \since 5.10
+*/
+void QThreadPool::setStackSize(uint stackSize)
+{
+    Q_D(QThreadPool);
+    d->stackSize = stackSize;
+}
+
+uint QThreadPool::stackSize() const
+{
+    Q_D(const QThreadPool);
+    return d->stackSize;
+}
+
 /*!
     Releases a thread previously reserved by a call to reserveThread().
 
@@ -641,25 +709,26 @@ void QThreadPool::clear()
     d->clear();
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
 /*!
     \since 5.5
+    \obsolete use tryTake() instead, but note the different deletion rules.
 
     Removes the specified \a runnable from the queue if it is not yet started.
     The runnables for which \l{QRunnable::autoDelete()}{runnable->autoDelete()}
     returns \c true are deleted.
 
-    \sa start()
+    \sa start(), tryTake()
 */
 void QThreadPool::cancel(QRunnable *runnable)
 {
-    Q_D(QThreadPool);
-    if (!d->stealRunnable(runnable))
-        return;
-    if (runnable->autoDelete() && !--runnable->ref) {
+    if (tryTake(runnable) && runnable->autoDelete() && !runnable->ref) // tryTake already deref'ed
         delete runnable;
-    }
 }
+#endif
 
 QT_END_NAMESPACE
+
+#include "moc_qthreadpool.cpp"
 
 #endif

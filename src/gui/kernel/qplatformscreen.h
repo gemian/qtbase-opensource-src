@@ -49,6 +49,7 @@
 // source and binary incompatible with future versions of Qt.
 //
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qmetatype.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qcoreevent.h>
@@ -65,7 +66,6 @@ QT_BEGIN_NAMESPACE
 
 
 class QPlatformBackingStore;
-class QPlatformOpenGLContext;
 class QPlatformScreenPrivate;
 class QPlatformWindow;
 class QPlatformCursor;
@@ -93,6 +93,11 @@ public:
         PowerStateStandby,
         PowerStateSuspend,
         PowerStateOff
+    };
+
+    struct Mode {
+        QSize size;
+        qreal refreshRate;
     };
 
     QPlatformScreen();
@@ -129,11 +134,20 @@ public:
 
     virtual QString name() const { return QString(); }
 
+    virtual QString manufacturer() const;
+    virtual QString model() const;
+    virtual QString serialNumber() const;
+
     virtual QPlatformCursor *cursor() const;
     virtual SubpixelAntialiasingType subpixelAntialiasingTypeHint() const;
 
     virtual PowerState powerState() const;
     virtual void setPowerState(PowerState state);
+
+    virtual QVector<Mode> modes() const;
+
+    virtual int currentMode() const;
+    virtual int preferredMode() const;
 
     static int angleBetween(Qt::ScreenOrientation a, Qt::ScreenOrientation b);
     static QTransform transformBetween(Qt::ScreenOrientation a, Qt::ScreenOrientation b, const QRect &target);

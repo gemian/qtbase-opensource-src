@@ -2834,7 +2834,7 @@ void QPainter::setClipRegion(const QRegion &r, Qt::ClipOperation op)
     QRect rect = r.boundingRect();
     if (qt_show_painter_debug_output)
         printf("QPainter::setClipRegion(), size=%d, [%d,%d,%d,%d]\n",
-           r.rects().size(), rect.x(), rect.y(), rect.width(), rect.height());
+           r.rectCount(), rect.x(), rect.y(), rect.width(), rect.height());
 #endif
     if (!d->engine) {
         qWarning("QPainter::setClipRegion: Painter not active");
@@ -5850,6 +5850,7 @@ void QPainter::drawText(const QPointF &p, const QString &str, int tf, int justif
     if (!d->engine || str.isEmpty() || pen().style() == Qt::NoPen)
         return;
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     if (tf & Qt::TextBypassShaping) {
         // Skip complex shaping, shape using glyph advances only
         int len = str.length();
@@ -5863,6 +5864,7 @@ void QPainter::drawText(const QPointF &p, const QString &str, int tf, int justif
         drawTextItem(p, gf);
         return;
     }
+#endif
 
     QStackTextEngine engine(str, d->state->font);
     engine.option.setTextDirection(d->state->layoutDirection);
@@ -5968,7 +5970,7 @@ void QPainter::drawText(const QRect &r, int flags, const QString &str, QRect *br
     \snippet code/src_gui_painting_qpainter.cpp 17
     \endtable
 
-    The \a boundingRect (if not null) is set to the what the bounding rectangle
+    The \a boundingRect (if not null) is set to what the bounding rectangle
     should be in order to enclose the whole text. For example, in the following
     image, the dotted line represents \a boundingRect as calculated by the
     function, and the dashed line represents \a rectangle:
@@ -6259,6 +6261,8 @@ static void drawTextItemDecoration(QPainter *painter, const QPointF &pos, const 
         QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme();
         if (theme)
             underlineStyle = QTextCharFormat::UnderlineStyle(theme->themeHint(QPlatformTheme::SpellCheckUnderlineStyle).toInt());
+        if (underlineStyle == QTextCharFormat::SpellCheckUnderline) // still not resolved
+            underlineStyle = QTextCharFormat::WaveUnderline;
     }
 
     if (underlineStyle == QTextCharFormat::WaveUnderline) {
@@ -6439,7 +6443,8 @@ void QPainterPrivate::drawTextItem(const QPointF &p, const QTextItem &_ti, QText
         updateState(state);
 
     if (!ti.glyphs.numGlyphs) {
-        // nothing to do
+        drawTextItemDecoration(q, p, ti.fontEngine, textEngine, ti.underlineStyle,
+            ti.flags, ti.width.toReal(), ti.charFormat);
     } else if (ti.fontEngine->type() == QFontEngine::Multi) {
         QFontEngineMulti *multi = static_cast<QFontEngineMulti *>(ti.fontEngine);
 
@@ -6477,6 +6482,8 @@ void QPainterPrivate::drawTextItem(const QPointF &p, const QTextItem &_ti, QText
                 extended->drawTextItem(QPointF(x, y), ti2);
             else
                 engine->drawTextItem(QPointF(x, y), ti2);
+            drawTextItemDecoration(q, QPointF(x, y), ti2.fontEngine, textEngine, ti2.underlineStyle,
+                                   ti2.flags, ti2.width.toReal(), ti2.charFormat);
 
             if (!rtl)
                 x += ti2.width.toReal();
@@ -6508,6 +6515,8 @@ void QPainterPrivate::drawTextItem(const QPointF &p, const QTextItem &_ti, QText
             extended->drawTextItem(QPointF(x, y), ti2);
         else
             engine->drawTextItem(QPointF(x,y), ti2);
+        drawTextItemDecoration(q, QPointF(x, y), ti2.fontEngine, textEngine, ti2.underlineStyle,
+                               ti2.flags, ti2.width.toReal(), ti2.charFormat);
 
         // reset the high byte for all glyphs
         const int hi = which << 24;
@@ -6519,9 +6528,9 @@ void QPainterPrivate::drawTextItem(const QPointF &p, const QTextItem &_ti, QText
             extended->drawTextItem(p, ti);
         else
             engine->drawTextItem(p, ti);
+        drawTextItemDecoration(q, p, ti.fontEngine, textEngine, ti.underlineStyle,
+                               ti.flags, ti.width.toReal(), ti.charFormat);
     }
-    drawTextItemDecoration(q, p, ti.fontEngine, textEngine, ti.underlineStyle,
-                           ti.flags, ti.width.toReal(), ti.charFormat);
 
     if (state->renderHints != oldRenderHints) {
         state->renderHints = oldRenderHints;
@@ -7412,7 +7421,7 @@ void qt_format_text(const QFont &fnt, const QRectF &_r,
         if (option->flags() & QTextOption::IncludeTrailingSpaces)
             tf |= Qt::TextIncludeTrailingSpaces;
 
-        if (option->tabStop() >= 0 || !option->tabArray().isEmpty())
+        if (option->tabStopDistance() >= 0 || !option->tabArray().isEmpty())
             tf |= Qt::TextExpandTabs;
     }
 
@@ -7529,8 +7538,8 @@ start_lengthVariant:
         engine.option = *option;
     }
 
-    if (engine.option.tabStop() < 0 && tabstops > 0)
-        engine.option.setTabStop(tabstops);
+    if (engine.option.tabStopDistance() < 0 && tabstops > 0)
+        engine.option.setTabStopDistance(tabstops);
 
     if (engine.option.tabs().isEmpty() && ta) {
         QList<qreal> tabs;
@@ -7565,7 +7574,6 @@ start_lengthVariant:
             lineWidth = qMax<qreal>(0, r.width());
         if(!wordwrap)
             tf |= Qt::TextIncludeTrailingSpaces;
-        textLayout.engine()->ignoreBidi = bool(tf & Qt::TextDontPrint);
         textLayout.beginLayout();
 
         qreal leading = fm.leading();

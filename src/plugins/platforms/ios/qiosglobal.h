@@ -47,7 +47,9 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_DECLARE_LOGGING_CATEGORY(lcQpaApplication);
 Q_DECLARE_LOGGING_CATEGORY(lcQpaInputMethods);
+Q_DECLARE_LOGGING_CATEGORY(lcQpaWindow);
 
 #if !defined(QT_NO_DEBUG)
 #define qImDebug \
@@ -61,13 +63,10 @@ class QPlatformScreen;
 
 bool isQtApplication();
 
-CGRect toCGRect(const QRectF &rect);
-QRectF fromCGRect(const CGRect &rect);
-CGPoint toCGPoint(const QPointF &point);
-QPointF fromCGPoint(const CGPoint &point);
-
+#ifndef Q_OS_TVOS
 Qt::ScreenOrientation toQtScreenOrientation(UIDeviceOrientation uiDeviceOrientation);
 UIDeviceOrientation fromQtScreenOrientation(Qt::ScreenOrientation qtOrientation);
+#endif
 
 int infoPlistValue(NSString* key, int defaultValue);
 
@@ -76,6 +75,8 @@ QT_END_NAMESPACE
 @interface UIResponder (QtFirstResponder)
 + (id)currentFirstResponder;
 @end
+
+QT_BEGIN_NAMESPACE
 
 class FirstResponderCandidate : public QScopedValueRollback<UIResponder *>
 {
@@ -86,5 +87,7 @@ public:
 private:
     static UIResponder *s_firstResponderCandidate;
 };
+
+QT_END_NAMESPACE
 
 #endif // QIOSGLOBAL_H

@@ -40,17 +40,16 @@
 #ifndef QTEXTEDIT_H
 #define QTEXTEDIT_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qabstractscrollarea.h>
 #include <QtGui/qtextdocument.h>
 #include <QtGui/qtextoption.h>
 #include <QtGui/qtextcursor.h>
 #include <QtGui/qtextformat.h>
 
-#ifndef QT_NO_TEXTEDIT
-
+QT_REQUIRE_CONFIG(textedit);
 
 QT_BEGIN_NAMESPACE
-
 
 class QStyleSheet;
 class QTextDocument;
@@ -63,7 +62,6 @@ class Q_WIDGETS_EXPORT QTextEdit : public QAbstractScrollArea
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QTextEdit)
-    Q_FLAGS(AutoFormatting)
     Q_PROPERTY(AutoFormatting autoFormatting READ autoFormatting WRITE setAutoFormatting)
     Q_PROPERTY(bool tabChangesFocus READ tabChangesFocus WRITE setTabChangesFocus)
     Q_PROPERTY(QString documentTitle READ documentTitle WRITE setDocumentTitle)
@@ -77,7 +75,10 @@ class Q_WIDGETS_EXPORT QTextEdit : public QAbstractScrollArea
 #endif
     Q_PROPERTY(QString plainText READ toPlainText WRITE setPlainText DESIGNABLE false)
     Q_PROPERTY(bool overwriteMode READ overwriteMode WRITE setOverwriteMode)
+#if QT_DEPRECATED_SINCE(5, 10)
     Q_PROPERTY(int tabStopWidth READ tabStopWidth WRITE setTabStopWidth)
+#endif
+    Q_PROPERTY(qreal tabStopDistance READ tabStopDistance WRITE setTabStopDistance)
     Q_PROPERTY(bool acceptRichText READ acceptRichText WRITE setAcceptRichText)
     Q_PROPERTY(int cursorWidth READ cursorWidth WRITE setCursorWidth)
     Q_PROPERTY(Qt::TextInteractionFlags textInteractionFlags READ textInteractionFlags WRITE setTextInteractionFlags)
@@ -99,6 +100,7 @@ public:
     };
 
     Q_DECLARE_FLAGS(AutoFormatting, AutoFormattingFlag)
+    Q_FLAG(AutoFormatting)
 
     explicit QTextEdit(QWidget *parent = Q_NULLPTR);
     explicit QTextEdit(const QString &text, QWidget *parent = Q_NULLPTR);
@@ -186,8 +188,13 @@ public:
     bool overwriteMode() const;
     void setOverwriteMode(bool overwrite);
 
-    int tabStopWidth() const;
-    void setTabStopWidth(int width);
+#if QT_DEPRECATED_SINCE(5, 10)
+    QT_DEPRECATED int tabStopWidth() const;
+    QT_DEPRECATED void setTabStopWidth(int width);
+#endif
+
+    qreal tabStopDistance() const;
+    void setTabStopDistance(qreal distance);
 
     int cursorWidth() const;
     void setCursorWidth(int width);
@@ -287,7 +294,7 @@ protected:
     virtual void focusOutEvent(QFocusEvent *e) Q_DECL_OVERRIDE;
     virtual void showEvent(QShowEvent *) Q_DECL_OVERRIDE;
     virtual void changeEvent(QEvent *e) Q_DECL_OVERRIDE;
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     virtual void wheelEvent(QWheelEvent *e) Q_DECL_OVERRIDE;
 #endif
 
@@ -319,7 +326,5 @@ private:
 Q_DECLARE_OPERATORS_FOR_FLAGS(QTextEdit::AutoFormatting)
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_TEXTEDIT
 
 #endif // QTEXTEDIT_H

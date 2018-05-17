@@ -53,9 +53,12 @@
 #include "pixeldelegate.h"
 
 #include <QtWidgets>
-#ifndef QT_NO_PRINTER
+#if defined(QT_PRINTSUPPORT_LIB)
+#include <QtPrintSupport/qtprintsupportglobal.h>
+#if QT_CONFIG(printdialog)
 #include <QPrinter>
 #include <QPrintDialog>
+#endif
 #endif
 
 //! [0]
@@ -113,10 +116,9 @@ MainWindow::MainWindow()
     connect(quitAction, &QAction::triggered, qApp, &QCoreApplication::quit);
     connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutBox);
 //! [4]
-    typedef void (QSpinBox::*QSpinBoxIntSignal)(int);
-    connect(pixelSizeSpinBox, static_cast<QSpinBoxIntSignal>(&QSpinBox::valueChanged),
+    connect(pixelSizeSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             delegate, &PixelDelegate::setPixelSize);
-    connect(pixelSizeSpinBox, static_cast<QSpinBoxIntSignal>(&QSpinBox::valueChanged),
+    connect(pixelSizeSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &MainWindow::updateView);
 //! [4]
 
@@ -165,7 +167,7 @@ void MainWindow::openImage(const QString &fileName)
 
 void MainWindow::printImage()
 {
-#if !defined(QT_NO_PRINTER) && !defined(QT_NO_PRINTDIALOG)
+#if QT_CONFIG(printdialog)
     if (model->rowCount(QModelIndex())*model->columnCount(QModelIndex()) > 90000) {
         QMessageBox::StandardButton answer;
         answer = QMessageBox::question(this, tr("Large Image Size"),

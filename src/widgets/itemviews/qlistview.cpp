@@ -40,7 +40,6 @@
 
 #include "qlistview.h"
 
-#ifndef QT_NO_LISTVIEW
 #include <qabstractitemdelegate.h>
 #include <qapplication.h>
 #include <qpainter.h>
@@ -50,7 +49,9 @@
 #include <qstyle.h>
 #include <qevent.h>
 #include <qscrollbar.h>
+#if QT_CONFIG(rubberband)
 #include <qrubberband.h>
+#endif
 #include <private/qlistview_p.h>
 #include <private/qscrollbar_p.h>
 #include <qdebug.h>
@@ -72,6 +73,8 @@ extern bool qt_sendSpontaneousEvent(QObject *receiver, QEvent *event);
     \ingroup model-view
     \ingroup advanced
     \inmodule QtWidgets
+
+    \image windows-listview.png
 
     A QListView presents items stored in a model, either as a simple
     non-hierarchical list, or as a collection of icons. This class is used
@@ -110,15 +113,6 @@ extern bool qt_sendSpontaneousEvent(QObject *receiver, QEvent *event);
     laid out. Items are spaced according to their spacing(), and can exist
     within a notional grid of size specified by gridSize(). The items can
     be rendered as large or small icons depending on their iconSize().
-
-    \table 100%
-    \row \li \inlineimage windowsvista-listview.png Screenshot of a Windows Vista style list view
-         \li \inlineimage macintosh-listview.png Screenshot of a Macintosh style table view
-         \li \inlineimage fusion-listview.png Screenshot of a Fusion style table view
-    \row \li A \l{Windows Vista Style Widget Gallery}{Windows Vista style} list view.
-         \li A \l{Macintosh Style Widget Gallery}{Macintosh style} list view.
-         \li A \l{Fusion Style Widget Gallery}{Fusion style} list view.
-    \endtable
 
     \section1 Improving Performance
 
@@ -663,8 +657,7 @@ QItemViewPaintPairs QListViewPrivate::draggablePaintPairs(const QModelIndexList 
     for (const auto &index : indexes) {
         if (std::binary_search(visibleIndexes.cbegin(), visibleIndexes.cend(), index)) {
             const QRect current = q->visualRect(index);
-            QItemViewPaintPair p = { current, index };
-            ret += p;
+            ret.append({current, index});
             rect |= current;
         }
     }
@@ -808,7 +801,7 @@ void QListView::mouseReleaseEvent(QMouseEvent *e)
     }
 }
 
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
 /*!
   \reimp
 */
@@ -835,7 +828,7 @@ void QListView::wheelEvent(QWheelEvent *e)
         QApplication::sendEvent(d->hbar, e);
     }
 }
-#endif // QT_NO_WHEELEVENT
+#endif // QT_CONFIG(wheelevent)
 
 /*!
   \reimp
@@ -1050,7 +1043,7 @@ void QListView::paintEvent(QPaintEvent *e)
     d->commonListView->paintDragDrop(&painter);
 #endif
 
-#ifndef QT_NO_RUBBERBAND
+#if QT_CONFIG(rubberband)
     // #### move this implementation into a dynamic class
     if (d->showElasticBand && d->elasticBand.isValid()) {
         QStyleOptionRubberBand opt;
@@ -1157,6 +1150,7 @@ QModelIndex QListView::moveCursor(CursorAction cursorAction, Qt::KeyboardModifie
         rect.moveTop(rect.top() - d->viewport->height() + 2 * rect.height());
         if (rect.top() < rect.height())
             rect.moveTop(rect.height());
+        Q_FALLTHROUGH();
     case MovePrevious:
     case MoveUp:
         while (intersectVector.isEmpty()) {
@@ -1185,6 +1179,7 @@ QModelIndex QListView::moveCursor(CursorAction cursorAction, Qt::KeyboardModifie
         rect.moveTop(rect.top() + d->viewport->height() - 2 * rect.height());
         if (rect.bottom() > contents.height() - rect.height())
             rect.moveBottom(contents.height() - rect.height());
+        Q_FALLTHROUGH();
     case MoveNext:
     case MoveDown:
         while (intersectVector.isEmpty()) {
@@ -1876,6 +1871,11 @@ void QCommonListViewBase::paintDragDrop(QPainter *painter)
 }
 #endif
 
+QSize QListModeViewBase::viewportSize(const QAbstractItemView *v)
+{
+    return v->contentsRect().marginsRemoved(v->viewportMargins()).size();
+}
+
 void QCommonListViewBase::updateHorizontalScrollBar(const QSize &step)
 {
     horizontalScrollBar()->d_func()->itemviewChangeSingleStep(step.width() + spacing());
@@ -1888,7 +1888,7 @@ void QCommonListViewBase::updateHorizontalScrollBar(const QSize &step)
     const bool bothScrollBarsAuto = qq->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded &&
                                     qq->horizontalScrollBarPolicy() == Qt::ScrollBarAsNeeded;
 
-    const QSize viewportSize = qq->contentsRect().size();
+    const QSize viewportSize = QListModeViewBase::viewportSize(qq);
 
     bool verticalWantsToShow = contentsSize.height() > viewportSize.height();
     bool horizontalWantsToShow;
@@ -1918,7 +1918,7 @@ void QCommonListViewBase::updateVerticalScrollBar(const QSize &step)
     const bool bothScrollBarsAuto = qq->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded &&
                                     qq->horizontalScrollBarPolicy() == Qt::ScrollBarAsNeeded;
 
-    const QSize viewportSize = qq->contentsRect().size();
+    const QSize viewportSize = QListModeViewBase::viewportSize(qq);
 
     bool horizontalWantsToShow = contentsSize.width() > viewportSize.width();
     bool verticalWantsToShow;
@@ -1992,7 +1992,9 @@ int QCommonListViewBase::horizontalScrollToValue(const int /*index*/, QListView:
 QListModeViewBase::QListModeViewBase(QListView *q, QListViewPrivate *d)
     : QCommonListViewBase(q, d)
 {
+#if QT_CONFIG(draganddrop)
     dd->defaultDropAction = Qt::CopyAction;
+#endif
 }
 
 #ifndef QT_NO_DRAGANDDROP
@@ -2335,20 +2337,14 @@ void QListModeViewBase::scrollContentsBy(int dx, int dy, bool scrollElasticBand)
 bool QListModeViewBase::doBatchedItemLayout(const QListViewLayoutInfo &info, int max)
 {
     doStaticLayout(info);
-    if (batchStartRow > max) { // stop items layout
-        flowPositions.resize(flowPositions.count());
-        segmentPositions.resize(segmentPositions.count());
-        segmentStartRows.resize(segmentStartRows.count());
-        return true; // done
-    }
-    return false; // not done
+    return batchStartRow > max; // returning true stops items layout
 }
 
 QListViewItem QListModeViewBase::indexToListViewItem(const QModelIndex &index) const
 {
     if (flowPositions.isEmpty()
         || segmentPositions.isEmpty()
-        || index.row() >= flowPositions.count())
+        || index.row() >= flowPositions.count() - 1)
         return QListViewItem();
 
     const int segment = qBinarySearch<int>(segmentStartRows, index.row(),
@@ -2475,9 +2471,7 @@ void QListModeViewBase::doStaticLayout(const QListViewLayoutInfo &info)
             if (info.wrap && (flowPosition + deltaFlowPosition >= segEndPosition)) {
                 segmentExtents.append(flowPosition);
                 flowPosition = info.spacing + segStartPosition;
-                segPosition += deltaSegPosition;
-                if (info.wrap)
-                    segPosition += info.spacing;
+                segPosition += info.spacing + deltaSegPosition;
                 segmentPositions.append(segPosition);
                 segmentStartRows.append(row);
                 deltaSegPosition = 0;
@@ -2819,11 +2813,17 @@ bool QIconModeViewBase::filterDragLeaveEvent(QDragLeaveEvent *e)
 
 bool QIconModeViewBase::filterDragMoveEvent(QDragMoveEvent *e)
 {
-    if (e->source() != qq || !dd->canDrop(e))
-        return false;
+    const bool wasAccepted = e->isAccepted();
 
     // ignore by default
     e->ignore();
+
+    if (e->source() != qq || !dd->canDrop(e)) {
+        // restore previous acceptance on failure
+        e->setAccepted(wasAccepted);
+        return false;
+    }
+
     // get old dragged items rect
     QRect itemsRect = this->itemsRect(draggedItems);
     viewport()->update(itemsRect.translated(draggedItemsDelta()));
@@ -2873,10 +2873,19 @@ void QIconModeViewBase::scrollContentsBy(int dx, int dy, bool scrollElasticBand)
 void QIconModeViewBase::dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight)
 {
     if (column() >= topLeft.column() && column() <= bottomRight.column())  {
-        QStyleOptionViewItem option = viewOptions();
-        int bottom = qMin(items.count(), bottomRight.row() + 1);
+        const QStyleOptionViewItem option = viewOptions();
+        const int bottom = qMin(items.count(), bottomRight.row() + 1);
+        const bool useItemSize = !dd->grid.isValid();
         for (int row = topLeft.row(); row < bottom; ++row)
-            items[row].resize(itemSize(option, modelIndex(row)));
+        {
+            QSize s = itemSize(option, modelIndex(row));
+            if (!useItemSize)
+            {
+                s.setWidth(qMin(dd->grid.width(), s.width()));
+                s.setHeight(qMin(dd->grid.height(), s.height()));
+            }
+            items[row].resize(s);
+        }
     }
 }
 
@@ -3302,5 +3311,3 @@ QSize QListView::viewportSizeHint() const
 QT_END_NAMESPACE
 
 #include "moc_qlistview.cpp"
-
-#endif // QT_NO_LISTVIEW

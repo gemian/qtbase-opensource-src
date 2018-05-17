@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include "QtCore/qobject.h"
 #include "QtCore/qmap.h"
 #include "QtCore/qmimedata.h"
@@ -133,7 +134,6 @@ public:
     QObject *source() const;
 
 private:
-    QMimeData *m_platformDropData;
     QObject *m_currentDropTarget;
     QPlatformDrag *m_platformDrag;
     QDrag *m_object;

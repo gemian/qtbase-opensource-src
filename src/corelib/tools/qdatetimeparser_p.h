@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtCore/private/qglobal_p.h>
 #include "qplatformdefs.h"
 #include "QtCore/qatomic.h"
 #include "QtCore/qdatetime.h"
@@ -61,6 +62,8 @@
 #endif
 #include "QtCore/qvector.h"
 #include "QtCore/qcoreapplication.h"
+
+QT_REQUIRE_CONFIG(datetimeparser);
 
 #define QDATETIMEEDIT_TIME_MIN QTime(0, 0, 0, 0)
 #define QDATETIMEEDIT_TIME_MAX QTime(23, 59, 59, 999)
@@ -73,8 +76,6 @@
 #define QDATETIMEEDIT_DATE_INITIAL QDate(2000, 1, 1)
 
 QT_BEGIN_NAMESPACE
-
-#ifndef QT_BOOTSTRAPPED
 
 class Q_CORE_EXPORT QDateTimeParser
 {
@@ -102,15 +103,7 @@ public:
         none.count = -1;
         none.zeroesAdded = 0;
     }
-    virtual ~QDateTimeParser() {}
-    enum AmPmFinder {
-        Neither = -1,
-        AM = 0,
-        PM = 1,
-        PossibleAM = 2,
-        PossiblePM = 3,
-        PossibleBoth = 4
-    };
+    virtual ~QDateTimeParser();
 
     enum Section {
         NoSection     = 0x00000,
@@ -120,9 +113,10 @@ public:
         MinuteSection = 0x00008,
         Hour12Section   = 0x00010,
         Hour24Section   = 0x00020,
+        TimeZoneSection = 0x00040,
         HourSectionMask = (Hour12Section | Hour24Section),
         TimeSectionMask = (MSecSection | SecondSection | MinuteSection |
-                           HourSectionMask | AmPmSection),
+                           HourSectionMask | AmPmSection | TimeZoneSection),
 
         DaySection         = 0x00100,
         MonthSection       = 0x00200,
@@ -166,11 +160,14 @@ public:
     };
 
     struct StateNode {
-        StateNode() : state(Invalid), conflicts(false) {}
+        StateNode() : state(Invalid), padded(0), conflicts(false) {}
+        StateNode(const QDateTime &val, State ok=Acceptable, int pad=0, bool bad=false)
+            : value(val), state(ok), padded(pad), conflicts(bad) {}
         QString input;
-        State state;
-        bool conflicts;
         QDateTime value;
+        State state;
+        int padded;
+        bool conflicts;
     };
 
     enum AmPm {
@@ -184,51 +181,10 @@ public:
     };
 
 #ifndef QT_NO_DATESTRING
-    StateNode parse(QString &input, int &cursorPosition, const QDateTime &currentValue, bool fixup) const;
-#endif
-    int sectionMaxSize(int index) const;
-    int sectionSize(int index) const;
-    int sectionMaxSize(Section s, int count) const;
-    int sectionPos(int index) const;
-    int sectionPos(const SectionNode &sn) const;
-
-    const SectionNode &sectionNode(int index) const;
-    Section sectionType(int index) const;
-    QString sectionText(int sectionIndex) const;
-    QString sectionText(const QString &text, int sectionIndex, int index) const;
-    int getDigit(const QDateTime &dt, int index) const;
-    bool setDigit(QDateTime &t, int index, int newval) const;
-    int parseSection(const QDateTime &currentValue, int sectionIndex, QString &txt, int &cursorPosition,
-                     int index, QDateTimeParser::State &state, int *used = 0) const;
-    int absoluteMax(int index, const QDateTime &value = QDateTime()) const;
-    int absoluteMin(int index) const;
-    bool parseFormat(const QString &format);
-#ifndef QT_NO_DATESTRING
+    StateNode parse(QString input, int position, const QDateTime &defaultValue, bool fixup) const;
     bool fromString(const QString &text, QDate *date, QTime *time) const;
 #endif
-
-#ifndef QT_NO_TEXTDATE
-    int findMonth(const QString &str1, int monthstart, int sectionIndex,
-                  QString *monthName = 0, int *used = 0) const;
-    int findDay(const QString &str1, int intDaystart, int sectionIndex,
-                QString *dayName = 0, int *used = 0) const;
-#endif
-    AmPmFinder findAmPm(QString &str, int index, int *used = 0) const;
-    bool potentialValue(const QStringRef &str, int min, int max, int index,
-                        const QDateTime &currentValue, int insert) const;
-    bool potentialValue(const QString &str, int min, int max, int index,
-                        const QDateTime &currentValue, int insert) const
-    {
-        return potentialValue(QStringRef(&str), min, max, index, currentValue, insert);
-    }
-
-    bool skipToNextSection(int section, const QDateTime &current, const QStringRef &sectionText) const;
-    bool skipToNextSection(int section, const QDateTime &current, const QString &sectionText) const
-    {
-        return skipToNextSection(section, current, QStringRef(&sectionText));
-    }
-
-    QString stateName(State s) const;
+    bool parseFormat(const QString &format);
 
     enum FieldInfoFlag {
         Numeric = 0x01,
@@ -241,17 +197,87 @@ public:
     FieldInfo fieldInfo(int index) const;
 
     void setDefaultLocale(const QLocale &loc) { defaultLocale = loc; }
+    virtual QString displayText() const { return text; }
+
+private:
+    int sectionMaxSize(Section s, int count) const;
+    QString sectionText(const QString &text, int sectionIndex, int index) const;
+#ifndef QT_NO_DATESTRING
+    StateNode scanString(const QDateTime &defaultValue,
+                         bool fixup, QString *input) const;
+    struct ParsedSection {
+        int value;
+        int used;
+        int zeroes;
+        State state;
+        Q_DECL_CONSTEXPR ParsedSection(State ok = Invalid,
+                                       int val = 0, int read = 0, int zs = 0)
+            : value(ok == Invalid ? -1 : val), used(read), zeroes(zs), state(ok)
+            {}
+    };
+    ParsedSection parseSection(const QDateTime &currentValue, int sectionIndex,
+                               int offset, QString *text) const;
+    int findMonth(const QString &str1, int monthstart, int sectionIndex,
+                  QString *monthName = 0, int *used = 0) const;
+    int findDay(const QString &str1, int intDaystart, int sectionIndex,
+                QString *dayName = 0, int *used = 0) const;
+    ParsedSection findTimeZone(QStringRef str, const QDateTime &when,
+                               int maxVal, int minVal) const;
+#if QT_CONFIG(timezone)
+    // Implemented in qdatetime.cpp:
+    static int startsWithLocalTimeZone(const QStringRef name);
+#endif
+
+    enum AmPmFinder {
+        Neither = -1,
+        AM = 0,
+        PM = 1,
+        PossibleAM = 2,
+        PossiblePM = 3,
+        PossibleBoth = 4
+    };
+    AmPmFinder findAmPm(QString &str, int index, int *used = 0) const;
+#endif // QT_NO_DATESTRING
+
+    bool potentialValue(const QStringRef &str, int min, int max, int index,
+                        const QDateTime &currentValue, int insert) const;
+    bool potentialValue(const QString &str, int min, int max, int index,
+                        const QDateTime &currentValue, int insert) const
+    {
+        return potentialValue(QStringRef(&str), min, max, index, currentValue, insert);
+    }
+
+protected: // for the benefit of QDateTimeEditPrivate
+    int sectionSize(int index) const;
+    int sectionMaxSize(int index) const;
+    int sectionPos(int index) const;
+    int sectionPos(const SectionNode &sn) const;
+
+    const SectionNode &sectionNode(int index) const;
+    Section sectionType(int index) const;
+    QString sectionText(int sectionIndex) const;
+    int getDigit(const QDateTime &dt, int index) const;
+    bool setDigit(QDateTime &t, int index, int newval) const;
+
+    int absoluteMax(int index, const QDateTime &value = QDateTime()) const;
+    int absoluteMin(int index) const;
+
+    bool skipToNextSection(int section, const QDateTime &current, const QStringRef &sectionText) const;
+    bool skipToNextSection(int section, const QDateTime &current, const QString &sectionText) const
+    {
+        return skipToNextSection(section, current, QStringRef(&sectionText));
+    }
+    QString stateName(State s) const;
     virtual QDateTime getMinimum() const;
     virtual QDateTime getMaximum() const;
     virtual int cursorPosition() const { return -1; }
-    virtual QString displayText() const { return text; }
     virtual QString getAmPmText(AmPm ap, Case cs) const;
     virtual QLocale locale() const { return defaultLocale; }
 
     mutable int currentSectionIndex;
     Sections display;
     /*
-        This stores the stores the most recently selected day.
+        This stores the most recently selected day.
         It is useful when considering the following scenario:
 
         1. Date is: 31/01/2000
@@ -271,9 +297,7 @@ public:
     QString displayFormat;
     QLocale defaultLocale;
     QVariant::Type parserType;
-
     bool fixday;
-
     Qt::TimeSpec spec; // spec if used by QDateTimeEdit
     Context context;
 };
@@ -283,8 +307,6 @@ Q_CORE_EXPORT bool operator==(const QDateTimeParser::SectionNode &s1, const QDat
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QDateTimeParser::Sections)
 Q_DECLARE_OPERATORS_FOR_FLAGS(QDateTimeParser::FieldInfo)
-
-#endif // QT_BOOTSTRAPPED
 
 QT_END_NAMESPACE
 

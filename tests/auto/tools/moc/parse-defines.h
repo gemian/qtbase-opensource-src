@@ -139,9 +139,21 @@ public slots:
 signals:
     DEFINE_CMDLINE_SIGNAL;
 
+#define QTBUG55853(X) PD_DEFINE1(X, signalQTBUG55853)
+#define PD_EMPTY /* empty */
+    void QTBUG55853(PD_EMPTY)();
 };
 
 #undef QString
+
+#ifdef Q_MOC_RUN
+// Normaly, redefining keywords is forbidden, but we should not abort parsing
+#define and    &&
+#define and_eq &=
+#define bitand  &
+#define true 1
+#undef true
+#endif
 
 PD_END_NAMESPACE
 

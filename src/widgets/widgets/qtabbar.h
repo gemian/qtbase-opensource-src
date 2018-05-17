@@ -40,12 +40,12 @@
 #ifndef QTABBAR_H
 #define QTABBAR_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qwidget.h>
 
+QT_REQUIRE_CONFIG(tabbar);
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_TABBAR
 
 class QIcon;
 class QTabBarPrivate;
@@ -122,7 +122,7 @@ public:
     QString tabToolTip(int index) const;
 #endif
 
-#ifndef QT_NO_WHATSTHIS
+#if QT_CONFIG(whatsthis)
     void setTabWhatsThis(int index, const QString &text);
     QString tabWhatsThis(int index) const;
 #endif
@@ -172,6 +172,11 @@ public:
     bool changeCurrentOnDrag() const;
     void setChangeCurrentOnDrag(bool change);
 
+#ifndef QT_NO_ACCESSIBILITY
+    QString accessibleTabName(int index) const;
+    void setAccessibleTabName(int index, const QString &name);
+#endif
+
 public Q_SLOTS:
     void setCurrentIndex(int index);
 
@@ -197,7 +202,7 @@ protected:
     void mousePressEvent (QMouseEvent *) Q_DECL_OVERRIDE;
     void mouseMoveEvent (QMouseEvent *) Q_DECL_OVERRIDE;
     void mouseReleaseEvent (QMouseEvent *) Q_DECL_OVERRIDE;
-#ifndef QT_NO_WHEELEVENT
+#if QT_CONFIG(wheelevent)
     void wheelEvent(QWheelEvent *event) Q_DECL_OVERRIDE;
 #endif
     void keyPressEvent(QKeyEvent *) Q_DECL_OVERRIDE;
@@ -214,8 +219,6 @@ private:
     Q_PRIVATE_SLOT(d_func(), void _q_scrollTabs())
     Q_PRIVATE_SLOT(d_func(), void _q_closeTab())
 };
-
-#endif // QT_NO_TABBAR
 
 QT_END_NAMESPACE
 

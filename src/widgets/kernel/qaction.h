@@ -40,6 +40,7 @@
 #ifndef QACTION_H
 #define QACTION_H
 
+#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtGui/qkeysequence.h>
 #include <QtCore/qstring.h>
 #include <QtWidgets/qwidget.h>
@@ -79,6 +80,7 @@ class Q_WIDGETS_EXPORT QAction : public QObject
     Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY changed)
     Q_PROPERTY(MenuRole menuRole READ menuRole WRITE setMenuRole NOTIFY changed)
     Q_PROPERTY(bool iconVisibleInMenu READ isIconVisibleInMenu WRITE setIconVisibleInMenu NOTIFY changed)
+    Q_PROPERTY(bool shortcutVisibleInContextMenu READ isShortcutVisibleInContextMenu WRITE setShortcutVisibleInContextMenu NOTIFY changed)
     Q_PROPERTY(Priority priority READ priority WRITE setPriority)
 
 public:
@@ -119,7 +121,7 @@ public:
     void setPriority(Priority priority);
     Priority priority() const;
 
-#ifndef QT_NO_MENU
+#if QT_CONFIG(menu)
     QMenu *menu() const;
     void setMenu(QMenu *menu);
 #endif
@@ -167,11 +169,13 @@ public:
     void setIconVisibleInMenu(bool visible);
     bool isIconVisibleInMenu() const;
 
+    void setShortcutVisibleInContextMenu(bool show);
+    bool isShortcutVisibleInContextMenu() const;
 
     QWidget *parentWidget() const;
 
     QList<QWidget *> associatedWidgets() const;
-#ifndef QT_NO_GRAPHICSVIEW
+#if QT_CONFIG(graphicsview)
     QList<QGraphicsWidget *> associatedGraphicsWidgets() const; // ### suboptimal
 #endif
 

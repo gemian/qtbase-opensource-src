@@ -41,6 +41,7 @@ private slots:
 
     void fromChar();
     void toString();
+    void fromString_data();
     void fromString();
     void toByteArray();
     void fromByteArray();
@@ -91,7 +92,7 @@ void tst_QUuid::initTestCase()
     //"{1ab6e93a-b1cb-4a87-ba47-ec7e99039a7b}";
     uuidB = QUuid(0x1ab6e93a, 0xb1cb, 0x4a87, 0xba, 0x47, 0xec, 0x7e, 0x99, 0x03, 0x9a, 0x7b);
 
-#ifndef QT_NO_PROCESS
+#if QT_CONFIG(process)
     // chdir to the directory containing our testdata, then refer to it with relative paths
     QString testdata_dir = QFileInfo(QFINDTESTDATA("testProcessUniqueness")).absolutePath();
     QVERIFY2(QDir::setCurrent(testdata_dir), qPrintable("Could not chdir to " + testdata_dir));
@@ -127,15 +128,58 @@ void tst_QUuid::toString()
     QCOMPARE(uuidB.toString(), QString("{1ab6e93a-b1cb-4a87-ba47-ec7e99039a7b}"));
 }
 
+void tst_QUuid::fromString_data()
+{
+    QTest::addColumn<QUuid>("expected");
+    QTest::addColumn<QString>("input");
+
+    QUuid invalid = {};
+
+#define ROW(which, string) \
+    QTest::addRow("%-38s -> %s", string, #which) << which << string
+    ROW(uuidA,   "{fc69b59e-cc34-4436-a43c-ee95d128b8c5}");
+    ROW(uuidA,    "fc69b59e-cc34-4436-a43c-ee95d128b8c5}");
+    ROW(uuidA,   "{fc69b59e-cc34-4436-a43c-ee95d128b8c5" );
+    ROW(uuidA,    "fc69b59e-cc34-4436-a43c-ee95d128b8c5" );
+
+    ROW(uuidA,   "{fc69b59e-cc34-4436-a43c-ee95d128b8c56"); // too long (not an error!)
+    ROW(invalid, "{fc69b59e-cc34-4436-a43c-ee95d128b8c"  ); // premature end (within length limits)
+    ROW(invalid, " fc69b59e-cc34-4436-a43c-ee95d128b8c5}"); // leading space
+    ROW(uuidA,   "{fc69b59e-cc34-4436-a43c-ee95d128b8c5 "); // trailing space (not an error!)
+    ROW(invalid, "{gc69b59e-cc34-4436-a43c-ee95d128b8c5}"); // non-hex digit in 1st group
+    ROW(invalid, "{fc69b59e-cp34-4436-a43c-ee95d128b8c5}"); // non-hex digit in 2nd group
+    ROW(invalid, "{fc69b59e-cc34-44r6-a43c-ee95d128b8c5}"); // non-hex digit in 3rd group
+    ROW(invalid, "{fc69b59e-cc34-4436-a4yc-ee95d128b8c5}"); // non-hex digit in 4th group
+    ROW(invalid, "{fc69b59e-cc34-4436-a43c-ee95d128j8c5}"); // non-hex digit in last group
+    ROW(invalid, "(fc69b59e-cc34-4436-a43c-ee95d128b8c5}"); // wrong initial character
+    ROW(invalid, "{fc69b59e+cc34-4436-a43c-ee95d128b8c5}"); // wrong 1st separator
+    ROW(invalid, "{fc69b59e-cc34*4436-a43c-ee95d128b8c5}"); // wrong 2nd separator
+    ROW(invalid, "{fc69b59e-cc34-44366a43c-ee95d128b8c5}"); // wrong 3rd separator
+    ROW(invalid, "{fc69b59e-cc34-4436-a43c\303\244ee95d128b8c5}"); // wrong 4th separator (&auml;)
+    ROW(uuidA,   "{fc69b59e-cc34-4436-a43c-ee95d128b8c5)"); // wrong final character (not an error!)
+
+    ROW(uuidB,   "{1ab6e93a-b1cb-4a87-ba47-ec7e99039a7b}");
+#undef ROW
+}
+
 void tst_QUuid::fromString()
 {
-    QCOMPARE(uuidA, QUuid(QString("{fc69b59e-cc34-4436-a43c-ee95d128b8c5}")));
-    QCOMPARE(uuidA, QUuid(QString("fc69b59e-cc34-4436-a43c-ee95d128b8c5}")));
-    QCOMPARE(uuidA, QUuid(QString("{fc69b59e-cc34-4436-a43c-ee95d128b8c5")));
-    QCOMPARE(uuidA, QUuid(QString("fc69b59e-cc34-4436-a43c-ee95d128b8c5")));
-    QCOMPARE(QUuid(), QUuid(QString("{fc69b59e-cc34-4436-a43c-ee95d128b8c")));
+    QFETCH(const QUuid, expected);
+    QFETCH(const QString, input);
 
-    QCOMPARE(uuidB, QUuid(QString("{1ab6e93a-b1cb-4a87-ba47-ec7e99039a7b}")));
+    const auto inputL1 = input.toLatin1();
+    const auto inputU8 = input.toUtf8();
+
+    QCOMPARE(expected, QUuid(input));
+    QCOMPARE(expected, QUuid(inputU8));
+    QCOMPARE(expected, QUuid(inputL1));
+
+    QCOMPARE(expected, QUuid::fromString(input));
+
+    // for QLatin1String, construct one whose data() is not NUL-terminated:
+    const auto longerInputL1 = inputL1 + '5'; // the '5' makes the premature end check incorrectly succeed
+    const auto inputL1S = QLatin1String(longerInputL1.data(), inputL1.size());
+    QCOMPARE(expected, QUuid::fromString(inputL1S));
 }
 
 void tst_QUuid::toByteArray()
@@ -338,7 +382,7 @@ void tst_QUuid::threadUniqueness()
 
 void tst_QUuid::processUniqueness()
 {
-#ifdef QT_NO_PROCESS
+#if !QT_CONFIG(process)
     QSKIP("No qprocess support", SkipAll);
 #else
     QProcess process;
@@ -392,9 +436,16 @@ void tst_QUuid::qvariant_conversion()
     QUuid uuid = QUuid::createUuid();
     QVariant v = QVariant::fromValue(uuid);
 
+    // QUuid -> QString
     QVERIFY(v.canConvert<QString>());
     QCOMPARE(v.toString(), uuid.toString());
     QCOMPARE(v.value<QString>(), uuid.toString());
+
+    // QUuid -> QByteArray
+    QVERIFY(v.canConvert<QByteArray>());
+    QCOMPARE(v.toByteArray(), uuid.toByteArray());
+    QCOMPARE(v.value<QByteArray>(), uuid.toByteArray());
+
     QVERIFY(!v.canConvert<int>());
     QVERIFY(!v.canConvert<QStringList>());
 
@@ -403,6 +454,14 @@ void tst_QUuid::qvariant_conversion()
     QCOMPARE(sv.type(), QVariant::String);
     QVERIFY(sv.canConvert<QUuid>());
     QCOMPARE(sv.value<QUuid>(), uuid);
+
+    // QString -> QUuid
+    {
+        QVariant sv = QVariant::fromValue(uuid.toByteArray());
+        QCOMPARE(sv.type(), QVariant::ByteArray);
+        QVERIFY(sv.canConvert<QUuid>());
+        QCOMPARE(sv.value<QUuid>(), uuid);
+    }
 }
 
 void tst_QUuid::darwinTypes()

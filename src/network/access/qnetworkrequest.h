@@ -40,13 +40,13 @@
 #ifndef QNETWORKREQUEST_H
 #define QNETWORKREQUEST_H
 
+#include <QtNetwork/qtnetworkglobal.h>
 #include <QtCore/QSharedDataPointer>
 #include <QtCore/QString>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
 
 QT_BEGIN_NAMESPACE
-
 
 class QSslConfiguration;
 
@@ -88,6 +88,10 @@ public:
         SpdyWasUsedAttribute,
         EmitAllUploadProgressSignalsAttribute,
         FollowRedirectsAttribute,
+        HTTP2AllowedAttribute,
+        HTTP2WasUsedAttribute,
+        OriginalContentLengthAttribute,
+        RedirectPolicyAttribute,
 
         User = 1000,
         UserMax = 32767
@@ -108,6 +112,14 @@ public:
         NormalPriority = 3,
         LowPriority = 5
     };
+
+    enum RedirectPolicy {
+        ManualRedirectPolicy,
+        NoLessSafeRedirectPolicy,
+        SameOriginRedirectPolicy,
+        UserVerifiedRedirectPolicy
+    };
+
 
     explicit QNetworkRequest(const QUrl &url = QUrl());
     QNetworkRequest(const QNetworkRequest &other);
@@ -165,5 +177,6 @@ Q_DECLARE_SHARED(QNetworkRequest)
 QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(QNetworkRequest)
+Q_DECLARE_METATYPE(QNetworkRequest::RedirectPolicy)
 
 #endif

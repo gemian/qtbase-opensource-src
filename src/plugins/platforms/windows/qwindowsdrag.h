@@ -40,6 +40,7 @@
 #ifndef QWINDOWSDRAG_H
 #define QWINDOWSDRAG_H
 
+#include "qwindowscombase.h"
 #include "qwindowsinternalmimedata.h"
 
 #include <qpa/qplatformdrag.h>
@@ -54,19 +55,14 @@ class QPlatformScreen;
 class QWindowsDropMimeData : public QWindowsInternalMimeData {
 public:
     QWindowsDropMimeData() {}
-    IDataObject *retrieveDataObject() const Q_DECL_OVERRIDE;
+    IDataObject *retrieveDataObject() const override;
 };
 
-class QWindowsOleDropTarget : public IDropTarget
+class QWindowsOleDropTarget : public QWindowsComBase<IDropTarget>
 {
 public:
     explicit QWindowsOleDropTarget(QWindow *w);
     virtual ~QWindowsOleDropTarget();
-
-    // IUnknown methods
-    STDMETHOD(QueryInterface)(REFIID riid, void FAR* FAR* ppvObj);
-    STDMETHOD_(ULONG, AddRef)(void);
-    STDMETHOD_(ULONG, Release)(void);
 
     // IDropTarget methods
     STDMETHOD(DragEnter)(LPDATAOBJECT pDataObj, DWORD grfKeyState, POINTL pt, LPDWORD pdwEffect);
@@ -77,12 +73,11 @@ public:
 private:
     void handleDrag(QWindow *window, DWORD grfKeyState, const QPoint &, LPDWORD pdwEffect);
 
-    ULONG m_refs;
     QWindow *const m_window;
     QRect m_answerRect;
     QPoint m_lastPoint;
-    DWORD m_chosenEffect;
-    DWORD m_lastKeyState;
+    DWORD m_chosenEffect = 0;
+    DWORD m_lastKeyState = 0;
 };
 
 class QWindowsDrag : public QPlatformDrag
@@ -91,12 +86,10 @@ public:
     QWindowsDrag();
     virtual ~QWindowsDrag();
 
-    QMimeData *platformDropData() Q_DECL_OVERRIDE { return &m_dropData; }
-
-    Qt::DropAction drag(QDrag *drag) Q_DECL_OVERRIDE;
+    Qt::DropAction drag(QDrag *drag) override;
 
     static QWindowsDrag *instance();
-    void cancelDrag() Q_DECL_OVERRIDE { QWindowsDrag::m_canceled = true; }
+    void cancelDrag() override { QWindowsDrag::m_canceled = true; }
     static bool isCanceled() { return QWindowsDrag::m_canceled; }
 
     IDataObject *dropDataObject() const             { return m_dropDataObject; }
@@ -110,9 +103,9 @@ private:
     static bool m_canceled;
 
     QWindowsDropMimeData m_dropData;
-    IDataObject *m_dropDataObject;
+    IDataObject *m_dropDataObject = nullptr;
 
-    IDropTargetHelper* m_cachedDropTargetHelper;
+    IDropTargetHelper* m_cachedDropTargetHelper = nullptr;
 };
 
 QT_END_NAMESPACE

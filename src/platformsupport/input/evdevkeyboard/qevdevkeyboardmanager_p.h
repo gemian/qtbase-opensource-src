@@ -53,7 +53,7 @@
 
 #include "qevdevkeyboardhandler_p.h"
 
-#include <QtPlatformSupport/private/qdevicediscovery_p.h>
+#include <QtDeviceDiscoverySupport/private/qdevicediscovery_p.h>
 
 #include <QObject>
 #include <QHash>
@@ -63,14 +63,12 @@ QT_BEGIN_NAMESPACE
 
 class QEvdevKeyboardManager : public QObject
 {
-    Q_OBJECT
 public:
     QEvdevKeyboardManager(const QString &key, const QString &specification, QObject *parent = 0);
     ~QEvdevKeyboardManager();
 
     void loadKeymap(const QString &file);
 
-private slots:
     void addKeyboard(const QString &deviceNode = QString());
     void removeKeyboard(const QString &deviceNode);
 

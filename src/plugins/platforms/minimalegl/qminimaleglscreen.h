@@ -44,7 +44,7 @@
 
 #include <QtCore/QTextStream>
 
-#include <QtPlatformSupport/private/qt_egl_p.h>
+#include <QtEglSupport/private/qt_egl_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -59,9 +59,9 @@ public:
     QRect geometry() const Q_DECL_OVERRIDE;
     int depth() const Q_DECL_OVERRIDE;
     QImage::Format format() const Q_DECL_OVERRIDE;
-
+#ifndef QT_NO_OPENGL
     QPlatformOpenGLContext *platformContext() const;
-
+#endif
     EGLSurface surface() const { return m_surface; }
 
 private:

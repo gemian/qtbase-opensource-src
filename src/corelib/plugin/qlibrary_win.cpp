@@ -44,8 +44,6 @@
 #include "qfileinfo.h"
 #include <private/qfilesystementry_p.h>
 
-#ifndef QT_NO_LIBRARY
-
 #include <qt_windows.h>
 
 QT_BEGIN_NAMESPACE
@@ -71,15 +69,6 @@ bool QLibraryPrivate::load_sys()
 #endif
     // We make the following attempts at locating the library:
     //
-    // WinCE
-    // if (absolute)
-    //     fileName
-    //     fileName + ".dll"
-    // else
-    //     fileName + ".dll"
-    //     fileName
-    //     QFileInfo(fileName).absoluteFilePath()
-    //
     // Windows
     // if (absolute)
     //     fileName
@@ -97,14 +86,10 @@ bool QLibraryPrivate::load_sys()
     // If the fileName is an absolute path we try that first, otherwise we
     // use the system-specific suffix first
     QFileSystemEntry fsEntry(fileName);
-    if (fsEntry.isAbsolute()) {
+    if (fsEntry.isAbsolute())
         attempts.prepend(fileName);
-    } else {
+    else
         attempts.append(fileName);
-#if defined(Q_OS_WINCE)
-        attempts.append(QFileInfo(fileName).absoluteFilePath());
-#endif
-    }
 #ifdef Q_OS_WINRT
     if (fileName.startsWith(QLatin1Char('/')))
         attempts.prepend(QDir::rootPath() + fileName);
@@ -131,7 +116,7 @@ bool QLibraryPrivate::load_sys()
 #endif
     if (!pHnd) {
         errorString = QLibrary::tr("Cannot load library %1: %2").arg(
-                    QDir::toNativeSeparators(fileName)).arg(qt_error_string());
+                    QDir::toNativeSeparators(fileName), qt_error_string());
     } else {
         // Query the actual name of the library that was loaded
         errorString.clear();
@@ -167,7 +152,7 @@ bool QLibraryPrivate::unload_sys()
 {
     if (!FreeLibrary(pHnd)) {
         errorString = QLibrary::tr("Cannot unload library %1: %2").arg(
-                    QDir::toNativeSeparators(fileName)).arg(qt_error_string());
+                    QDir::toNativeSeparators(fileName),  qt_error_string());
         return false;
     }
     errorString.clear();
@@ -176,20 +161,13 @@ bool QLibraryPrivate::unload_sys()
 
 QFunctionPointer QLibraryPrivate::resolve_sys(const char* symbol)
 {
-#ifdef Q_OS_WINCE
-    FARPROC address = GetProcAddress(pHnd, (const wchar_t*)QString::fromLatin1(symbol).utf16());
-#else
     FARPROC address = GetProcAddress(pHnd, symbol);
-#endif
     if (!address) {
         errorString = QLibrary::tr("Cannot resolve symbol \"%1\" in %2: %3").arg(
-            QString::fromLatin1(symbol)).arg(
-                    QDir::toNativeSeparators(fileName)).arg(qt_error_string());
+            QString::fromLatin1(symbol), QDir::toNativeSeparators(fileName), qt_error_string());
     } else {
         errorString.clear();
     }
     return QFunctionPointer(address);
 }
 QT_END_NAMESPACE
-
-#endif // QT_NO_LIBRARY

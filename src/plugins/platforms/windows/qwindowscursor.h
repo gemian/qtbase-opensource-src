@@ -40,7 +40,7 @@
 #ifndef QWINDOWSCURSOR_H
 #define QWINDOWSCURSOR_H
 
-#include "qtwindows_additional.h"
+#include <QtCore/qt_windows.h>
 
 #include <qpa/qplatformcursor.h>
 #include <QtCore/QSharedPointer>
@@ -104,9 +104,12 @@ public:
 
     explicit QWindowsCursor(const QPlatformScreen *screen);
 
-    void changeCursor(QCursor * widgetCursor, QWindow * widget) Q_DECL_OVERRIDE;
-    QPoint pos() const Q_DECL_OVERRIDE;
-    void setPos(const QPoint &pos) Q_DECL_OVERRIDE;
+    void changeCursor(QCursor * widgetCursor, QWindow * widget) override;
+    void setOverrideCursor(const QCursor &cursor) override;
+    void clearOverrideCursor() override;
+
+    QPoint pos() const override;
+    void setPos(const QPoint &pos) override;
 
     static HCURSOR createPixmapCursor(QPixmap pixmap, const QPoint &hotSpot, qreal scaleFactor = 1);
     static HCURSOR createPixmapCursor(const PixmapCursor &pc, qreal scaleFactor = 1) { return createPixmapCursor(pc.pixmap, pc.hotSpot, scaleFactor); }
@@ -127,6 +130,8 @@ private:
     typedef QHash<Qt::CursorShape, CursorHandlePtr> StandardCursorCache;
     typedef QHash<QWindowsPixmapCursorCacheKey, CursorHandlePtr> PixmapCursorCache;
 
+    CursorHandlePtr cursorHandle(const QCursor &c);
+
     const QPlatformScreen *const m_screen;
     StandardCursorCache m_standardCursorCache;
     PixmapCursorCache m_pixmapCursorCache;
@@ -135,6 +140,8 @@ private:
     mutable QPixmap m_moveDragCursor;
     mutable QPixmap m_linkDragCursor;
     mutable QPixmap m_ignoreDragCursor;
+
+    static HCURSOR m_overriddenCursor;
 };
 
 QT_END_NAMESPACE

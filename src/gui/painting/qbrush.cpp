@@ -100,7 +100,7 @@ const uchar *qt_patternForBrush(int brushStyle, bool invert)
     return pat_tbl[brushStyle - Qt::Dense1Pattern][invert];
 }
 
-QPixmap qt_pixmapForBrush(int brushStyle, bool invert)
+Q_GUI_EXPORT QPixmap qt_pixmapForBrush(int brushStyle, bool invert)
 {
 
     QPixmap pm;
@@ -458,13 +458,8 @@ QBrush::QBrush(const QImage &image)
 */
 
 QBrush::QBrush(Qt::BrushStyle style)
+    : QBrush(QColor(Qt::black), style)
 {
-    if (qbrush_check_type(style))
-        init(Qt::black, style);
-    else {
-        d.reset(nullBrushInstance());
-        d->ref.ref();
-    }
 }
 
 /*!
@@ -491,13 +486,8 @@ QBrush::QBrush(const QColor &color, Qt::BrushStyle style)
     \sa setColor(), setStyle()
 */
 QBrush::QBrush(Qt::GlobalColor color, Qt::BrushStyle style)
+    : QBrush(QColor(color), style)
 {
-    if (qbrush_check_type(style))
-        init(color, style);
-    else {
-        d.reset(nullBrushInstance());
-        d->ref.ref();
-    }
 }
 
 /*!
@@ -579,11 +569,20 @@ void QBrush::cleanUp(QBrushData *x)
     QBrushDataPointerDeleter::deleteData(x);
 }
 
+static Q_DECL_CONSTEXPR inline bool use_same_brushdata(Qt::BrushStyle lhs, Qt::BrushStyle rhs)
+{
+    return lhs == rhs // includes Qt::TexturePattern
+        || (lhs >= Qt::NoBrush && lhs <= Qt::DiagCrossPattern && rhs >= Qt::NoBrush && rhs <= Qt::DiagCrossPattern)
+        || (lhs >= Qt::LinearGradientPattern && lhs <= Qt::ConicalGradientPattern && rhs >= Qt::LinearGradientPattern && rhs <= Qt::ConicalGradientPattern)
+           ;
+}
 
 void QBrush::detach(Qt::BrushStyle newStyle)
 {
-    if (newStyle == d->style && d->ref.load() == 1)
+    if (use_same_brushdata(newStyle, d->style) && d->ref.load() == 1) {
+        d->style = newStyle;
         return;
+    }
 
     QScopedPointer<QBrushData, QBrushDataPointerDeleter> x;
     switch(newStyle) {
@@ -1007,7 +1006,7 @@ bool QBrush::operator==(const QBrush &b) const
 */
 QDebug operator<<(QDebug dbg, const QBrush &b)
 {
-    static const char *const BRUSH_STYLES[] = {
+    static const char BRUSH_STYLES[][24] = {
      "NoBrush",
      "SolidPattern",
      "Dense1Pattern",
@@ -1026,7 +1025,7 @@ QDebug operator<<(QDebug dbg, const QBrush &b)
      "LinearGradientPattern",
      "RadialGradientPattern",
      "ConicalGradientPattern",
-     0, 0, 0, 0, 0, 0,
+     "", "", "", "", "", "",
      "TexturePattern" // 24
     };
 
@@ -1420,6 +1419,25 @@ void QGradient::setColorAt(qreal pos, const QColor &color)
         m_stops.insert(index, QGradientStop(pos, color));
 }
 
+static inline bool ok(QGradientStop stop)
+{
+    return stop.first >= 0 && stop.first <= 1; // rejects NaNs
+}
+
+static inline bool ok(const QGradientStops &stops)
+{
+    qreal lastPos = -1;
+    for (const QGradientStop &stop : stops) {
+        if (Q_UNLIKELY(!ok(stop)))
+            return false;
+        const bool sorted = stop.first > lastPos; // rejects duplicates
+        if (Q_UNLIKELY(!sorted))
+            return false;
+        lastPos = stop.first;
+    }
+    return true;
+}
+
 /*!
     \fn void QGradient::setStops(const QGradientStops &stopPoints)
 
@@ -1431,6 +1449,14 @@ void QGradient::setColorAt(qreal pos, const QColor &color)
 */
 void QGradient::setStops(const QGradientStops &stops)
 {
+    // ## Qt 6: consider taking \a stops by value, so we can move into m_stops
+    if (Q_LIKELY(ok(stops))) {
+        // fast path for the common case: if everything is ok with the stops, just copy them
+        m_stops = stops;
+        return;
+    }
+    // otherwise, to keep the pre-5.9 behavior, add them one after another,
+    // so each stop is checked, invalid ones are skipped, they are added in-order (which may be O(N^2)).
     m_stops.clear();
     for (int i=0; i<stops.size(); ++i)
         setColorAt(stops.at(i).first, stops.at(i).second);
@@ -1675,13 +1701,8 @@ QLinearGradient::QLinearGradient(const QPointF &start, const QPointF &finalStop)
     \sa QGradient::setColorAt(), QGradient::setStops()
 */
 QLinearGradient::QLinearGradient(qreal xStart, qreal yStart, qreal xFinalStop, qreal yFinalStop)
+    : QLinearGradient(QPointF(xStart, yStart), QPointF(xFinalStop, yFinalStop))
 {
-    m_type = LinearGradient;
-    m_spread = PadSpread;
-    m_data.linear.x1 = xStart;
-    m_data.linear.y1 = yStart;
-    m_data.linear.x2 = xFinalStop;
-    m_data.linear.y2 = yFinalStop;
 }
 
 
@@ -1884,19 +1905,8 @@ QRadialGradient::QRadialGradient(const QPointF &center, qreal radius)
 */
 
 QRadialGradient::QRadialGradient(qreal cx, qreal cy, qreal radius, qreal fx, qreal fy)
+    : QRadialGradient(QPointF(cx, cy), radius, QPointF(fx, fy))
 {
-    m_type = RadialGradient;
-    m_spread = PadSpread;
-    m_data.radial.cx = cx;
-    m_data.radial.cy = cy;
-    m_data.radial.cradius = radius;
-
-    QPointF adapted_focal = qt_radial_gradient_adapt_focal_point(QPointF(cx, cy),
-                                                                 radius,
-                                                                 QPointF(fx, fy));
-
-    m_data.radial.fx = adapted_focal.x();
-    m_data.radial.fy = adapted_focal.y();
 }
 
 /*!
@@ -1906,14 +1916,8 @@ QRadialGradient::QRadialGradient(qreal cx, qreal cy, qreal radius, qreal fx, qre
     \sa QGradient::setColorAt(), QGradient::setStops()
  */
 QRadialGradient::QRadialGradient(qreal cx, qreal cy, qreal radius)
+    : QRadialGradient(QPointF(cx, cy), radius)
 {
-    m_type = RadialGradient;
-    m_spread = PadSpread;
-    m_data.radial.cx = cx;
-    m_data.radial.cy = cy;
-    m_data.radial.cradius = radius;
-    m_data.radial.fx = cx;
-    m_data.radial.fy = cy;
 }
 
 
@@ -2213,12 +2217,8 @@ QConicalGradient::QConicalGradient(const QPointF &center, qreal angle)
 */
 
 QConicalGradient::QConicalGradient(qreal cx, qreal cy, qreal angle)
+    : QConicalGradient(QPointF(cx, cy), angle)
 {
-    m_type = ConicalGradient;
-    m_spread = PadSpread;
-    m_data.conical.cx = cx;
-    m_data.conical.cy = cy;
-    m_data.conical.angle = angle;
 }
 
 

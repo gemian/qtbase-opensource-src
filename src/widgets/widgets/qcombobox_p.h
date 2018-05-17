@@ -51,9 +51,9 @@
 // We mean it.
 //
 
+#include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "QtWidgets/qcombobox.h"
 
-#ifndef QT_NO_COMBOBOX
 #include "QtWidgets/qabstractslider.h"
 #include "QtWidgets/qapplication.h"
 #include "QtWidgets/qitemdelegate.h"
@@ -67,11 +67,15 @@
 #include "QtCore/qtimer.h"
 #include "private/qwidget_p.h"
 #include "QtCore/qpointer.h"
+#if QT_CONFIG(completer)
 #include "QtWidgets/qcompleter.h"
+#endif
 #include "QtGui/qevent.h"
 #include "QtCore/qdebug.h"
 
 #include <limits.h>
+
+QT_REQUIRE_CONFIG(combobox);
 
 QT_BEGIN_NAMESPACE
 
@@ -85,13 +89,13 @@ public:
     QComboBoxListView(QComboBox *cmb = 0) : combo(cmb) {}
 
 protected:
-    void resizeEvent(QResizeEvent *event)
+    void resizeEvent(QResizeEvent *event) override
     {
         resizeContents(viewport()->width(), contentsSize().height());
         QListView::resizeEvent(event);
     }
 
-    QStyleOptionViewItem viewOptions() const
+    QStyleOptionViewItem viewOptions() const override
     {
         QStyleOptionViewItem option = QListView::viewOptions();
         option.showDecorationSelected = true;
@@ -100,7 +104,7 @@ protected:
         return option;
     }
 
-    void paintEvent(QPaintEvent *e)
+    void paintEvent(QPaintEvent *e) override
     {
         if (combo) {
             QStyleOptionComboBox opt;
@@ -141,7 +145,7 @@ public:
         setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         setAttribute(Qt::WA_NoMousePropagation);
     }
-    QSize sizeHint() const {
+    QSize sizeHint() const override {
         return QSize(20, style()->pixelMetric(QStyle::PM_MenuScrollerHeight));
     }
 
@@ -155,14 +159,14 @@ protected:
         fast = false;
     }
 
-    void enterEvent(QEvent *) {
+    void enterEvent(QEvent *) override {
         startTimer();
     }
 
-    void leaveEvent(QEvent *) {
+    void leaveEvent(QEvent *) override {
         stopTimer();
     }
-    void timerEvent(QTimerEvent *e) {
+    void timerEvent(QTimerEvent *e) override {
         if (e->timerId() == timer.timerId()) {
             emit doScroll(sliderAction);
             if (fast) {
@@ -171,11 +175,11 @@ protected:
             }
         }
     }
-    void hideEvent(QHideEvent *) {
+    void hideEvent(QHideEvent *) override {
         stopTimer();
     }
 
-    void mouseMoveEvent(QMouseEvent *e)
+    void mouseMoveEvent(QMouseEvent *e) override
     {
         // Enable fast scrolling if the cursor is directly above or below the popup.
         const int mouseX = e->pos().x();
@@ -187,7 +191,7 @@ protected:
         fast = horizontallyInside && verticallyOutside;
     }
 
-    void paintEvent(QPaintEvent *) {
+    void paintEvent(QPaintEvent *) override {
         QPainter p(this);
         QStyleOptionMenuItem menuOpt;
         menuOpt.init(this);
@@ -211,7 +215,7 @@ private:
     bool fast;
 };
 
-class Q_AUTOTEST_EXPORT QComboBoxPrivateContainer : public QFrame
+class Q_WIDGETS_EXPORT QComboBoxPrivateContainer : public QFrame
 {
     Q_OBJECT
 
@@ -230,19 +234,21 @@ public:
 
 public Q_SLOTS:
     void scrollItemView(int action);
+    void hideScrollers();
     void updateScrollers();
     void viewDestroyed();
 
 protected:
-    void changeEvent(QEvent *e);
-    bool eventFilter(QObject *o, QEvent *e);
-    void mousePressEvent(QMouseEvent *e);
-    void mouseReleaseEvent(QMouseEvent *e);
-    void showEvent(QShowEvent *e);
-    void hideEvent(QHideEvent *e);
-    void timerEvent(QTimerEvent *timerEvent);
-    void leaveEvent(QEvent *e);
-    void resizeEvent(QResizeEvent *e);
+    void changeEvent(QEvent *e) override;
+    bool eventFilter(QObject *o, QEvent *e) override;
+    void mousePressEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
+    void showEvent(QShowEvent *e) override;
+    void hideEvent(QHideEvent *e) override;
+    void timerEvent(QTimerEvent *timerEvent) override;
+    void leaveEvent(QEvent *e) override;
+    void resizeEvent(QResizeEvent *e) override;
+    void paintEvent(QPaintEvent *e) override;
     QStyleOptionComboBox comboStyleOption() const;
 
 Q_SIGNALS:
@@ -269,13 +275,13 @@ public:
 protected:
     void paint(QPainter *painter,
                const QStyleOptionViewItem &option,
-               const QModelIndex &index) const {
+               const QModelIndex &index) const override {
         QStyleOptionMenuItem opt = getStyleOption(option, index);
         painter->fillRect(option.rect, opt.palette.background());
         mCombo->style()->drawControl(QStyle::CE_MenuItem, &opt, painter, mCombo);
     }
     QSize sizeHint(const QStyleOptionViewItem &option,
-                   const QModelIndex &index) const {
+                   const QModelIndex &index) const override {
         QStyleOptionMenuItem opt = getStyleOption(option, index);
         return mCombo->style()->sizeFromContents(
             QStyle::CT_MenuItem, &opt, option.rect.size(), mCombo);
@@ -308,7 +314,7 @@ public:
 protected:
     void paint(QPainter *painter,
                const QStyleOptionViewItem &option,
-               const QModelIndex &index) const {
+               const QModelIndex &index) const override {
         if (isSeparator(index)) {
             QRect rect = option.rect;
             if (const QAbstractItemView *view = qobject_cast<const QAbstractItemView*>(option.widget))
@@ -322,7 +328,7 @@ protected:
     }
 
     QSize sizeHint(const QStyleOptionViewItem &option,
-                   const QModelIndex &index) const {
+                   const QModelIndex &index) const override {
         if (isSeparator(index)) {
             int pm = mCombo->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, 0, mCombo);
             return QSize(pm, pm);
@@ -353,7 +359,7 @@ public:
     void _q_emitCurrentIndexChanged(const QModelIndex &index);
     void _q_modelDestroyed();
     void _q_modelReset();
-#ifndef QT_NO_COMPLETER
+#if QT_CONFIG(completer)
     void _q_completerActivated(const QModelIndex &index);
 #endif
     void _q_resetButton();
@@ -413,7 +419,7 @@ public:
 #ifdef Q_OS_MAC
     QPlatformMenu *m_platformMenu;
 #endif
-#ifndef QT_NO_COMPLETER
+#if QT_CONFIG(completer)
     QPointer<QCompleter> completer;
 #endif
     static QPalette viewContainerPalette(QComboBox *cmb)
@@ -421,7 +427,5 @@ public:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_COMBOBOX
 
 #endif // QCOMBOBOX_P_H

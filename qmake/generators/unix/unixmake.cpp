@@ -94,6 +94,10 @@ UnixMakefileGenerator::init()
             !project->values("QMAKE_LIB_FLAG").isEmpty() &&
             project->isActiveConfig("dll"))
         project->values("QMAKE_LFLAGS") += project->values("QMAKE_LFLAGS_PREBIND");
+    project->values("QMAKE_INCDIR") += project->values("QMAKE_INCDIR_POST");
+    project->values("QMAKE_LIBDIR") += project->values("QMAKE_LIBDIR_POST");
+    project->values("QMAKE_RPATHDIR") += project->values("QMAKE_RPATHDIR_POST");
+    project->values("QMAKE_RPATHLINKDIR") += project->values("QMAKE_RPATHLINKDIR_POST");
     if(!project->isEmpty("QMAKE_INCDIR"))
         project->values("INCLUDEPATH") += project->values("QMAKE_INCDIR");
     ProStringList ldadd;
@@ -180,6 +184,13 @@ UnixMakefileGenerator::init()
                 // icc style
                 pchFlags.replace(QLatin1String("${QMAKE_PCH_OUTPUT}"),
                                  escapeFilePath(pchBaseName + project->first("QMAKE_PCH_OUTPUT_EXT")));
+                const ProStringList pchArchs = project->values("QMAKE_PCH_ARCHS");
+                for (const ProString &arch : pchArchs) {
+                    QString suffix = project->first("QMAKE_PCH_OUTPUT_EXT").toQString();
+                    suffix.replace(QLatin1String("${QMAKE_PCH_ARCH}"), arch.toQString());
+                    pchFlags.replace(QLatin1String("${QMAKE_PCH_OUTPUT_") + arch + QLatin1Char('}'),
+                                     escapeFilePath(pchBaseName + suffix));
+                }
             } else {
                 // gcc style (including clang_pch_style)
                 QString headerSuffix;
@@ -194,6 +205,18 @@ UnixMakefileGenerator::init()
                 if (!language.isEmpty()) {
                     pchFlags.replace(QLatin1String("${QMAKE_PCH_OUTPUT}"),
                                      escapeFilePath(pchBaseName + language + headerSuffix));
+                    const ProStringList pchArchs = project->values("QMAKE_PCH_ARCHS");
+                    for (const ProString &arch : pchArchs) {
+                        QString suffix = headerSuffix;
+                        suffix.replace(QLatin1String("${QMAKE_PCH_ARCH}"), arch.toQString());
+                        if (project->isActiveConfig("clang_pch_style")
+                            && (suffix.endsWith(QLatin1String(".pch"))
+                                || suffix.endsWith(QLatin1String(".gch")))) {
+                            suffix.chop(4); // must omit header suffix for -include to recognize the PCH
+                        }
+                        pchFlags.replace(QLatin1String("${QMAKE_PCH_OUTPUT_") + arch + QLatin1Char('}'),
+                                         escapeFilePath(pchBaseName + language + suffix));
+                    }
                 }
             }
 
@@ -322,10 +345,19 @@ QStringList
             header_prefix += project->first("QMAKE_PCH_OUTPUT_EXT").toQString();
         if (project->isActiveConfig("icc_pch_style")) {
             // icc style
-            for(QStringList::Iterator it = Option::cpp_ext.begin(); it != Option::cpp_ext.end(); ++it) {
-                if(file.endsWith(*it)) {
-                    ret += header_prefix;
-                    break;
+            ProStringList pchArchs = project->values("QMAKE_PCH_ARCHS");
+            if (pchArchs.isEmpty())
+                pchArchs << ProString(); // normal single-arch PCH
+            for (const ProString &arch : qAsConst(pchArchs)) {
+                auto pfx = header_prefix;
+                if (!arch.isEmpty())
+                    pfx.replace(QLatin1String("${QMAKE_PCH_ARCH}"), arch.toQString());
+                for (QStringList::Iterator it = Option::cpp_ext.begin();
+                    it != Option::cpp_ext.end(); ++it) {
+                    if (file.endsWith(*it)) {
+                        ret += pfx;
+                        break;
+                    }
                 }
             }
         } else {
@@ -351,9 +383,17 @@ QStringList
                     if (!file.endsWith(extension.toQString()))
                         continue;
 
-                    QString precompiledHeader = header_prefix + language + header_suffix;
-                    if (!ret.contains(precompiledHeader))
-                        ret += precompiledHeader;
+                    ProStringList pchArchs = project->values("QMAKE_PCH_ARCHS");
+                    if (pchArchs.isEmpty())
+                        pchArchs << ProString(); // normal single-arch PCH
+                    for (const ProString &arch : qAsConst(pchArchs)) {
+                        QString suffix = header_suffix;
+                        if (!arch.isEmpty())
+                            suffix.replace(QLatin1String("${QMAKE_PCH_ARCH}"), arch.toQString());
+                        QString precompiledHeader = header_prefix + language + suffix;
+                        if (!ret.contains(precompiledHeader))
+                            ret += precompiledHeader;
+                    }
 
                     goto foundPrecompiledDependency;
                 }
@@ -564,7 +604,7 @@ UnixMakefileGenerator::defaultInstall(const QString &t)
                 dst = escapeFilePath(filePrefixRoot(root, targetdir + src.section('/', -1)));
         if(!ret.isEmpty())
             ret += "\n\t";
-        ret += "-$(INSTALL_FILE) " + escapeFilePath(Option::fixPathToTargetOS(src, false)) + ' ' + dst;
+        ret += "-$(QINSTALL) " + escapeFilePath(Option::fixPathToTargetOS(src, false)) + ' ' + dst;
         if(!uninst.isEmpty())
             uninst.append("\n\t");
         uninst.append("-$(DEL_FILE) " + dst);
@@ -579,10 +619,13 @@ UnixMakefileGenerator::defaultInstall(const QString &t)
         plain_targ = escapeFilePath(plain_targ);
         if (bundle != NoBundle) {
             QString suffix;
-            if (project->first("TEMPLATE") == "lib")
-                suffix = "/Versions/" + project->first("QMAKE_FRAMEWORK_VERSION") + "/$(TARGET)";
-            else
+            if (project->first("TEMPLATE") == "lib") {
+                if (!project->isActiveConfig("shallow_bundle"))
+                    suffix += "/Versions/" + project->first("QMAKE_FRAMEWORK_VERSION");
+                suffix += "/$(TARGET)";
+            } else {
                 suffix = "/" + project->first("QMAKE_BUNDLE_LOCATION") + "/$(QMAKE_TARGET)";
+            }
             dst_targ += suffix;
             if (bundle == SolidBundle) {
                 if (!ret.isEmpty())
@@ -597,16 +640,16 @@ UnixMakefileGenerator::defaultInstall(const QString &t)
 
         QString copy_cmd;
         if (bundle == SolidBundle) {
-            copy_cmd += "-$(INSTALL_DIR) " + src_targ + ' ' + plain_targ;
+            copy_cmd += "-$(QINSTALL) " + src_targ + ' ' + plain_targ;
         } else if (project->first("TEMPLATE") == "lib" && project->isActiveConfig("staticlib")) {
-            copy_cmd += "-$(INSTALL_FILE) " + src_targ + ' ' + dst_targ;
+            copy_cmd += "-$(QINSTALL) " + src_targ + ' ' + dst_targ;
         } else if (!isAux) {
             if (bundle == SlicedBundle) {
                 if (!ret.isEmpty())
                     ret += "\n\t";
                 ret += mkdir_p_asstring("\"`dirname " + dst_targ + "`\"", false);
             }
-            copy_cmd += "-$(INSTALL_PROGRAM) " + src_targ + ' ' + dst_targ;
+            copy_cmd += "-$(QINSTALL_PROGRAM) " + src_targ + ' ' + dst_targ;
         }
         if(project->first("TEMPLATE") == "lib" && !project->isActiveConfig("staticlib")
            && project->values(ProKey(t + ".CONFIG")).indexOf("fix_rpath") != -1) {
@@ -659,7 +702,7 @@ UnixMakefileGenerator::defaultInstall(const QString &t)
                     ret += "\n\t";
                 ret += mkdir_p_asstring("\"`dirname " + dst + "`\"", false) + "\n\t";
                 ret += "-$(DEL_FILE) " + dst + "\n\t"; // Can't overwrite symlinks to directories
-                ret += "-$(INSTALL_DIR) " + escapeFilePath(src) + " " + dst; // Use cp -R to copy symlinks
+                ret += "-$(QINSTALL) " + escapeFilePath(src) + " " + dst;
                 if (!uninst.isEmpty())
                     uninst.append("\n\t");
                 uninst.append("-$(DEL_FILE) " + dst);

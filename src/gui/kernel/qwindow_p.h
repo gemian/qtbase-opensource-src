@@ -51,6 +51,7 @@
 // We mean it.
 //
 
+#include <QtGui/private/qtguiglobal_p.h>
 #include <QtGui/qscreen.h>
 #include <QtGui/qwindow.h>
 #include <qpa/qplatformwindow.h>
@@ -104,6 +105,9 @@ public:
         , hasCursor(false)
 #endif
         , compositing(false)
+#if QT_CONFIG(vulkan)
+        , vulkanInstance(nullptr)
+#endif
     {
         isWindow = true;
     }
@@ -112,39 +116,36 @@ public:
     {
     }
 
-    void init();
+    void init(QScreen *targetScreen = nullptr);
 
     void maybeQuitOnLastWindowClosed();
 #ifndef QT_NO_CURSOR
     void setCursor(const QCursor *c = 0);
-    void applyCursor();
+    bool applyCursor();
 #endif
 
     void deliverUpdateRequest();
 
-    QPoint globalPosition() const {
-        Q_Q(const QWindow);
-        QPoint offset = q->position();
-        for (const QWindow *p = q->parent(); p; p = p->parent()) {
-            if (p->type() != Qt::ForeignWindow) {
-                offset += p->position();
-            } else { // QTBUG-43252, mapToGlobal() for foreign children.
-                offset += p->mapToGlobal(QPoint(0, 0));
-                break;
-            }
-        }
-        return offset;
-    }
+    QPoint globalPosition() const;
 
     QWindow *topLevelWindow() const;
 
+#if QT_CONFIG(opengl)
+    virtual QOpenGLContext *shareContext() const;
+#endif
+
     virtual QWindow *eventReceiver() { Q_Q(QWindow); return q; }
 
+    virtual void setVisible(bool visible);
     void updateVisibility();
     void _q_clearAlert();
 
+    enum SiblingPosition { PositionTop, PositionBottom };
+    void updateSiblingPosition(SiblingPosition);
+
     bool windowRecreationRequired(QScreen *newScreen) const;
-    void create(bool recursive);
+    void create(bool recursive, WId nativeHandle = 0);
+    void destroy();
     void setTopLevelScreen(QScreen *newScreen, bool recreate);
     void connectToScreen(QScreen *topLevelScreen);
     void disconnectFromScreen();
@@ -154,9 +155,13 @@ public:
     virtual void clearFocusObject();
     virtual QRectF closestAcceptableGeometry(const QRectF &rect) const;
 
+    virtual void processSafeAreaMarginsChanged() {};
+
     bool isPopup() const { return (windowFlags & Qt::WindowType_Mask) == Qt::Popup; }
 
     static QWindowPrivate *get(QWindow *window) { return window->d_func(); }
+
+    static Qt::WindowState effectiveState(Qt::WindowStates);
 
     QWindow::SurfaceType surfaceType;
     Qt::WindowFlags windowFlags;
@@ -170,7 +175,7 @@ public:
     QString windowFilePath;
     QIcon windowIcon;
     QRect geometry;
-    Qt::WindowState windowState;
+    Qt::WindowStates windowState;
     QWindow::Visibility visibility;
     bool resizeEventPending;
     bool receivedExpose;
@@ -201,6 +206,10 @@ public:
 
     bool compositing;
     QElapsedTimer lastComposeTime;
+
+#if QT_CONFIG(vulkan)
+    QVulkanInstance *vulkanInstance;
+#endif
 };
 
 

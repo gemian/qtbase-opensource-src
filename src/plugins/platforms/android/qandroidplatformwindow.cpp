@@ -56,7 +56,7 @@ QAndroidPlatformWindow::QAndroidPlatformWindow(QWindow *window)
     m_windowState = Qt::WindowNoState;
     static QAtomicInt winIdGenerator(1);
     m_windowId = winIdGenerator.fetchAndAddRelaxed(1);
-    setWindowState(window->windowState());
+    setWindowState(window->windowStates());
 }
 
 void QAndroidPlatformWindow::lower()
@@ -73,7 +73,6 @@ void QAndroidPlatformWindow::raise()
 void QAndroidPlatformWindow::setGeometry(const QRect &rect)
 {
     QWindowSystemInterface::handleGeometryChange(window(), rect);
-    QPlatformWindow::setGeometry(rect);
 }
 
 void QAndroidPlatformWindow::setVisible(bool visible)
@@ -96,14 +95,9 @@ void QAndroidPlatformWindow::setVisible(bool visible)
     QRect availableGeometry = screen()->availableGeometry();
     if (geometry().width() > 0 && geometry().height() > 0 && availableGeometry.width() > 0 && availableGeometry.height() > 0)
         QPlatformWindow::setVisible(visible);
-
-    // The Android Activity is activated before Qt is initialized, causing the application state to
-    // never be set to 'active'. We explicitly set this state when the first window becomes visible.
-    if (visible)
-        QtAndroid::setApplicationActive();
 }
 
-void QAndroidPlatformWindow::setWindowState(Qt::WindowState state)
+void QAndroidPlatformWindow::setWindowState(Qt::WindowStates state)
 {
     if (m_windowState == state)
         return;

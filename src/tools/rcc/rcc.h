@@ -48,7 +48,7 @@ class RCCResourceLibrary
     RCCResourceLibrary &operator=(const RCCResourceLibrary &);
 
 public:
-    RCCResourceLibrary();
+    RCCResourceLibrary(quint8 formatVersion);
     ~RCCResourceLibrary();
 
     bool output(QIODevice &outDevice, QIODevice &tempDevice, QIODevice &errorDevice);
@@ -91,6 +91,8 @@ public:
 
     QStringList failedResources() const { return m_failedResources; }
 
+    int formatVersion() const { return m_formatVersion; }
+
 private:
     struct Strings {
         Strings();
@@ -118,6 +120,7 @@ private:
     void writeHex(quint8 number);
     void writeNumber2(quint16 number);
     void writeNumber4(quint32 number);
+    void writeNumber8(quint64 number);
     void writeChar(char c) { m_out.append(c); }
     void writeByteArray(const QByteArray &);
     void write(const char *, int len);
@@ -140,6 +143,7 @@ private:
     QIODevice *m_errorDevice;
     QIODevice *m_outDevice;
     QByteArray m_out;
+    quint8 m_formatVersion;
 };
 
 QT_END_NAMESPACE

@@ -54,7 +54,7 @@
 #include <private/qfontengine_p.h>
 #include <private/qcore_mac_p.h>
 
-#ifndef Q_OS_IOS
+#ifdef Q_OS_OSX
 #include <ApplicationServices/ApplicationServices.h>
 #else
 #include <CoreText/CoreText.h>
@@ -78,6 +78,7 @@ public:
     glyph_metrics_t boundingBox(glyph_t glyph) Q_DECL_OVERRIDE;
 
     QFixed ascent() const Q_DECL_OVERRIDE;
+    QFixed capHeight() const Q_DECL_OVERRIDE;
     QFixed descent() const Q_DECL_OVERRIDE;
     QFixed leading() const Q_DECL_OVERRIDE;
     QFixed xHeight() const Q_DECL_OVERRIDE;
@@ -91,6 +92,9 @@ public:
 
     int synthesized() const Q_DECL_OVERRIDE { return synthesisFlags; }
     bool supportsSubPixelPositions() const Q_DECL_OVERRIDE { return true; }
+
+    QFixed lineThickness() const Q_DECL_OVERRIDE;
+    QFixed underlinePosition() const Q_DECL_OVERRIDE;
 
     void draw(CGContextRef ctx, qreal x, qreal y, const QTextItemInt &ti, int paintDeviceHeight);
 
@@ -106,6 +110,7 @@ public:
     void doKerning(QGlyphLayout *g, ShaperFlags flags) const Q_DECL_OVERRIDE;
 
     bool supportsTransformation(const QTransform &transform) const Q_DECL_OVERRIDE;
+    bool expectsGammaCorrectedBlending() const Q_DECL_OVERRIDE;
 
     QFontEngine *cloneWithSize(qreal pixelSize) const Q_DECL_OVERRIDE;
     Qt::HANDLE handle() const Q_DECL_OVERRIDE;
@@ -118,6 +123,8 @@ public:
 
     static int antialiasingThreshold;
     static QFontEngine::GlyphFormat defaultGlyphFormat;
+
+    static QCoreTextFontEngine *create(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference);
 private:
     void init();
     QImage imageForGlyph(glyph_t glyph, QFixed subPixelPosition, bool colorful, const QTransform &m);
@@ -126,6 +133,8 @@ private:
     int synthesisFlags;
     CGAffineTransform transform;
     QFixed avgCharWidth;
+    QFixed underlineThickness;
+    QFixed underlinePos;
     QFontEngine::FaceId face_id;
     mutable bool kerningPairsLoaded;
 };

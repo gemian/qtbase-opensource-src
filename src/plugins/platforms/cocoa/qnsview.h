@@ -51,31 +51,24 @@
 
 QT_BEGIN_NAMESPACE
 class QCocoaWindow;
-class QCocoaBackingStore;
 class QCocoaGLContext;
 QT_END_NAMESPACE
 
 Q_FORWARD_DECLARE_OBJC_CLASS(QT_MANGLE_NAMESPACE(QNSViewMouseMoveHelper));
 
 @interface QT_MANGLE_NAMESPACE(QNSView) : NSView <NSTextInputClient> {
-    QCocoaBackingStore* m_backingStore;
-    QPoint m_backingStoreOffset;
-    QRegion m_maskRegion;
-    CGImageRef m_maskImage;
-    uchar *m_maskData;
-    bool m_shouldInvalidateWindowShadow;
-    QPointer<QWindow> m_window;
-    QCocoaWindow *m_platformWindow;
+    QPointer<QCocoaWindow> m_platformWindow;
     NSTrackingArea *m_trackingArea;
     Qt::MouseButtons m_buttons;
     Qt::MouseButtons m_acceptedMouseDowns;
     Qt::MouseButtons m_frameStrutButtons;
     QString m_composingText;
+    QPointer<QObject> m_composingFocusObject;
     bool m_sendKeyEvent;
     QStringList *currentCustomDragTypes;
+    bool m_dontOverrideCtrlLMB;
     bool m_sendUpAsRightButton;
     Qt::KeyboardModifiers currentWheelModifiers;
-    bool m_subscribesForGlobalFrameNotifications;
 #ifndef QT_NO_OPENGL
     QCocoaGLContext *m_glContext;
     bool m_shouldSetGLContextinDrawRect;
@@ -85,53 +78,46 @@ Q_FORWARD_DECLARE_OBJC_CLASS(QT_MANGLE_NAMESPACE(QNSViewMouseMoveHelper));
     bool m_resendKeyEvent;
     bool m_scrolling;
     bool m_updatingDrag;
-    bool m_exposedOnMoveToWindow;
     NSEvent *m_currentlyInterpretedKeyEvent;
     bool m_isMenuView;
     QSet<quint32> m_acceptedKeyDowns;
+    bool m_updateRequested;
 }
 
+@property (nonatomic, retain) NSCursor *cursor;
+
 - (id)init;
-- (id)initWithQWindow:(QWindow *)window platformWindow:(QCocoaWindow *) platformWindow;
-- (void) clearQWindowPointers;
+- (id)initWithCocoaWindow:(QCocoaWindow *)platformWindow;
 #ifndef QT_NO_OPENGL
 - (void)setQCocoaGLContext:(QCocoaGLContext *)context;
 #endif
-- (void)flushBackingStore:(QCocoaBackingStore *)backingStore region:(const QRegion &)region offset:(QPoint)offset;
-- (void)clearBackingStore:(QCocoaBackingStore *)backingStore;
-- (void)setMaskRegion:(const QRegion *)region;
-- (void)invalidateWindowShadowIfNeeded;
 - (void)drawRect:(NSRect)dirtyRect;
-- (void)updateGeometry;
-- (void)notifyWindowStateChanged:(Qt::WindowState)newState;
-- (void)windowNotification : (NSNotification *) windowNotification;
-- (void)notifyWindowWillZoom:(BOOL)willZoom;
 - (void)textInputContextKeyboardSelectionDidChangeNotification : (NSNotification *) textInputContextKeyboardSelectionDidChangeNotification;
 - (void)viewDidHide;
-- (void)viewDidUnhide;
 - (void)removeFromSuperview;
+- (void)cancelComposingText;
 
 - (BOOL)isFlipped;
 - (BOOL)acceptsFirstResponder;
 - (BOOL)becomeFirstResponder;
-- (BOOL)hasMask;
 - (BOOL)isOpaque;
 
 - (void)convertFromScreen:(NSPoint)mouseLocation toWindowPoint:(QPointF *)qtWindowPoint andScreenPoint:(QPointF *)qtScreenPoint;
 
 - (void)resetMouseButtons;
 
+- (void)requestUpdate;
+
 - (void)handleMouseEvent:(NSEvent *)theEvent;
-- (bool)handleMouseDownEvent:(NSEvent *)theEvent;
-- (bool)handleMouseDraggedEvent:(NSEvent *)theEvent;
-- (bool)handleMouseUpEvent:(NSEvent *)theEvent;
+- (bool)handleMouseDownEvent:(NSEvent *)theEvent withButton:(int)buttonNumber;
+- (bool)handleMouseDraggedEvent:(NSEvent *)theEvent withButton:(int)buttonNumber;
+- (bool)handleMouseUpEvent:(NSEvent *)theEvent withButton:(int)buttonNumber;
 - (void)mouseDown:(NSEvent *)theEvent;
 - (void)mouseDragged:(NSEvent *)theEvent;
 - (void)mouseUp:(NSEvent *)theEvent;
 - (void)mouseMovedImpl:(NSEvent *)theEvent;
 - (void)mouseEnteredImpl:(NSEvent *)theEvent;
 - (void)mouseExitedImpl:(NSEvent *)theEvent;
-- (void)cursorUpdateImpl:(NSEvent *)theEvent;
 - (void)rightMouseDown:(NSEvent *)theEvent;
 - (void)rightMouseDragged:(NSEvent *)theEvent;
 - (void)rightMouseUp:(NSEvent *)theEvent;
@@ -140,9 +126,11 @@ Q_FORWARD_DECLARE_OBJC_CLASS(QT_MANGLE_NAMESPACE(QNSViewMouseMoveHelper));
 - (void)otherMouseUp:(NSEvent *)theEvent;
 - (void)handleFrameStrutMouseEvent:(NSEvent *)theEvent;
 
+#ifndef QT_NO_TABLETEVENT
 - (bool)handleTabletEvent: (NSEvent *)theEvent;
 - (void)tabletPoint: (NSEvent *)theEvent;
 - (void)tabletProximity: (NSEvent *)theEvent;
+#endif
 
 - (int) convertKeyCode : (QChar)keyCode;
 + (Qt::KeyboardModifiers) convertKeyModifiers : (ulong)modifierFlags;
@@ -153,6 +141,11 @@ Q_FORWARD_DECLARE_OBJC_CLASS(QT_MANGLE_NAMESPACE(QNSViewMouseMoveHelper));
 - (void)registerDragTypes;
 - (NSDragOperation)handleDrag:(id <NSDraggingInfo>)sender;
 
+@end
+
+@interface QT_MANGLE_NAMESPACE(QNSView) (QtExtras)
+@property (nonatomic, readonly) QCocoaWindow *platformWindow;
+@property (nonatomic, readonly) BOOL isMenuView;
 @end
 
 QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSView);

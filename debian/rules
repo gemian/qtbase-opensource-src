@@ -25,7 +25,7 @@ ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH), $(no_pch_architectures)))
 	extra_configure_opts += -no-pch
 endif
 
-gles2_architectures := armel armhf
+gles2_architectures := armel armhf arm64
 ifeq ($(DEB_HOST_ARCH),$(findstring $(DEB_HOST_ARCH), $(gles2_architectures)))
 	extra_configure_opts += -opengl es2
 else
@@ -278,6 +278,8 @@ override_dh_installchangelogs:
 	else \
 		dh_installchangelogs; \
 	fi
+
+override_dh_test:
 
 override_dh_strip:
 	dh_strip -pqtbase5-examples --dbgsym-migration='qtbase5-examples-dbg (<< 5.7.1+dfsg-1~)'

@@ -366,7 +366,7 @@ Depends: libqt5opengl5 (= ${binary:Version}),
          ${misc:Depends}
 Breaks: qtbase5-dev (<< 5.4.0+dfsg-6~)
 Replaces: qtbase5-dev (<< 5.4.0+dfsg-6~)
-Provides: libqt5opengl5-desktop-dev (= ${binary:Version}) [!armel !armhf]
+Provides: libqt5opengl5-desktop-dev (= ${binary:Version}) [!armel !armhf !arm64]
 Description: Qt 5 OpenGL library development files
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.

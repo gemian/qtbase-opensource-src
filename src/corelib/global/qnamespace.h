@@ -243,7 +243,7 @@ public:
         // size of a multi-variant string.
         TextLongestVariant = 0x80000
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#if QT_DEPRECATED_SINCE(5, 11) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         , TextBypassShaping = 0x100000
 #endif
     };
@@ -1406,6 +1406,9 @@ public:
 
         ImhMultiLine = 0x400,
 
+        ImhNoEditMenu = 0x800,
+        ImhNoTextHandles = 0x1000,
+
         ImhDigitsOnly = 0x10000,
         ImhFormattedNumbersOnly = 0x20000,
         ImhUppercaseOnly = 0x40000,
@@ -1860,6 +1863,16 @@ public:
     static bool unregisterCallback(Callback, qInternalCallback);
     static bool activateCallbacks(Callback, void **);
 };
+
+#if defined(Q_CLANG_QDOC)
+// Declared here for qdoc; actual declarations in qtextdocument.h
+namespace Qt
+{
+    bool mightBeRichText(const QString&);
+    QString convertFromPlainText(const QString &plain, WhiteSpaceMode mode = WhiteSpacePre);
+    QTextCodec *codecForHtml(const QByteArray &ba);
+}
+#endif // Q_CLANG_QDOC
 
 QT_END_NAMESPACE
 

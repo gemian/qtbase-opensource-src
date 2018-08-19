@@ -4,9 +4,13 @@
 #include "qglobal.h"
 #include "qabstractanimation.h"
 #include "qabstracteventdispatcher.h"
+#if QT_CONFIG(itemmodel)
 #include "qabstractitemmodel.h"
+#endif
 #include "qabstractnativeeventfilter.h"
+#if QT_CONFIG(proxymodel)
 #include "qabstractproxymodel.h"
+#endif
 #if QT_CONFIG(statemachine)
 #include "qabstractstate.h"
 #endif
@@ -53,7 +57,9 @@
 #if QT_CONFIG(qeventtransition)
 #include "qeventtransition.h"
 #endif
+#if QT_CONFIG(future)
 #include "qexception.h"
+#endif
 #include "qfactoryinterface.h"
 #include "qfile.h"
 #include "qfiledevice.h"
@@ -64,10 +70,18 @@
 #include "qfinalstate.h"
 #endif
 #include "qflags.h"
+#if QT_CONFIG(future)
 #include "qfuture.h"
+#endif
+#if QT_CONFIG(future)
 #include "qfutureinterface.h"
+#endif
+#if QT_CONFIG(future)
 #include "qfuturesynchronizer.h"
+#endif
+#if QT_CONFIG(future)
 #include "qfuturewatcher.h"
+#endif
 #include "qgenericatomic.h"
 #include "qglobalstatic.h"
 #include "qhash.h"
@@ -75,10 +89,14 @@
 #if QT_CONFIG(statemachine)
 #include "qhistorystate.h"
 #endif
+#if QT_CONFIG(identityproxymodel)
 #include "qidentityproxymodel.h"
+#endif
 #include "qiodevice.h"
 #include "qisenum.h"
+#if QT_CONFIG(itemmodel)
 #include "qitemselectionmodel.h"
+#endif
 #include "qiterator.h"
 #include "qjsonarray.h"
 #include "qjsondocument.h"
@@ -128,9 +146,13 @@
 #include "qrect.h"
 #include "qrefcount.h"
 #include "qregexp.h"
+#if QT_CONFIG(regularexpression)
 #include "qregularexpression.h"
+#endif
 #include "qresource.h"
+#if QT_CONFIG(future)
 #include "qresultstore.h"
+#endif
 #include "qrunnable.h"
 #include "qsavefile.h"
 #include "qscopedpointer.h"
@@ -148,7 +170,9 @@
 #endif
 #include "qsize.h"
 #include "qsocketnotifier.h"
+#if QT_CONFIG(sortfilterproxymodel)
 #include "qsortfilterproxymodel.h"
+#endif
 #include "qstack.h"
 #include "qstandardpaths.h"
 #if QT_CONFIG(statemachine)
@@ -162,7 +186,9 @@
 #include "qstringalgorithms.h"
 #include "qstringbuilder.h"
 #include "qstringlist.h"
+#if QT_CONFIG(stringlistmodel)
 #include "qstringlistmodel.h"
+#endif
 #include "qstringliteral.h"
 #include "qstringmatcher.h"
 #include "qstringview.h"

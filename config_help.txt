@@ -95,6 +95,8 @@ Build options:
   -optimized-tools ..... Build optimized host tools even in debug build [no]
   -force-debug-info .... Create symbol files for release builds [no]
   -separate-debug-info . Split off debug information to separate files [no]
+  -gdb-index ........... Index the debug info to speed up GDB
+                         [no; auto if -developer-build with debug info]
   -strip ............... Strip release binaries of unneeded symbols [yes]
   -force-asserts ....... Enable Q_ASSERT even in release builds [no]
   -developer-build ..... Compile and link Qt for developing Qt itself
@@ -119,6 +121,11 @@ Build options:
 
   -testcocoon .......... Instrument with the TestCocoon code coverage tool [no]
   -gcov ................ Instrument with the GCov code coverage tool [no]
+
+  -trace [backend] ..... Enable instrumentation with tracepoints.
+                         Currently supported backends are 'etw' (Windows) and
+                         'lttng' (Linux), or 'yes' for auto-detection. [no]
+
   -sanitize {address|thread|memory|undefined}
                          Instrument with the specified compiler sanitizer.
                          Note that some sanitizers cannot be combined;
@@ -212,7 +219,6 @@ Component selection:
   -dbus-runtime ........ Build Qt D-Bus and dynamically load libdbus-1 [no]
   -accessibility ....... Enable accessibility support [yes]
                          Note: Disabling accessibility is not recommended.
-  -qml-debug ........... Enable QML debugging support [yes]
 
 Qt comes with bundled copies of some 3rd party libraries. These are used
 by default if auto-detection of the respective system library fails.
@@ -270,7 +276,8 @@ Gui, printing, widget options:
                          (Windows only)
   -combined-angle-lib .. Merge LibEGL and LibGLESv2 into LibANGLE (Windows only)
 
-  -qpa <name> .......... Select default QPA backend (e.g., xcb, cocoa, windows)
+  -qpa <name> .......... Select default QPA backend(s) (e.g., xcb, cocoa, windows)
+                         A prioritized list separated by semi-colons.
   -xcb-xlib............. Enable Xcb-Xlib support [auto]
 
   Platform backends:
@@ -285,6 +292,7 @@ Gui, printing, widget options:
                          (-qt-xcb still uses system version of libxcb itself)
 
   Input backends:
+    -libudev............ Enable udev support [auto]
     -evdev ............. Enable evdev support [auto]
     -imf ............... Enable IMF support [auto] (QNX only)
     -libinput .......... Enable libinput support [auto]
@@ -293,8 +301,6 @@ Gui, printing, widget options:
     -xinput2 ........... Enable XInput2 support [auto]
     -xkbcommon-x11 ..... Select xkbcommon used in combination with xcb
                          [system/qt/no]
-    -xkb-config-root <dir> ... With -qt-xkbcommon-x11, set default XKB config
-                               root <dir> [detect]
     -xkbcommon-evdev ... Enable X-less xkbcommon in combination with libinput
                          [auto]
 

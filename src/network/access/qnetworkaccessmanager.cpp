@@ -66,10 +66,12 @@
 #include "QtNetwork/private/qauthenticator_p.h"
 #include "QtNetwork/qsslconfiguration.h"
 #include "QtNetwork/qnetworkconfigmanager.h"
-#include "QtNetwork/qhttpmultipart.h"
-#include "qhttpmultipart_p.h"
 
+#if QT_CONFIG(http)
+#include "qhttpmultipart.h"
+#include "qhttpmultipart_p.h"
 #include "qnetworkreplyhttpimpl_p.h"
+#endif
 
 #include "qthread.h"
 
@@ -176,7 +178,9 @@ static void ensureInitialized()
     it sends. It contains the proxy and cache configuration, as well as the
     signals related to such issues, and reply signals that can be used to
     monitor the progress of a network operation. One QNetworkAccessManager
-    should be enough for the whole Qt application.
+    instance should be enough for the whole Qt application. Since
+    QNetworkAccessManager is based on QObject, it can only be used from the
+    thread it belongs to.
 
     Once a QNetworkAccessManager object has been created, the application can
     use it to send requests over the network. A group of standard functions
@@ -469,7 +473,7 @@ QNetworkAccessManager::QNetworkAccessManager(QObject *parent)
     qRegisterMetaType<QSslPreSharedKeyAuthenticator *>();
 #endif
     qRegisterMetaType<QList<QPair<QByteArray,QByteArray> > >();
-#ifndef QT_NO_HTTP
+#if QT_CONFIG(http)
     qRegisterMetaType<QHttpNetworkRequest>();
 #endif
     qRegisterMetaType<QNetworkReply::NetworkError>();
@@ -779,7 +783,9 @@ bool QNetworkAccessManager::isStrictTransportSecurityStoreEnabled() const
 /*!
     \since 5.9
 
-    Adds HTTP Strict Transport Security policies contained in \a knownHosts into HSTS cache.
+    Adds HTTP Strict Transport Security policies into HSTS cache.
+    \a knownHosts contains the known hosts that have QHstsPolicy
+    information.
 
     \note An expired policy will remove a known host from the cache, if previously
     present.
@@ -877,6 +883,7 @@ QNetworkReply *QNetworkAccessManager::post(const QNetworkRequest &request, const
     return reply;
 }
 
+#if QT_CONFIG(http)
 /*!
     \since 4.8
 
@@ -916,6 +923,7 @@ QNetworkReply *QNetworkAccessManager::put(const QNetworkRequest &request, QHttpM
     QNetworkReply *reply = put(newRequest, device);
     return reply;
 }
+#endif // QT_CONFIG(http)
 
 /*!
     Uploads the contents of \a data to the destination \a request and
@@ -1283,6 +1291,7 @@ QNetworkReply *QNetworkAccessManager::sendCustomRequest(const QNetworkRequest &r
     return reply;
 }
 
+#if QT_CONFIG(http)
 /*!
     \since 5.8
 
@@ -1304,6 +1313,7 @@ QNetworkReply *QNetworkAccessManager::sendCustomRequest(const QNetworkRequest &r
     QNetworkReply *reply = sendCustomRequest(newRequest, verb, device);
     return reply;
 }
+#endif // QT_CONFIG(http)
 
 /*!
     Returns a new QNetworkReply object to handle the operation \a op
@@ -1416,7 +1426,7 @@ QNetworkReply *QNetworkAccessManager::createRequest(QNetworkAccessManager::Opera
         }
     }
 
-#ifndef QT_NO_HTTP
+#if QT_CONFIG(http)
     // Since Qt 5 we use the new QNetworkReplyHttpImpl
     if (scheme == QLatin1String("http") || scheme == QLatin1String("preconnect-http")
 #ifndef QT_NO_SSL
@@ -1448,7 +1458,7 @@ QNetworkReply *QNetworkAccessManager::createRequest(QNetworkAccessManager::Opera
 #endif
         return reply;
     }
-#endif // QT_NO_HTTP
+#endif // QT_CONFIG(http)
 
     // first step: create the reply
     QNetworkReplyImpl *reply = new QNetworkReplyImpl(this);
@@ -1524,7 +1534,7 @@ QStringList QNetworkAccessManager::supportedSchemesImplementation() const
 
     QStringList schemes = d->backendSupportedSchemes();
     // Those ones don't exist in backends
-#ifndef QT_NO_HTTP
+#if QT_CONFIG(http)
     schemes << QStringLiteral("http");
 #ifndef QT_NO_SSL
     if (QSslSocket::supportsSsl())
@@ -1991,6 +2001,7 @@ void QNetworkAccessManagerPrivate::_q_networkSessionFailed(QNetworkSession::Sess
 
 #endif // QT_NO_BEARERMANAGEMENT
 
+#if QT_CONFIG(http)
 QNetworkRequest QNetworkAccessManagerPrivate::prepareMultipart(const QNetworkRequest &request, QHttpMultiPart *multiPart)
 {
     // copy the request, we probably need to add some headers
@@ -2038,6 +2049,7 @@ QNetworkRequest QNetworkAccessManagerPrivate::prepareMultipart(const QNetworkReq
 
     return newRequest;
 }
+#endif // QT_CONFIG(http)
 
 QT_END_NAMESPACE
 

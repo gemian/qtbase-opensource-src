@@ -448,11 +448,11 @@ public:
     {
     }
 
-    int columnNumber() const Q_DECL_OVERRIDE
+    int columnNumber() const override
     {
         return (reader->d_ptr->columnNr == -1 ? -1 : reader->d_ptr->columnNr + 1);
     }
-    int lineNumber() const Q_DECL_OVERRIDE
+    int lineNumber() const override
     {
         return (reader->d_ptr->lineNr == -1 ? -1 : reader->d_ptr->lineNr + 1);
     }
@@ -776,6 +776,11 @@ QXmlAttributes::~QXmlAttributes()
 {
 }
 
+/*!
+  \fn void QXmlAttributes::swap(QXmlAttributes &other)
+
+  Swaps \c this with \a other.
+ */
 
 /*!
     Looks up the index of an attribute by the qualified name \a qName.

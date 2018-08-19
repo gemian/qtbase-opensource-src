@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2017 The Qt Company Ltd.
 ** Copyright (C) 2016 Intel Corporation.
 ** Contact: https://www.qt.io/licensing/
 **
@@ -1155,7 +1155,7 @@ void QWidgetPrivate::init(QWidget *parentWidget, Qt::WindowFlags f)
     if (targetScreen >= 0) {
         topData()->initialScreenIndex = targetScreen;
         if (QWindow *window = q->windowHandle())
-            window->setScreen(QGuiApplication::screens().value(targetScreen, Q_NULLPTR));
+            window->setScreen(QGuiApplication::screens().value(targetScreen, nullptr));
     }
 
     data.fstrut_dirty = true;
@@ -1322,7 +1322,7 @@ void QWidget::create(WId window, bool initializeWindow, bool destroyOldWindow)
              << "Alien?" << !testAttribute(Qt::WA_NativeWindow);
 #endif
 
-#if 0 /* Used to be included in Qt4 for Q_WS_WIN */ && !defined(QT_NO_DRAGANDDROP)
+#if 0 /* Used to be included in Qt4 for Q_WS_WIN */ && QT_CONFIG(draganddrop)
     // Unregister the dropsite (if already registered) before we
     // re-create the widget with a native window.
     if (testAttribute(Qt::WA_WState_Created) && !internalWinId() && testAttribute(Qt::WA_NativeWindow)
@@ -1454,7 +1454,7 @@ void QWidgetPrivate::create_sys(WId window, bool initializeWindow, bool destroyO
             screenNumber = q->windowType() != Qt::Desktop
                 ? QDesktopWidgetPrivate::screenNumber(q) : 0;
         }
-        win->setScreen(QGuiApplication::screens().value(screenNumber, Q_NULLPTR));
+        win->setScreen(QGuiApplication::screens().value(screenNumber, nullptr));
     }
 
     QSurfaceFormat format = win->requestedFormat();
@@ -1496,7 +1496,7 @@ void QWidgetPrivate::create_sys(WId window, bool initializeWindow, bool destroyO
     QBackingStore *store = q->backingStore();
 
     if (!store) {
-        if (win && q->windowType() != Qt::Desktop) {
+        if (q->windowType() != Qt::Desktop) {
             if (q->isTopLevel())
                 q->setBackingStore(new QBackingStore(win));
         } else {
@@ -1678,6 +1678,7 @@ QWidget::~QWidget()
     }
 
     if (d->declarativeData) {
+        d->wasDeleted = true; // needed, so that destroying the declarative data does the right thing
         if (static_cast<QAbstractDeclarativeDataImpl*>(d->declarativeData)->ownedByQml1) {
             if (QAbstractDeclarativeData::destroyed_qml1)
                 QAbstractDeclarativeData::destroyed_qml1(d->declarativeData, this);
@@ -1686,6 +1687,7 @@ QWidget::~QWidget()
                 QAbstractDeclarativeData::destroyed(d->declarativeData, this);
         }
         d->declarativeData = 0;                 // don't activate again in ~QObject
+        d->wasDeleted = false;
     }
 
     d->blockSig = blocked;
@@ -5482,11 +5484,11 @@ void QWidgetPrivate::drawWidget(QPaintDevice *pdev, const QRegion &rgn, const QP
                 setSystemClip(pdev->paintEngine(), pdev->devicePixelRatioF(), rgn.translated(offset));
                 QPainter p(pdev);
                 p.translate(offset);
-                context.painter = context.sharedPainter = &p;
+                context.painter = &p;
                 graphicsEffect->draw(&p);
                 setSystemClip(pdev->paintEngine(), 1, QRegion());
             } else {
-                context.painter = context.sharedPainter = sharedPainter;
+                context.painter = sharedPainter;
                 if (sharedPainter->worldTransform() != sourced->lastEffectTransform) {
                     sourced->invalidateCache();
                     sourced->lastEffectTransform = sharedPainter->worldTransform();
@@ -5592,21 +5594,23 @@ void QWidgetPrivate::drawWidget(QPaintDevice *pdev, const QRegion &rgn, const QP
             if (renderToTexture) {
                 // This widget renders into a texture which is composed later. We just need to
                 // punch a hole in the backingstore, so the texture will be visible.
-                if (!q->testAttribute(Qt::WA_AlwaysStackOnTop)) {
-                    beginBackingStorePainting();
-                    if (backingStore) {
-                        QPainter p(q);
-                        p.setCompositionMode(QPainter::CompositionMode_Source);
-                        p.fillRect(q->rect(), Qt::transparent);
-                    } else {
-                        QImage img = grabFramebuffer();
-                        QPainter p(q);
-                        // We are not drawing to a backingstore: fall back to QImage
-                        p.drawImage(q->rect(), img);
-                        skipPaintEvent = true;
-                    }
-                    endBackingStorePainting();
+                beginBackingStorePainting();
+                if (!q->testAttribute(Qt::WA_AlwaysStackOnTop) && backingStore) {
+                    QPainter p(q);
+                    p.setCompositionMode(QPainter::CompositionMode_Source);
+                    p.fillRect(q->rect(), Qt::transparent);
+                } else if (!backingStore) {
+                    // We are not drawing to a backingstore: fall back to QImage
+                    QImage img = grabFramebuffer();
+                    // grabFramebuffer() always sets the format to RGB32
+                    // regardless of whether it is transparent or not.
+                    if (img.format() == QImage::Format_RGB32)
+                        img.reinterpretAsFormat(QImage::Format_ARGB32_Premultiplied);
+                    QPainter p(q);
+                    p.drawImage(q->rect(), img);
+                    skipPaintEvent = true;
                 }
+                endBackingStorePainting();
                 if (renderToTextureReallyDirty)
                     renderToTextureReallyDirty = 0;
                 else
@@ -7985,7 +7989,7 @@ void QWidgetPrivate::show_helper()
 
     const bool isWindow = q->isWindow();
 #if QT_CONFIG(graphicsview)
-    bool isEmbedded = isWindow && q->graphicsProxyWidget() != Q_NULLPTR;
+    bool isEmbedded = isWindow && q->graphicsProxyWidget() != nullptr;
 #else
     bool isEmbedded = false;
 #endif
@@ -8476,7 +8480,7 @@ bool QWidgetPrivate::close_helper(CloseMode mode)
     data.is_closing = 1;
 
     QPointer<QWidget> that = q;
-    QPointer<QWidget> parentWidget = q->parentWidget();
+    QPointer<QWidget> parentWidget = (q->parentWidget() && !QObjectPrivate::get(q->parentWidget())->wasDeleted) ? q->parentWidget() : nullptr;
 
     bool quitOnClose = q->testAttribute(Qt::WA_QuitOnClose);
     if (mode != CloseNoEvent) {
@@ -9093,7 +9097,7 @@ bool QWidget::event(QEvent *event)
         break;
 #endif // QT_NO_CONTEXTMENU
 
-#ifndef QT_NO_DRAGANDDROP
+#if QT_CONFIG(draganddrop)
     case QEvent::Drop:
         dropEvent((QDropEvent*) event);
         break;
@@ -9975,7 +9979,7 @@ void QWidget::setInputMethodHints(Qt::InputMethodHints hints)
 }
 
 
-#ifndef QT_NO_DRAGANDDROP
+#if QT_CONFIG(draganddrop)
 
 /*!
     \fn void QWidget::dragEnterEvent(QDragEnterEvent *event)
@@ -10044,7 +10048,7 @@ void QWidget::dropEvent(QDropEvent *)
 {
 }
 
-#endif // QT_NO_DRAGANDDROP
+#endif // QT_CONFIG(draganddrop)
 
 /*!
     \fn void QWidget::showEvent(QShowEvent *event)
@@ -11148,7 +11152,7 @@ void QWidgetPrivate::macUpdateSizeAttribute()
     for (int i = 0; i < children.size(); ++i) {
         QWidget *w = qobject_cast<QWidget *>(children.at(i));
         if (w && (!w->isWindow() || w->testAttribute(Qt::WA_WindowPropagation))
-              && !q->testAttribute(Qt::WA_MacMiniSize) // no attribute set? inherit from parent
+              && !w->testAttribute(Qt::WA_MacMiniSize) // no attribute set? inherit from parent
               && !w->testAttribute(Qt::WA_MacSmallSize)
               && !w->testAttribute(Qt::WA_MacNormalSize))
             w->d_func()->macUpdateSizeAttribute();
@@ -11193,7 +11197,7 @@ void QWidget::setAttribute(Qt::WidgetAttribute attribute, bool on)
 
     switch (attribute) {
 
-#ifndef QT_NO_DRAGANDDROP
+#if QT_CONFIG(draganddrop)
     case Qt::WA_AcceptDrops:  {
         if (on && !testAttribute(Qt::WA_DropSiteRegistered))
             setAttribute(Qt::WA_DropSiteRegistered, true);
@@ -11220,10 +11224,7 @@ void QWidget::setAttribute(Qt::WidgetAttribute attribute, bool on)
     case Qt::WA_NoChildEventsFromChildren:
         d->receiveChildEvents = !on;
         break;
-    case Qt::WA_MacBrushedMetal:
 #if 0 // Used to be included in Qt4 for Q_WS_MAC
-        d->setStyle_helper(style(), false, true);  // Make sure things get unpolished/polished correctly.
-        // fall through since changing the metal attribute affects the opaque size grip.
     case Qt::WA_MacOpaqueSizeGrip:
         d->macUpdateOpaqueSizeGrip();
         break;
@@ -11236,12 +11237,10 @@ void QWidget::setAttribute(Qt::WidgetAttribute attribute, bool on)
     case Qt::WA_Hover:
         qt_mac_update_mouseTracking(this);
         break;
-#endif
     case Qt::WA_MacAlwaysShowToolWindow:
-#if 0 // Used to be included in Qt4 for Q_WS_MAC
         d->macUpdateHideOnSuspend();
-#endif
         break;
+#endif
     case Qt::WA_MacNormalSize:
     case Qt::WA_MacSmallSize:
     case Qt::WA_MacMiniSize:
@@ -12506,7 +12505,7 @@ static inline bool canMapPosition(QWindow *window)
 #if QT_CONFIG(graphicsview)
 static inline QGraphicsProxyWidget *graphicsProxyWidget(const QWidget *w)
 {
-    QGraphicsProxyWidget *result = Q_NULLPTR;
+    QGraphicsProxyWidget *result = nullptr;
     const QWidgetPrivate *d = qt_widget_private(const_cast<QWidget *>(w));
     if (d->extra)
         result = d->extra->proxyWidget;
@@ -12522,7 +12521,7 @@ struct MapToGlobalTransformResult {
 static MapToGlobalTransformResult mapToGlobalTransform(const QWidget *w)
 {
     MapToGlobalTransformResult result;
-    result.window = Q_NULLPTR;
+    result.window = nullptr;
     for ( ; w ; w = w->parentWidget()) {
 #if QT_CONFIG(graphicsview)
         if (QGraphicsProxyWidget *qgpw = graphicsProxyWidget(w)) {

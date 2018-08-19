@@ -46,7 +46,6 @@
 #include <QtCore/qfile.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/qvector.h>
-#include <QtCore/qregularexpression.h>
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qcryptographichash.h>
 #include <QtCore/qcoreapplication.h>
@@ -562,7 +561,7 @@ static QVersionDirectivePosition findVersionDirectivePosition(const char *source
                 break;
             }
             state = Normal;
-            // fall through
+            Q_FALLTHROUGH();
         case Normal:
             if (*c == '/')
                 state = CommentStarting;

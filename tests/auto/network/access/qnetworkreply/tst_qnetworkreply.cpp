@@ -548,7 +548,9 @@ static void setupSslServer(QSslSocket* serverSocket)
 }
 #endif
 
-// Limited support for POST and PUT.
+// NOTE: MiniHttpServer has a very limited support of PUT/POST requests! Make
+// sure you understand the server's code before PUTting/POSTing data (and
+// probably you'll have to update the logic).
 class MiniHttpServer: public QTcpServer
 {
     Q_OBJECT
@@ -589,6 +591,12 @@ public:
     void setDataToTransmit(const QByteArray &data)
     {
         dataToTransmit = data;
+    }
+
+    void clearHeaderParserState()
+    {
+        contentLength = 0;
+        receivedData.clear();
     }
 
 protected:
@@ -672,6 +680,7 @@ private slots:
     }
 
 public slots:
+
     void readyReadSlot()
     {
         QTcpSocket *currentClient = qobject_cast<QTcpSocket *>(sender());
@@ -7341,6 +7350,7 @@ void tst_QNetworkReply::qtbug28035browserDoesNotLoadQtProjectOrgCorrectly() {
     QCOMPARE(reply->readAll(), QByteArray("GET"));
     QCOMPARE(reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool(), false);
 
+    server.clearHeaderParserState();
     server.setDataToTransmit(getReply);
     reply.reset(manager.get(request));
     QVERIFY2(waitForFinish(reply) == Success, msgWaitForFinished(reply));
@@ -7350,6 +7360,7 @@ void tst_QNetworkReply::qtbug28035browserDoesNotLoadQtProjectOrgCorrectly() {
     QCOMPARE(reply->readAll(), QByteArray("GET"));
     QCOMPARE(reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool(), true);
 
+    server.clearHeaderParserState();
     server.setDataToTransmit(postReply);
     request.setRawHeader("Content-Type", "text/plain");
     reply.reset(manager.post(request, postData));
@@ -7362,6 +7373,7 @@ void tst_QNetworkReply::qtbug28035browserDoesNotLoadQtProjectOrgCorrectly() {
     QCOMPARE(reply->readAll(), QByteArray("POST"));
     QCOMPARE(reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool(), false);
 
+    server.clearHeaderParserState();
     server.setDataToTransmit(getReply);
     reply.reset(manager.get(request));
 
@@ -7372,6 +7384,7 @@ void tst_QNetworkReply::qtbug28035browserDoesNotLoadQtProjectOrgCorrectly() {
     QCOMPARE(reply->readAll(), QByteArray("GET"));
     QCOMPARE(reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool(), false);
 
+    server.clearHeaderParserState();
     server.setDataToTransmit(getReply);
     reply.reset(manager.get(request));
 
@@ -7382,6 +7395,7 @@ void tst_QNetworkReply::qtbug28035browserDoesNotLoadQtProjectOrgCorrectly() {
     QCOMPARE(reply->readAll(), QByteArray("GET"));
     QCOMPARE(reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool(), true);
 
+    server.clearHeaderParserState();
     server.setDataToTransmit(putReply);
     reply.reset(manager.put(request, postData));
 
@@ -7391,6 +7405,7 @@ void tst_QNetworkReply::qtbug28035browserDoesNotLoadQtProjectOrgCorrectly() {
     QCOMPARE(reply->error(), QNetworkReply::NoError);
     QCOMPARE(reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool(), false);
 
+    server.clearHeaderParserState();
     server.setDataToTransmit(getReply);
     reply.reset(manager.get(request));
 
@@ -7401,6 +7416,7 @@ void tst_QNetworkReply::qtbug28035browserDoesNotLoadQtProjectOrgCorrectly() {
     QCOMPARE(reply->readAll(), QByteArray("GET"));
     QCOMPARE(reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool(), false);
 
+    server.clearHeaderParserState();
     server.setDataToTransmit(getReply);
     reply.reset(manager.get(request));
 
@@ -7800,13 +7816,14 @@ void tst_QNetworkReply::closeDuringDownload()
     QFETCH(QUrl, url);
     QNetworkRequest request(url);
     QNetworkReply* reply = manager.get(request);
-    connect(reply, SIGNAL(readyRead()), &QTestEventLoop::instance(), SLOT(exitLoop()));
-    QTestEventLoop::instance().enterLoop(10);
-    QVERIFY(!QTestEventLoop::instance().timeout());
-    connect(reply, SIGNAL(finished()), &QTestEventLoop::instance(), SLOT(exitLoop()));
+    QSignalSpy readyReadSpy(reply, &QNetworkReply::readyRead);
+    QVERIFY(readyReadSpy.wait(10000));
+    QSignalSpy destroySpy(reply, &QObject::destroyed);
     reply->close();
     reply->deleteLater();
-    QTest::qWait(1000); //cancelling ftp takes some time, this avoids a warning caused by test's cleanup() destroying the connection cache before the abort is finished
+    // Wait for destruction to avoid a warning caused by test's cleanup()
+    // destroying the connection cache before the abort is finished
+    QVERIFY(destroySpy.wait());
 }
 
 void tst_QNetworkReply::ftpAuthentication_data()

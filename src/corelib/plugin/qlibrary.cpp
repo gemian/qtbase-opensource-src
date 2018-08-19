@@ -64,6 +64,8 @@
 #include "qelfparser_p.h"
 #include "qmachparser_p.h"
 
+#include <qtcore_tracepoints_p.h>
+
 QT_BEGIN_NAMESPACE
 
 #ifdef QT_NO_DEBUG
@@ -548,6 +550,8 @@ bool QLibraryPrivate::load()
     if (fileName.isEmpty())
         return false;
 
+    Q_TRACE(qlibraryprivate_load_entry, fileName);
+
     bool ret = load_sys();
     if (qt_debug_component()) {
         if (ret) {
@@ -563,6 +567,8 @@ bool QLibraryPrivate::load()
         libraryRefCount.ref();
         installCoverageTool(this);
     }
+
+    Q_TRACE(qlibraryprivate_load_exit, ret);
 
     return ret;
 }

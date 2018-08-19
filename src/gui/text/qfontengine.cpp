@@ -992,13 +992,12 @@ void QFontEngine::removeGlyphFromCache(glyph_t)
 QFontEngine::Properties QFontEngine::properties() const
 {
     Properties p;
-    QByteArray psname = QFontEngine::convertToPostscriptFontFamilyName(fontDef.family.toUtf8());
-    psname += '-';
-    psname += QByteArray::number(fontDef.style);
-    psname += '-';
-    psname += QByteArray::number(fontDef.weight);
-
-    p.postscriptName = psname;
+    p.postscriptName
+            = QFontEngine::convertToPostscriptFontFamilyName(fontDef.family.toUtf8())
+            + '-'
+            + QByteArray::number(fontDef.style)
+            + '-'
+            + QByteArray::number(fontDef.weight);
     p.ascent = ascent();
     p.descent = descent();
     p.leading = leading();
@@ -1080,7 +1079,7 @@ QFontEngineGlyphCache *QFontEngine::glyphCache(const void *context, GlyphFormat 
 {
     const QHash<const void*, GlyphCaches>::const_iterator caches = m_glyphCaches.constFind(context);
     if (caches == m_glyphCaches.cend())
-        return Q_NULLPTR;
+        return nullptr;
 
     for (GlyphCaches::const_iterator it = caches->begin(), end = caches->end(); it != end; ++it) {
         QFontEngineGlyphCache *cache = it->cache.data();
@@ -1088,7 +1087,7 @@ QFontEngineGlyphCache *QFontEngine::glyphCache(const void *context, GlyphFormat 
             return cache;
     }
 
-    return Q_NULLPTR;
+    return nullptr;
 }
 
 static inline QFixed kerning(int left, int right, const QFontEngine::KernPair *pairs, int numPairs)
@@ -1234,7 +1233,7 @@ int QFontEngine::glyphCount() const
 
 Qt::HANDLE QFontEngine::handle() const
 {
-    return Q_NULLPTR;
+    return nullptr;
 }
 
 const uchar *QFontEngine::getCMap(const uchar *table, uint tableSize, bool *isSymbolFont, int *cmapSize)

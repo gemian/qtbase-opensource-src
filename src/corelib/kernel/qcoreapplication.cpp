@@ -116,6 +116,12 @@
 #  include <taskLib.h>
 #endif
 
+#ifdef QT_BOOTSTRAPPED
+#include <private/qtrace_p.h>
+#else
+#include <qtcore_tracepoints_p.h>
+#endif
+
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
@@ -449,7 +455,7 @@ QCoreApplicationPrivate::QCoreApplicationPrivate(int &aargc, char **aargv, uint 
     , argv(aargv)
 #if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
     , origArgc(0)
-    , origArgv(Q_NULLPTR)
+    , origArgv(nullptr)
 #endif
     , application_type(QCoreApplicationPrivate::Tty)
 #ifndef QT_NO_QOBJECT
@@ -532,29 +538,10 @@ void QCoreApplicationPrivate::cleanupThreadData()
 void QCoreApplicationPrivate::createEventDispatcher()
 {
     Q_Q(QCoreApplication);
-#if defined(Q_OS_UNIX)
-#  if defined(Q_OS_DARWIN)
-    bool ok = false;
-    int value = qEnvironmentVariableIntValue("QT_EVENT_DISPATCHER_CORE_FOUNDATION", &ok);
-    if (ok && value > 0)
-        eventDispatcher = new QEventDispatcherCoreFoundation(q);
-    else
-        eventDispatcher = new QEventDispatcherUNIX(q);
-#  elif !defined(QT_NO_GLIB)
-    if (qEnvironmentVariableIsEmpty("QT_NO_GLIB") && QEventDispatcherGlib::versionSupported())
-        eventDispatcher = new QEventDispatcherGlib(q);
-    else
-        eventDispatcher = new QEventDispatcherUNIX(q);
-#  else
-        eventDispatcher = new QEventDispatcherUNIX(q);
-#  endif
-#elif defined(Q_OS_WINRT)
-    eventDispatcher = new QEventDispatcherWinRT(q);
-#elif defined(Q_OS_WIN)
-    eventDispatcher = new QEventDispatcherWin32(q);
-#else
-#  error "QEventDispatcher not yet ported to this platform"
-#endif
+    QThreadData *data = QThreadData::current();
+    Q_ASSERT(!data->hasEventDispatcher());
+    eventDispatcher = QThreadPrivate::createEventDispatcher(data);
+    eventDispatcher->setParent(q);
 }
 
 void QCoreApplicationPrivate::eventDispatcherReady()
@@ -781,9 +768,17 @@ QCoreApplication::QCoreApplication(int &argc, char **argv
 #endif
 }
 
+/*!
+  \enum QCoreApplication::anonymous
+  \internal
+
+  \value ApplicationFlags QT_VERSION
+*/
 
 void QCoreApplicationPrivate::init()
 {
+    Q_TRACE(qcoreapplicationprivate_init_entry);
+
 #if defined(Q_OS_MACOS)
     QMacAutoReleasePool pool;
 #endif
@@ -842,8 +837,9 @@ void QCoreApplicationPrivate::init()
 
 #ifndef QT_NO_QOBJECT
     // use the event dispatcher created by the app programmer (if any)
-    if (!eventDispatcher)
-        eventDispatcher = threadData->eventDispatcher.load();
+    Q_ASSERT(!eventDispatcher);
+    eventDispatcher = threadData->eventDispatcher.load();
+
     // otherwise we create one
     if (!eventDispatcher)
         createEventDispatcher();
@@ -875,6 +871,8 @@ void QCoreApplicationPrivate::init()
 #ifndef QT_NO_QOBJECT
     is_app_running = true; // No longer starting up.
 #endif
+
+    Q_TRACE(qcoreapplicationprivate_init_exit);
 }
 
 /*!
@@ -1371,6 +1369,13 @@ void QCoreApplicationPrivate::execCleanup()
 
   By convention, a \a returnCode of 0 means success, and any non-zero
   value indicates an error.
+
+  It's good practice to always connect signals to this slot using a
+  \l{Qt::}{QueuedConnection}. If a signal connected (non-queued) to this slot
+  is emitted before control enters the main event loop (such as before
+  "int main" calls \l{QCoreApplication::}{exec()}), the slot has no effect
+  and the application never exits. Using a queued connection ensures that the
+  slot will not be invoked until after control enters the main event loop.
 
   Note that unlike the C library function of the same name, this
   function \e does return to the caller -- it is event processing that
@@ -1914,6 +1919,13 @@ void QCoreApplicationPrivate::maybeQuit()
     It's common to connect the QGuiApplication::lastWindowClosed() signal
     to quit(), and you also often connect e.g. QAbstractButton::clicked() or
     signals in QAction, QMenu, or QMenuBar to it.
+
+    It's good practice to always connect signals to this slot using a
+    \l{Qt::}{QueuedConnection}. If a signal connected (non-queued) to this slot
+    is emitted before control enters the main event loop (such as before
+    "int main" calls \l{QCoreApplication::}{exec()}), the slot has no effect
+    and the application never exits. Using a queued connection ensures that the
+    slot will not be invoked until after control enters the main event loop.
 
     Example:
 

@@ -387,6 +387,11 @@
     (see \l{QAbstractSocket::}{setReadBufferSize()}).
     This enum value has been introduced in Qt 5.3.
 
+    \value PathMtuSocketOption Retrieves the Path Maximum Transmission Unit
+    (PMTU) value currently known by the IP stack, if any. Some IP stacks also
+    allow setting the MTU for transmission.
+    This enum value was introduced in Qt 5.11.
+
     Possible values for \e{TypeOfServiceOption} are:
 
     \table
@@ -1354,15 +1359,29 @@ void QAbstractSocketPrivate::fetchConnectionParameters()
     }
 
     state = QAbstractSocket::ConnectedState;
-    emit q->stateChanged(state);
-    emit q->connected();
-
 #if defined(QABSTRACTSOCKET_DEBUG)
     qDebug("QAbstractSocketPrivate::fetchConnectionParameters() connection to %s:%i established",
            host.toString().toLatin1().constData(), port);
 #endif
+    emit q->stateChanged(state);
+    emit q->connected();
 }
 
+/*! \internal
+*/
+qint64 QAbstractSocketPrivate::skip(qint64 maxSize)
+{
+    // if we're not connected, return -1 indicating EOF
+    if (!socketEngine || !socketEngine->isValid() || state != QAbstractSocket::ConnectedState)
+        return -1;
+
+    // Caller, QIODevice::skip(), has ensured buffer is empty. So, wait
+    // for more data in buffered mode.
+    if (isBuffered)
+        return 0;
+
+    return QIODevicePrivate::skip(maxSize);
+}
 
 void QAbstractSocketPrivate::pauseSocketNotifiers(QAbstractSocket *socket)
 {
@@ -2013,6 +2032,10 @@ void QAbstractSocket::setSocketOption(QAbstractSocket::SocketOption option, cons
         case ReceiveBufferSizeSocketOption:
             d_func()->socketEngine->setOption(QAbstractSocketEngine::ReceiveBufferSocketOption, value.toInt());
             break;
+
+        case PathMtuSocketOption:
+            d_func()->socketEngine->setOption(QAbstractSocketEngine::PathMtuInformation, value.toInt());
+            break;
     }
 }
 
@@ -2054,6 +2077,10 @@ QVariant QAbstractSocket::socketOption(QAbstractSocket::SocketOption option)
 
         case ReceiveBufferSizeSocketOption:
                 ret = d_func()->socketEngine->option(QAbstractSocketEngine::ReceiveBufferSocketOption);
+                break;
+
+        case PathMtuSocketOption:
+                ret = d_func()->socketEngine->option(QAbstractSocketEngine::PathMtuInformation);
                 break;
     }
     if (ret == -1)

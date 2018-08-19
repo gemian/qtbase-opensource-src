@@ -311,7 +311,7 @@ void QTreeView::setHeader(QHeaderView *header)
         delete d->header;
     d->header = header;
     d->header->setParent(this);
-    d->header->d_func()->setAllowUserMoveOfSection0(false);
+    d->header->setFirstSectionMovable(false);
 
     if (!d->header->model()) {
         d->header->setModel(d->model);
@@ -1287,7 +1287,7 @@ void QTreeView::timerEvent(QTimerEvent *event)
 /*!
   \reimp
 */
-#ifndef QT_NO_DRAGANDDROP
+#if QT_CONFIG(draganddrop)
 void QTreeView::dragMoveEvent(QDragMoveEvent *event)
 {
     Q_D(QTreeView);
@@ -1342,7 +1342,7 @@ void QTreeView::paintEvent(QPaintEvent *event)
 #endif //QT_NO_ANIMATION
     {
         drawTree(&painter, event->region());
-#ifndef QT_NO_DRAGANDDROP
+#if QT_CONFIG(draganddrop)
         d->paintDropIndicator(&painter);
 #endif
     }
@@ -4004,6 +4004,27 @@ int QTreeView::visualIndex(const QModelIndex &index) const
     Q_D(const QTreeView);
     d->executePostedLayout();
     return d->viewIndex(index);
+}
+
+/*!
+   \internal
+*/
+
+void QTreeView::verticalScrollbarValueChanged(int value)
+{
+    Q_D(QTreeView);
+    if (!d->viewItems.isEmpty() && value == verticalScrollBar()->maximum()) {
+        QModelIndex ret = d->viewItems.last().index;
+        // Root index will be handled by base class implementation
+        while (ret.isValid()) {
+            if (isExpanded(ret) && d->model->canFetchMore(ret)) {
+                d->model->fetchMore(ret);
+                break;
+            }
+            ret = ret.parent();
+        }
+    }
+    QAbstractItemView::verticalScrollbarValueChanged(value);
 }
 
 QT_END_NAMESPACE

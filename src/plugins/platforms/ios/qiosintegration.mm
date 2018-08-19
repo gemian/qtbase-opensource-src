@@ -86,7 +86,7 @@ QIOSIntegration::QIOSIntegration()
     , m_accessibility(0)
     , m_optionalPlugins(new QFactoryLoader(QIosOptionalPluginInterface_iid, QLatin1String("/platforms/darwin")))
 {
-    if (Q_UNLIKELY(![UIApplication sharedApplication])) {
+    if (Q_UNLIKELY(!qt_apple_isApplicationExtension() && !qt_apple_sharedApplication())) {
         qFatal("Error: You are creating QApplication before calling UIApplicationMain.\n" \
                "If you are writing a native iOS application, and only want to use Qt for\n" \
                "parts of the application, a good place to create QApplication is from within\n" \
@@ -95,7 +95,10 @@ QIOSIntegration::QIOSIntegration()
 
     // Set current directory to app bundle folder
     QDir::setCurrent(QString::fromUtf8([[[NSBundle mainBundle] bundlePath] UTF8String]));
+}
 
+void QIOSIntegration::initialize()
+{
     UIScreen *mainScreen = [UIScreen mainScreen];
     NSMutableArray *screens = [[[UIScreen screens] mutableCopy] autorelease];
     if (![screens containsObject:mainScreen]) {
@@ -118,6 +121,9 @@ QIOSIntegration::QIOSIntegration()
     }
     m_touchDevice->setCapabilities(touchCapabilities);
     QWindowSystemInterface::registerTouchDevice(m_touchDevice);
+#if QT_CONFIG(tabletevent)
+    QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
+#endif
     QMacInternalPasteboardMime::initializeMimeTypes();
 
     for (int i = 0; i < m_optionalPlugins->metaData().size(); ++i)
@@ -196,12 +202,12 @@ class QIOSOffscreenSurface : public QPlatformOffscreenSurface
 public:
     QIOSOffscreenSurface(QOffscreenSurface *offscreenSurface) : QPlatformOffscreenSurface(offscreenSurface) {}
 
-    QSurfaceFormat format() const Q_DECL_OVERRIDE
+    QSurfaceFormat format() const override
     {
         Q_ASSERT(offscreenSurface());
         return offscreenSurface()->requestedFormat();
     }
-    bool isValid() const Q_DECL_OVERRIDE { return true; }
+    bool isValid() const override { return true; }
 };
 
 QPlatformOffscreenSurface *QIOSIntegration::createPlatformOffscreenSurface(QOffscreenSurface *surface) const
@@ -211,10 +217,7 @@ QPlatformOffscreenSurface *QIOSIntegration::createPlatformOffscreenSurface(QOffs
 
 QAbstractEventDispatcher *QIOSIntegration::createEventDispatcher() const
 {
-    if (isQtApplication())
-        return new QIOSEventDispatcher;
-    else
-        return new QEventDispatcherCoreFoundation;
+    return QIOSEventDispatcher::create();
 }
 
 QPlatformFontDatabase * QIOSIntegration::fontDatabase() const

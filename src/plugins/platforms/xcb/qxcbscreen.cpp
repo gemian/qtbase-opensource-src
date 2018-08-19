@@ -91,16 +91,8 @@ QXcbVirtualDesktop::QXcbVirtualDesktop(QXcbConnection *connection, xcb_screen_t 
     if (reply && reply->format == 32 && reply->type == XCB_ATOM_WINDOW) {
         xcb_window_t windowManager = *((xcb_window_t *)xcb_get_property_value(reply.get()));
 
-        if (windowManager != XCB_WINDOW_NONE) {
-            auto windowManagerReply = Q_XCB_REPLY_UNCHECKED(xcb_get_property, xcb_connection(),
-                                                            false, windowManager,
-                                                            atom(QXcbAtom::_NET_WM_NAME),
-                                                            atom(QXcbAtom::UTF8_STRING), 0, 1024);
-            if (windowManagerReply && windowManagerReply->format == 8 && windowManagerReply->type == atom(QXcbAtom::UTF8_STRING)) {
-                m_windowManagerName = QString::fromUtf8((const char *)xcb_get_property_value(windowManagerReply.get()),
-                                                        xcb_get_property_value_length(windowManagerReply.get()));
-            }
-        }
+        if (windowManager != XCB_WINDOW_NONE)
+            m_windowManagerName = QXcbWindow::windowTitle(connection, windowManager);
     }
 
     const xcb_query_extension_reply_t *sync_reply = xcb_get_extension_data(xcb_connection(), &xcb_sync_id);
@@ -140,7 +132,7 @@ QXcbScreen *QXcbVirtualDesktop::screenAt(const QPoint &pos) const
         if (screen->virtualDesktop() == this && screen->geometry().contains(pos))
             return screen;
     }
-    return Q_NULLPTR;
+    return nullptr;
 }
 
 void QXcbVirtualDesktop::addScreen(QPlatformScreen *s)
@@ -590,7 +582,11 @@ QRect QXcbScreen::availableGeometry() const
 
 QImage::Format QXcbScreen::format() const
 {
-    return qt_xcb_imageFormatForVisual(connection(), screen()->root_depth, visualForId(screen()->root_visual));
+    QImage::Format format;
+    bool needsRgbSwap;
+    qt_xcb_imageFormatForVisual(connection(), screen()->root_depth, visualForId(screen()->root_visual), &format, &needsRgbSwap);
+    // We are ignoring needsRgbSwap here and just assumes the backing-store will handle it.
+    return format;
 }
 
 QDpi QXcbScreen::virtualDpi() const

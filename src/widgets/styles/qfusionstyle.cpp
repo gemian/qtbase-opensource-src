@@ -763,7 +763,7 @@ void QFusionStyle::drawPrimitive(PrimitiveElement elem,
             painter->drawRect(rect);
 
             QColor checkMarkColor = option->palette.text().color().darker(120);
-            const int checkMarkPadding = 1 + rect.width() * 0.2; // at least one pixel padding
+            const qreal checkMarkPadding = 1 + rect.width() * 0.13; // at least one pixel padding
 
             if (checkbox->state & State_NoChange) {
                 gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft());
@@ -775,20 +775,23 @@ void QFusionStyle::drawPrimitive(PrimitiveElement elem,
                 painter->setPen(QPen(checkMarkColor, 1));
                 painter->setBrush(gradient);
                 painter->drawRect(rect.adjusted(checkMarkPadding, checkMarkPadding, -checkMarkPadding, -checkMarkPadding));
+
             } else if (checkbox->state & State_On) {
-                qreal penWidth = QStyleHelper::dpiScaled(1.8);
-                penWidth = qMax(penWidth , 0.18 * rect.height());
-                penWidth = qMin(penWidth , 0.30 * rect.height());
+                qreal penWidth = QStyleHelper::dpiScaled(1.5);
+                penWidth = qMax<qreal>(penWidth, 0.13 * rect.height());
+                penWidth = qMin<qreal>(penWidth, 0.20 * rect.height());
+                QPen checkPen = QPen(checkMarkColor, penWidth);
                 checkMarkColor.setAlpha(210);
-                painter->setPen(QPen(checkMarkColor, penWidth));
+                painter->translate(dpiScaled(-0.8), dpiScaled(0.5));
+                painter->setPen(checkPen);
                 painter->setBrush(Qt::NoBrush);
-                painter->translate(-0.8, 0.5);
 
                 // Draw checkmark
                 QPainterPath path;
-                path.moveTo(1.33 * checkMarkPadding, rect.height() / 2.0);
-                path.lineTo(rect.width() / 2.0, rect.height() - checkMarkPadding);
-                path.lineTo(rect.width() - checkMarkPadding * 0.92, checkMarkPadding);
+                const qreal rectHeight = rect.height(); // assuming height equals width
+                path.moveTo(checkMarkPadding + rectHeight * 0.11, rectHeight * 0.47);
+                path.lineTo(rectHeight * 0.5, rectHeight - checkMarkPadding);
+                path.lineTo(rectHeight - checkMarkPadding, checkMarkPadding);
                 painter->drawPath(path.translated(rect.topLeft()));
             }
         }
@@ -1536,7 +1539,7 @@ void QFusionStyle::drawControl(ControlElement element, const QStyleOption *optio
                     proxy()->drawItemText(painter, menuItem->rect.adjusted(margin, 0, -margin, 0), Qt::AlignLeft | Qt::AlignVCenter,
                                           menuItem->palette, menuItem->state & State_Enabled, menuItem->text,
                                           QPalette::Text);
-                    w = menuItem->fontMetrics.width(menuItem->text) + margin;
+                    w = menuItem->fontMetrics.horizontalAdvance(menuItem->text) + margin;
                 }
                 painter->setPen(shadow.lighter(106));
                 bool reverse = menuItem->direction == Qt::RightToLeft;
@@ -1559,8 +1562,8 @@ void QFusionStyle::drawControl(ControlElement element, const QStyleOption *optio
 
             bool ignoreCheckMark = false;
             const int checkColHOffset = windowsItemHMargin + windowsItemFrame - 1;
-            int checkcol = qMax(menuItem->rect.height() * 0.7,
-                                      qMax(menuItem->maxIconWidth * 1.0, dpiScaled(17))); // icon checkbox's highlihgt column width
+            int checkcol = qMax<int>(menuItem->rect.height() * 0.79,
+                                     qMax<int>(menuItem->maxIconWidth, dpiScaled(21))); // icon checkbox's highlight column width
             if (
 #if QT_CONFIG(combobox)
                 qobject_cast<const QComboBox*>(widget) ||
@@ -1569,10 +1572,12 @@ void QFusionStyle::drawControl(ControlElement element, const QStyleOption *optio
                 ignoreCheckMark = true; //ignore the checkmarks provided by the QComboMenuDelegate
 
             if (!ignoreCheckMark) {
-                // Check
-                const int boxMargin = dpiScaled(4);
-                const int boxWidth = checkcol - 2 * boxMargin;
-                QRect checkRect(option->rect.left() + boxMargin + checkColHOffset, option->rect.center().y() - boxWidth/2 + 1, boxWidth, boxWidth);
+                // Check, using qreal and QRectF to avoid error accumulation
+                const qreal boxMargin = dpiScaled(3.5);
+                const qreal boxWidth = checkcol - 2 * boxMargin;
+                QRectF checkRectF(option->rect.left() + boxMargin + checkColHOffset, option->rect.center().y() - boxWidth/2 + 1, boxWidth, boxWidth);
+                QRect checkRect = checkRectF.toRect();
+                checkRect.setWidth(checkRect.height()); // avoid .toRect() round error results in non-perfect square
                 checkRect = visualRect(menuItem->direction, menuItem->rect, checkRect);
                 if (checkable) {
                     if (menuItem->checkType & QStyleOptionMenuItem::Exclusive) {
@@ -2735,6 +2740,8 @@ void QFusionStyle::drawComplexControl(ComplexControl control, const QStyleOption
                 pixmapName += QLatin1String("-editable");
             if (isEnabled)
                 pixmapName += QLatin1String("-enabled");
+            if (!comboBox->frame)
+                pixmapName += QLatin1String("-frameless");
 
             if (!QPixmapCache::find(pixmapName, cache)) {
                 cache = styleCachePixmap(comboBox->rect.size());
@@ -2760,7 +2767,8 @@ void QFusionStyle::drawComplexControl(ComplexControl control, const QStyleOption
                         buttonOption.state &= ~State_MouseOver;
                     }
 
-                    proxy()->drawPrimitive(PE_FrameLineEdit, &buttonOption, &cachePainter, widget);
+                    if (comboBox->frame)
+                        proxy()->drawPrimitive(PE_FrameLineEdit, &buttonOption, &cachePainter, widget);
 
                     // Draw button clipped
                     cachePainter.save();
@@ -3215,7 +3223,7 @@ QSize QFusionStyle::sizeFromContents(ContentsType type, const QStyleOption *opti
                 QFont fontBold = menuItem->font;
                 fontBold.setBold(true);
                 QFontMetrics fmBold(fontBold);
-                w += fmBold.width(menuItem->text) - fm.width(menuItem->text);
+                w += fmBold.width(menuItem->text) - fm.horizontalAdvance(menuItem->text);
             }
             const int checkcol = qMax<int>(maxpmw, QStyleHelper::dpiScaled(QFusionStylePrivate::menuCheckMarkWidth)); // Windows always shows a check column
             w += checkcol;
@@ -3505,7 +3513,7 @@ QRect QFusionStyle::subControlRect(ComplexControl control, const QStyleOptionCom
             int frameWidth = 2;
             rect = visualRect(option->direction, option->rect, rect);
             rect.setRect(option->rect.left() + frameWidth, option->rect.top() + frameWidth,
-                         option->rect.width() - 19 - 2 * frameWidth,
+                         option->rect.width() - int(QStyleHelper::dpiScaled(19)) - 2 * frameWidth,
                          option->rect.height() - 2 * frameWidth);
             if (const QStyleOptionComboBox *box = qstyleoption_cast<const QStyleOptionComboBox *>(option)) {
                 if (!box->editable) {
@@ -3767,6 +3775,19 @@ QRect QFusionStyle::subElementRect(SubElement sr, const QStyleOption *opt, const
 QIcon QFusionStyle::standardIcon(StandardPixmap standardIcon, const QStyleOption *option,
                                  const QWidget *widget) const
 {
+#if QT_CONFIG(imageformat_xpm)
+    switch (standardIcon) {
+    case SP_TitleBarNormalButton:
+        return QIcon(QPixmap(dock_widget_restore_xpm));
+    case SP_TitleBarMinButton:
+        return QIcon(QPixmap(workspace_minimize));
+    case SP_TitleBarCloseButton:
+    case SP_DockWidgetCloseButton:
+        return QIcon(QPixmap(dock_widget_close_xpm));
+    default:
+        break;
+    }
+#endif // imageformat_xpm
     return QCommonStyle::standardIcon(standardIcon, option, widget);
 }
 

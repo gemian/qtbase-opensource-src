@@ -270,6 +270,7 @@ public:
     inline bool hasMouseCapture() const { return GetCapture() == m_data.hwnd; }
 
     bool startSystemResize(const QPoint &pos, Qt::Corner corner) override;
+    bool startSystemMove(const QPoint &pos) override;
 
     void setFrameStrutEventsEnabled(bool enabled) override;
     bool frameStrutEventsEnabled() const override { return testFlag(FrameStrutEventsEnabled); }
@@ -339,6 +340,7 @@ public:
     static QString formatWindowTitle(const QString &title);
 
     static const char *embeddedNativeParentHandleProperty;
+    static const char *hasBorderInFullScreenProperty;
 
 private:
     inline void show_sys() const;

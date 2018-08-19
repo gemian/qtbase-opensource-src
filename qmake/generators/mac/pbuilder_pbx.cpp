@@ -779,8 +779,9 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                                 mkt << "\\\n\t";
                             ++added;
                             const QString file_name = fileFixify(fn, FileFixifyFromOutdir);
+                            const QString tmpOut = fileFixify(tmp_out.first().toQString(), FileFixifyFromOutdir);
                             mkt << ' ' << escapeDependencyPath(Option::fixPathToTargetOS(
-                                    replaceExtraCompilerVariables(tmp_out.first().toQString(), file_name, QString(), NoShell)));
+                                    replaceExtraCompilerVariables(tmpOut, file_name, QString(), NoShell)));
                         }
                     }
                 }
@@ -1602,7 +1603,17 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                     }
                 }
 
-                t << "\t\t\t\t" << writeSettings("SYMROOT", Option::output_dir) << ";\n";
+                // The symroot is marked by xcodebuild as excluded from Time Machine
+                // backups, as it's a temporary build dir, so we don't want it to be
+                // the same as the possibe in-source dir, as that would leave out
+                // sources from being backed up.
+                t << "\t\t\t\t" << writeSettings("SYMROOT",
+                    Option::output_dir + Option::dir_sep + ".xcode") << ";\n";
+
+                // The configuration build dir however is not treated as excluded,
+                // so we can safely point it to the root output dir.
+                t << "\t\t\t\t" << writeSettings("CONFIGURATION_BUILD_DIR",
+                    Option::output_dir + Option::dir_sep + "$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)") << ";\n";
 
                 if (!project->isEmpty("DESTDIR")) {
                     ProString dir = project->first("DESTDIR");

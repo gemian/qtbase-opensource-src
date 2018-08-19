@@ -57,8 +57,12 @@
     static QCocoaMenuLoader *shared = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-                      shared = [[self alloc] init];
-                  });
+        shared = [[self alloc] init];
+        atexit_b(^{
+            [shared release];
+            shared = nil;
+        });
+    });
     return shared;
 }
 

@@ -451,16 +451,15 @@ QFontEngine *QCoreTextFontDatabaseEngineFactory<QFontEngineFT>::fontEngine(const
 {
     CTFontDescriptorRef descriptor = static_cast<CTFontDescriptorRef>(usrPtr);
 
-    if (NSURL *url = descriptorAttribute<NSURL>(descriptor, kCTFontURLAttribute)) {
+    if (NSValue *fontDataValue = descriptorAttribute<NSValue>(descriptor, (CFStringRef)kQtFontDataAttribute)) {
+        QByteArray *fontData = static_cast<QByteArray *>(fontDataValue.pointerValue);
+        return QFontEngineFT::create(*fontData, fontDef.pixelSize,
+            static_cast<QFont::HintingPreference>(fontDef.hintingPreference));
+    } else if (NSURL *url = descriptorAttribute<NSURL>(descriptor, kCTFontURLAttribute)) {
         Q_ASSERT(url.fileURL);
         QFontEngine::FaceId faceId;
         faceId.filename = QString::fromNSString(url.path).toUtf8();
         return QFontEngineFT::create(fontDef, faceId);
-
-    } else if (NSValue *fontDataValue = descriptorAttribute<NSValue>(descriptor, (CFStringRef)kQtFontDataAttribute)) {
-        QByteArray *fontData = static_cast<QByteArray *>(fontDataValue.pointerValue);
-        return QFontEngineFT::create(*fontData, fontDef.pixelSize,
-            static_cast<QFont::HintingPreference>(fontDef.hintingPreference));
     }
     Q_UNREACHABLE();
 }
@@ -521,6 +520,8 @@ static void addExtraFallbacks(QStringList *fallbackList)
     // add Apple Symbols to cover those too.
     if (!fallbackList->contains(QStringLiteral("Apple Symbols")))
         fallbackList->append(QStringLiteral("Apple Symbols"));
+#else
+    Q_UNUSED(fallbackList)
 #endif
 }
 
@@ -687,8 +688,10 @@ static CTFontUIFontType fontTypeFromTheme(QPlatformTheme::Font f)
         return kCTFontUIFontWindowTitle;
 
     case QPlatformTheme::MdiSubWindowTitleFont:
-    case QPlatformTheme::DockWidgetTitleFont:
         return kCTFontUIFontSystem;
+
+    case QPlatformTheme::DockWidgetTitleFont:
+        return kCTFontUIFontSmallSystem;
 
     case QPlatformTheme::PushButtonFont:
         return kCTFontUIFontPushButton;

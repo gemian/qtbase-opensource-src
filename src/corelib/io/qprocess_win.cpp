@@ -115,9 +115,7 @@ static void qt_create_pipe(Q_PIPE *pipe, bool isInputPipe)
             dwOpenMode |= PIPE_ACCESS_INBOUND;
             dwInputBufferSize = dwPipeBufferSize;
         }
-        DWORD dwPipeFlags = PIPE_TYPE_BYTE | PIPE_WAIT;
-        if (QSysInfo::windowsVersion() >= QSysInfo::WV_VISTA)
-            dwPipeFlags |= PIPE_REJECT_REMOTE_CLIENTS;
+        DWORD dwPipeFlags = PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
         hServer = CreateNamedPipe(pipeName,
                                   dwOpenMode,
                                   dwPipeFlags,
@@ -501,8 +499,13 @@ void QProcessPrivate::startProcess()
 
     if (!openChannel(stdinChannel) ||
         !openChannel(stdoutChannel) ||
-        !openChannel(stderrChannel))
+        !openChannel(stderrChannel)) {
+        QString errorString = QProcess::tr("Process failed to start: %1").arg(qt_error_string());
+        cleanup();
+        setErrorAndEmit(QProcess::FailedToStart, errorString);
+        q->setProcessState(QProcess::NotRunning);
         return;
+    }
 
     const QString args = qt_create_commandline(program, arguments, nativeArguments);
     QByteArray envlist;

@@ -41,6 +41,7 @@
 #import "qiosviewcontroller.h"
 
 #include <QtCore/qscopedvaluerollback.h>
+#include <QtCore/private/qcore_mac_p.h>
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QWindow>
@@ -273,6 +274,20 @@
         m_focusWindowChangeConnection = QObject::connect(qApp, &QGuiApplication::focusWindowChanged, [self]() {
             [self updateProperties];
         });
+
+        QIOSApplicationState *applicationState = &QIOSIntegration::instance()->applicationState;
+        QObject::connect(applicationState, &QIOSApplicationState::applicationStateDidChange,
+            [self](Qt::ApplicationState oldState, Qt::ApplicationState newState) {
+                if (oldState == Qt::ApplicationSuspended && newState != Qt::ApplicationSuspended) {
+                    // We may have ignored an earlier layout because the application was suspended,
+                    // and we didn't want to render anything at that moment in fear of being killed
+                    // due to rendering in the background, so we trigger an explicit layout when
+                    // coming out of the suspended state.
+                    qCDebug(lcQpaWindow) << "triggering root VC layout when coming out of suspended state";
+                    [self.view setNeedsLayout];
+                }
+            }
+        );
     }
 
     return self;
@@ -293,15 +308,17 @@
 {
     [super viewDidLoad];
 
+    Q_ASSERT(!qt_apple_isApplicationExtension());
+
 #ifndef Q_OS_TVOS
     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
     [center addObserver:self selector:@selector(willChangeStatusBarFrame:)
             name:UIApplicationWillChangeStatusBarFrameNotification
-            object:[UIApplication sharedApplication]];
+            object:qt_apple_sharedApplication()];
 
     [center addObserver:self selector:@selector(didChangeStatusBarOrientation:)
             name:UIApplicationDidChangeStatusBarOrientationNotification
-            object:[UIApplication sharedApplication]];
+            object:qt_apple_sharedApplication()];
 #endif
 }
 
@@ -441,7 +458,6 @@
     focusWindow = qt_window_private(focusWindow)->topLevelWindow();
 
 #ifndef Q_OS_TVOS
-    UIApplication *uiApplication = [UIApplication sharedApplication];
 
     // -------------- Status bar style and visbility ---------------
 
@@ -464,6 +480,8 @@
 
 
     // -------------- Content orientation ---------------
+
+    UIApplication *uiApplication = qt_apple_sharedApplication();
 
     static BOOL kAnimateContentOrientationChanges = YES;
 

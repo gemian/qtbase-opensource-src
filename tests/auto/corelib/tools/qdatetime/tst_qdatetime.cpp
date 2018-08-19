@@ -1263,9 +1263,6 @@ void tst_QDateTime::addSecs()
     QFETCH(QDateTime, dt);
     QFETCH(int, nsecs);
     QFETCH(QDateTime, result);
-#ifdef Q_OS_IRIX
-    QEXPECT_FAIL("cet4", "IRIX databases say 1970 had DST", Abort);
-#endif
     QDateTime test = dt.addSecs(nsecs);
     QCOMPARE(test, result);
     QCOMPARE(test.timeSpec(), dt.timeSpec());
@@ -1285,9 +1282,6 @@ void tst_QDateTime::addMSecs()
     QFETCH(int, nsecs);
     QFETCH(QDateTime, result);
 
-#ifdef Q_OS_IRIX
-    QEXPECT_FAIL("cet4", "IRIX databases say 1970 had DST", Abort);
-#endif
     QDateTime test = dt.addMSecs(qint64(nsecs) * 1000);
     QCOMPARE(test, result);
     QCOMPARE(test.timeSpec(), dt.timeSpec());
@@ -1373,9 +1367,6 @@ void tst_QDateTime::toTimeSpec()
         QCOMPARE(localToLocal.time(), fromLocal.time());
         QCOMPARE(localToLocal.timeSpec(), Qt::LocalTime);
 
-#ifdef Q_OS_IRIX
-        QEXPECT_FAIL("summer2", "IRIX databases say 1970 had DST", Abort);
-#endif
         QCOMPARE(utcToLocal, fromLocal);
         QCOMPARE(utcToLocal.date(), fromLocal.date());
         QCOMPARE(utcToLocal.time(), fromLocal.time());
@@ -1427,9 +1418,6 @@ void tst_QDateTime::toLocalTime()
         QFETCH(QDateTime, fromLocal);
 
         QCOMPARE(fromLocal.toLocalTime(), fromLocal);
-#ifdef Q_OS_IRIX
-        QEXPECT_FAIL("summer2", "IRIX databases say 1970 had DST", Abort);
-#endif
         QCOMPARE(fromUtc.toLocalTime(), fromLocal);
         QCOMPARE(fromUtc.toLocalTime(), fromLocal.toLocalTime());
     } else {
@@ -1449,9 +1437,6 @@ void tst_QDateTime::toUTC()
         QFETCH(QDateTime, fromLocal);
 
         QCOMPARE(fromUtc.toUTC(), fromUtc);
-#ifdef Q_OS_IRIX
-        QEXPECT_FAIL("summer2", "IRIX databases say 1970 had DST", Abort);
-#endif
         QCOMPARE(fromLocal.toUTC(), fromUtc);
         QCOMPARE(fromUtc.toUTC(), fromLocal.toUTC());
     } else {
@@ -1512,9 +1497,6 @@ void tst_QDateTime::secsTo()
     QFETCH(QDateTime, result);
 
     if (dt.isValid()) {
-    #ifdef Q_OS_IRIX
-        QEXPECT_FAIL("cet4", "IRIX databases say 1970 had DST", Abort);
-    #endif
         QCOMPARE(dt.secsTo(result), (qint64)nsecs);
         QCOMPARE(result.secsTo(dt), (qint64)-nsecs);
         QVERIFY((dt == result) == (0 == nsecs));
@@ -1541,9 +1523,6 @@ void tst_QDateTime::msecsTo()
     QFETCH(QDateTime, result);
 
     if (dt.isValid()) {
-    #ifdef Q_OS_IRIX
-        QEXPECT_FAIL("cet4", "IRIX databases say 1970 had DST", Abort);
-    #endif
         QCOMPARE(dt.msecsTo(result), qint64(nsecs) * 1000);
         QCOMPARE(result.msecsTo(dt), -qint64(nsecs) * 1000);
         QVERIFY((dt == result) == (0 == (qint64(nsecs) * 1000)));
@@ -2288,6 +2267,7 @@ void tst_QDateTime::fromStringDateFormat_data()
     QTest::newRow("ISO short") << QString::fromLatin1("2017-07-01T") << Qt::ISODate << invalidDateTime();
     QTest::newRow("ISO zoned date") << QString::fromLatin1("2017-07-01Z") << Qt::ISODate << invalidDateTime();
     QTest::newRow("ISO zoned empty time") << QString::fromLatin1("2017-07-01TZ") << Qt::ISODate << invalidDateTime();
+    QTest::newRow("ISO mis-punctuated") << QString::fromLatin1("2018/01/30 ") << Qt::ISODate << invalidDateTime();
 
     // Test Qt::RFC2822Date format (RFC 2822).
     QTest::newRow("RFC 2822 +0100") << QString::fromLatin1("13 Feb 1987 13:24:51 +0100")
@@ -2400,6 +2380,9 @@ void tst_QDateTime::fromStringStringFormat_data()
     QTest::newRow("data16") << QString("2005-06-28T07:57:30.001Z")
                             << QString("yyyy-MM-ddThh:mm:ss.zt")
                             << QDateTime(QDate(2005, 06, 28), QTime(07, 57, 30, 1), Qt::UTC);
+    QTest::newRow("late") << QString("9999-12-31T23:59:59.999Z")
+                          << QString("yyyy-MM-ddThh:mm:ss.zZ")
+                          << QDateTime(QDate(9999, 12, 31), QTime(23, 59, 59, 999));
 }
 
 void tst_QDateTime::fromStringStringFormat()
@@ -2675,8 +2658,8 @@ void tst_QDateTime::zoneAtTime_data()
     ADDROW("before:NPT", "Asia/Kathmandu", QDate(1985, 12, 31), 19800); // 5:30
     ADDROW("after:NPT", "Asia/Kathmandu", QDate(1986, 1, 1), 20700); // 5:45
     // The two that have skipped a day (each):
-    ADDROW("before:LINT", "Pacific/Kiritimati", QDate(1994, 12, 31), -36000);
-    ADDROW("after:LINT", "Pacific/Kiritimati", QDate(1995, 2, 1), 14 * 3600);
+    ADDROW("before:LINT", "Pacific/Kiritimati", QDate(1994, 12, 30), -36000);
+    ADDROW("after:LINT", "Pacific/Kiritimati", QDate(1995, 1, 2), 14 * 3600);
     ADDROW("after:WST", "Pacific/Apia", QDate(2011, 12, 31), 14 * 3600);
 #endif // MS lacks ACWST, NPT; doesn't grok date-line crossings; and Windows 7 lacks LINT.
     ADDROW("before:WST", "Pacific/Apia", QDate(2011, 12, 29), -36000);

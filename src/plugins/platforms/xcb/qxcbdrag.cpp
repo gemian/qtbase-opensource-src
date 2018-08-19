@@ -63,8 +63,6 @@
 
 QT_BEGIN_NAMESPACE
 
-#ifndef QT_NO_DRAGANDDROP
-
 //#define DND_DEBUG
 #ifdef DND_DEBUG
 #define DEBUG qDebug
@@ -211,7 +209,7 @@ void QXcbDrag::startDrag()
     setScreen(current_virtual_desktop->screens().constFirst()->screen());
     initiatorWindow = QGuiApplicationPrivate::currentMouseWindow;
     QBasicDrag::startDrag();
-    if (connection()->mouseGrabber() == Q_NULLPTR)
+    if (connection()->mouseGrabber() == nullptr)
         shapedPixmapWindow()->setMouseGrabEnabled(true);
 }
 
@@ -315,7 +313,7 @@ void QXcbDrag::move(const QPoint &globalPos)
     if (source_sameanswer.contains(globalPos) && source_sameanswer.isValid())
         return;
 
-    QXcbVirtualDesktop *virtualDesktop = Q_NULLPTR;
+    QXcbVirtualDesktop *virtualDesktop = nullptr;
     QPoint cursorPos;
     QXcbCursor::queryPointer(connection(), &virtualDesktop, &cursorPos);
     QXcbScreen *screen = virtualDesktop->screenAt(cursorPos);
@@ -324,7 +322,7 @@ void QXcbDrag::move(const QPoint &globalPos)
     if (virtualDesktop != current_virtual_desktop) {
         setUseCompositing(virtualDesktop->compositingActive());
         recreateShapedPixmapWindow(static_cast<QPlatformScreen*>(screen)->screen(), deviceIndependentPos);
-        if (connection()->mouseGrabber() == Q_NULLPTR)
+        if (connection()->mouseGrabber() == nullptr)
             shapedPixmapWindow()->setMouseGrabEnabled(true);
 
         current_virtual_desktop = virtualDesktop;
@@ -1311,7 +1309,5 @@ QStringList QXcbDropData::formats_sys() const
     }
     return formats;
 }
-
-#endif // QT_NO_DRAGANDDROP
 
 QT_END_NAMESPACE

@@ -5,11 +5,15 @@
 #include "qabstractnetworkcache.h"
 #include "qabstractsocket.h"
 #include "qauthenticator.h"
+#if QT_CONFIG(dnslookup)
 #include "qdnslookup.h"
+#endif
 #include "qhostaddress.h"
 #include "qhostinfo.h"
 #include "qhstspolicy.h"
+#if QT_CONFIG(http)
 #include "qhttpmultipart.h"
+#endif
 #if QT_CONFIG(localserver)
 #include "qlocalserver.h"
 #endif

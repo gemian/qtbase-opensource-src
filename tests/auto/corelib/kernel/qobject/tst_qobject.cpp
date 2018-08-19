@@ -6016,7 +6016,7 @@ public:
 
 struct SlotArgFunctor
 {
-    SlotArgFunctor(int *s) : status(s), context(Q_NULLPTR), sender(Q_NULLPTR) {}
+    SlotArgFunctor(int *s) : status(s), context(nullptr), sender(nullptr) {}
     SlotArgFunctor(ContextObject *context, QObject *sender, int *s) : status(s), context(context), sender(sender) {}
     void operator()() { *status = 2; if (context) context->compareSender(sender); }
 
@@ -6454,7 +6454,7 @@ Q_SIGNALS:
 static int countedStructObjectsCount = 0;
 struct CountedStruct
 {
-    CountedStruct() : sender(Q_NULLPTR) { ++countedStructObjectsCount; }
+    CountedStruct() : sender(nullptr) { ++countedStructObjectsCount; }
     CountedStruct(GetSenderObject *sender) : sender(sender) { ++countedStructObjectsCount; }
     CountedStruct(const CountedStruct &o) : sender(o.sender) { ++countedStructObjectsCount; }
     CountedStruct &operator=(const CountedStruct &) { return *this; }
@@ -6770,7 +6770,7 @@ class CountedExceptionThrower : public QObject
     Q_OBJECT
 
 public:
-    explicit CountedExceptionThrower(bool throwException, QObject *parent = Q_NULLPTR)
+    explicit CountedExceptionThrower(bool throwException, QObject *parent = nullptr)
         : QObject(parent)
     {
         if (throwException)
@@ -6856,7 +6856,7 @@ void tst_QObject::exceptions()
         try {
             class ParentObject : public QObject {
             public:
-                explicit ParentObject(QObject *parent = Q_NULLPTR)
+                explicit ParentObject(QObject *parent = nullptr)
                     : QObject(parent)
                 {
                     new CountedExceptionThrower(false, this);

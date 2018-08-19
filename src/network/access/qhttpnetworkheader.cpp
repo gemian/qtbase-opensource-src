@@ -41,8 +41,6 @@
 
 #include <algorithm>
 
-#ifndef QT_NO_HTTP
-
 QT_BEGIN_NAMESPACE
 
 QHttpNetworkHeaderPrivate::QHttpNetworkHeaderPrivate(const QUrl &newUrl)
@@ -126,5 +124,3 @@ bool QHttpNetworkHeaderPrivate::operator==(const QHttpNetworkHeaderPrivate &othe
 
 
 QT_END_NAMESPACE
-
-#endif

@@ -1,8 +1,95 @@
-qtbase-opensource-src (5.11.1+gemian) unstable; urgency=medium
+qtbase-opensource-src (5.11.2+gemian) unstable; urgency=medium
 
   * Building for Gemian
 
- -- Adam Boardman <adamboardman@gmail.com>  Sun, 19 Aug 2018 14:11:03 +0000
+ -- Adam Boardman <adamboardman@gmail.com>  Mon, 12 Nov 2018 20:39:03 +0000
+
+qtbase-opensource-src (5.11.2+dfsg-4) unstable; urgency=medium
+
+  * Mark libvulkan-dev build-dependency as linux-any (closes: #911422).
+    Thanks to Samuel Thibault for the initial patch.
+  * Move all QtVulkanSupport headers to qtbase5-private-dev package.
+    The static library is there, so the headers should also be there.
+  * Sort debian/qtbase5-dev.install using wrap-and-sort.
+  * Make qtbase5-dev depend on libvulkan-dev on linux, as Qt headers
+    include Vulkan headers.
+  * Add a patch to pass default include directories to qdoc.
+  * Bump qttools build-dependency to 5.11.2-4 (to get unpatched qdoc).
+  * Drop Revert-QWidgetWindow-Immediately-forward-close-event.patch.
+    The issue was fixed in kxmlgui v5.49.0, no need to patch Qt anymore.
+  * Replace hidpi_scale_at_192.diff with a version that has been applied
+    upstream (reference_dpi.diff).
+  * Backport upstream patch to fix freezes when opening applications
+    (dont_get_screen_rotation.diff).
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Mon, 29 Oct 2018 22:59:29 +0300
+
+qtbase-opensource-src (5.11.2+dfsg-3) unstable; urgency=medium
+
+  * Make `pkg-config --variable=host_bins Qt5Core`/qmake work with cross
+    compilation (closes: #909575):
+    - Patch Qt5Core.pc to make host_bins variable point to the multi-arch
+      location (/usr/lib/${DEB_HOST_MULTIARCH}/qt5/bin).
+    - Make /usr/lib/${DEB_HOST_MULTIARCH}/qt5/bin/qmake point to
+      /usr/bin/${DEB_HOST_GNU_TYPE}-qmake. Also move this symlink from
+      qt5-qmake-bin to qt5-qmake.
+  * Correctly update symbols files for Vulkan symbols introduction.
+    Use arch-bits=32/64 where appropriate.
+  * Upload to unstable.
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Mon, 15 Oct 2018 20:45:46 +0300
+
+qtbase-opensource-src (5.11.2+dfsg-2) experimental; urgency=medium
+
+  * Bump ABI version to qtbase-abi-5-11-2.
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Sat, 22 Sep 2018 09:21:33 +0300
+
+qtbase-opensource-src (5.11.2+dfsg-1) experimental; urgency=medium
+
+  * New upstreaam release.
+  * Drop patches, applied upstream:
+    - fix_regresion_in_QPointF_operator_equals.patch
+    - fix-glibc-2.28-build.patch
+  * Refresh other patches.
+  * Update metadata for two patches wrongly marked as applied upstream.
+  * Update symbols files from buildds’ and the current build logs.
+  * Update debian/copyright.
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Fri, 21 Sep 2018 10:57:47 +0300
+
+qtbase-opensource-src (5.11.1+dfsg-9) unstable; urgency=medium
+
+  * Add libvulkan-dev to provide Vulkan support (Closes:#909579).
+  * Backport fix_possible_heap_corruption_in_qxmlstream.patch to solve
+    possible heap corruption on QXmlStream.
+  * Update symbols files with buildds' and current logs.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Tue, 25 Sep 2018 18:26:54 -0300
+
+qtbase-opensource-src (5.11.1+dfsg-8) unstable; urgency=medium
+
+  * Override dh_auto_test to avoid compiling in indep builds.
+  * Refresh nonlinux_utime.diff.
+  * Update symbols files from buildds’ logs.
+  * Bump required qttools-dev-tools version to 5.11.1-6, where a bug in
+    qdoc was fixed (closes: #908328).
+  * Bump Standards-Version to 4.2.1, no changes needed.
+  * Temporarily use TLS1_2_VERSION instead of TLS_MAX_VERSION, to make
+    Qt Network work with OpenSSL 1.1.0 in testing (closes: #907774).
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Tue, 11 Sep 2018 13:29:28 +0300
+
+qtbase-opensource-src (5.11.1+dfsg-7) unstable; urgency=medium
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Build depend upon libharfbuzz >= 1.6.0~ as required by the code
+    (Closes: #905660). Thanks Andreas Ferber for the bug report.
+
+  [ Simon Quigley ]
+  * Fix the build with glibc 2.28.
+
+ -- Simon Quigley <tsimonq2@ubuntu.com>  Sat, 25 Aug 2018 12:32:18 -0500
 
 qtbase-opensource-src (5.11.1+dfsg-6) unstable; urgency=medium
 

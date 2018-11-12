@@ -1,0 +1,13 @@
+fix-selection-rendering.patch
+reference_dpi.diff
+dont_get_screen_rotation.diff
+gnukfreebsd.diff
+no_htmlinfo_example.diff
+remove_privacy_breachs.diff
+link_fbclient.diff
+gnukfreebsd_linker_warnings.diff
+armv4.diff
+nonlinux_utime.diff
+no_arc4random_buf.diff
+ssl_max_version.diff
+qdoc_default_incdirs.diff

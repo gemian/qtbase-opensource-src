@@ -45,7 +45,9 @@
 #include "qsslellipticcurve.h"
 #include "qsslerror.h"
 #include "qsslkey.h"
+#if QT_CONFIG(ssl)
 #include "qsslpresharedkeyauthenticator.h"
+#endif
 #include "qsslsocket.h"
 #include "qtcpserver.h"
 #include "qtcpsocket.h"

@@ -8,7 +8,7 @@ Uploaders: Sune Vuorela <sune@debian.org>,
            Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>,
            Timo Jyrinki <timo@debian.org>,
            Dmitry Shachnev <mitya57@debian.org>,
-           Simon Quigley <tsimonq2@ubuntu.com>
+           Simon Quigley <tsimonq2@debian.org>
 Build-Depends: debhelper (>= 11),
                default-libmysqlclient-dev,
                dh-exec,
@@ -66,8 +66,8 @@ Build-Depends: debhelper (>= 11),
                publicsuffix,
                unixodbc-dev,
                zlib1g-dev
-Build-Depends-Indep: qttools5-dev-tools (>= 5.11.2-4~) <!nodoc>
-Standards-Version: 4.2.1
+Build-Depends-Indep: qttools5-dev-tools (>= 5.11.3-1~) <!nodoc>
+Standards-Version: 4.3.0
 Homepage: http://qt-project.org/
 Vcs-Git: https://salsa.debian.org/qt-kde-team/qt/qtbase.git
 Vcs-Browser: https://salsa.debian.org/qt-kde-team/qt/qtbase
@@ -76,7 +76,7 @@ Package: libqt5core5a
 Architecture: any
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends}
-Provides: qtbase-abi-5-11-2
+Provides: qtbase-abi-5-11-3
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Recommends: qttranslations5-l10n
 Suggests: libthai0
@@ -341,6 +341,9 @@ Suggests: default-libmysqlclient-dev,
           libpq-dev,
           libsqlite3-dev,
           unixodbc-dev
+Breaks: qt5-qmake (<< 5.11.3+dfsg-3~), qtbase5-private-dev (<< 5.11.3+dfsg-5~)
+Replaces: qt5-qmake (<< 5.11.3+dfsg-3~),
+          qtbase5-private-dev (<< 5.11.3+dfsg-5~)
 Description: Qt 5 base development files
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -359,8 +362,8 @@ Depends: libinput-dev [linux-any],
          libxkbcommon-dev,
          qtbase5-dev (= ${binary:Version}),
          ${misc:Depends}
-Breaks: qtbase5-dev (<< 5.11.2+dfsg-4~)
-Replaces: qtbase5-dev (<< 5.11.2+dfsg-4~)
+Breaks: qt5-qmake (<< 5.11.3+dfsg-3~), qtbase5-dev (<< 5.11.2+dfsg-4~)
+Replaces: qt5-qmake (<< 5.11.3+dfsg-3~), qtbase5-dev (<< 5.11.2+dfsg-4~)
 Description: Qt 5 base private development files
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -377,8 +380,8 @@ Section: libdevel
 Depends: libqt5opengl5 (= ${binary:Version}),
          qtbase5-dev (= ${binary:Version}),
          ${misc:Depends}
-Breaks: qtbase5-dev (<< 5.4.0+dfsg-6~)
-Replaces: qtbase5-dev (<< 5.4.0+dfsg-6~)
+Breaks: qtbase5-dev (<< 5.11.3+dfsg-4~)
+Replaces: qtbase5-dev (<< 5.11.3+dfsg-4~)
 Provides: libqt5opengl5-desktop-dev (= ${binary:Version}) [!armel !armhf !arm64]
 Description: Qt 5 OpenGL library development files
  Qt is a cross-platform C++ application framework. Qt's primary feature

@@ -120,6 +120,13 @@ static int statx(int dirfd, const char *pathname, int flag, unsigned mask, struc
 #  endif // !Q_OS_ANDROID
 #endif
 
+#if defined(Q_OS_ANDROID)
+// statx() is disabled on Android because quite a few systems
+// come with sandboxes that kill applications that make system calls outside a
+// whitelist and several Android vendors can't be bothered to update the list.
+#  undef STATX_BASIC_STATS
+#endif
+
 #ifndef STATX_ALL
 struct statx { mode_t stx_mode; };      // dummy
 #endif
@@ -303,7 +310,7 @@ mtime(const T &statBuffer, int)
 { return timespecToMSecs(statBuffer.st_mtimespec); }
 #endif
 
-#ifndef st_mtimensec
+#if !defined(st_mtimensec) && !defined(__alpha__)
 // Xtimensec
 template <typename T>
 Q_DECL_UNUSED static typename std::enable_if<(&T::st_atimensec, true), qint64>::type

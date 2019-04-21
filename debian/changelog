@@ -1,8 +1,160 @@
-qtbase-opensource-src (5.11.2+gemian) unstable; urgency=medium
+qtbase-opensource-src (5.11.3+gemian) unstable; urgency=medium
 
   * Building for Gemian
 
- -- Adam Boardman <adamboardman@gmail.com>  Mon, 12 Nov 2018 20:39:03 +0000
+ -- Adam Boardman <adamboardman@gmail.com>  Sun, 21 Apr 2019 00:20:03 +0000
+
+qtbase-opensource-src (5.11.3+dfsg1-1) unstable; urgency=medium
+
+  * Repack the tarball and strip some files and directories with copyright
+    issues (closes: #924599).
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Fri, 15 Mar 2019 10:20:39 +0300
+
+qtbase-opensource-src (5.11.3+dfsg-5) unstable; urgency=medium
+
+  * Revert part of the mkspecs movements between packages. The private ones
+    were put into qtbase5-private-dev, but it seems that they are not ready
+    for that (Closes: #921930).
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Sun, 10 Feb 2019 11:47:21 -0300
+
+qtbase-opensource-src (5.11.3+dfsg-4) unstable; urgency=medium
+
+  * Revert the GLES-related symbols changes from the previous upload.
+    These changes were only for experimental and not yet for unstable.
+  * Upload to unstable.
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Backport mysql_free_results_when_qsqlquery_finished_is_called.patch,
+    required by akonadi (closes: #921584).
+
+  [ Dmitry Shachnev ]
+  * Fix installed files list on hurd and kfreebsd (closes: #920236).
+    Thanks to Samuel Thibault!
+  * Move qt_lib_opengl.pri from qtbase5-dev to libqt5opengl5-dev.
+  * Backport upstream commit to fix duplex printing (LP: #1776173).
+    Thanks to Robert Bredereck for the initial patch!
+  * Add missing features.h include to hurd-g++ mkspec (closes: #920613).
+    Thanks to Samuel Thibault for the patch!
+  * Update symbols files from ia64 build logs.
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Fri, 08 Feb 2019 17:11:47 +0300
+
+qtbase-opensource-src (5.11.3+dfsg-3) experimental; urgency=medium
+
+  [ Kai Pastor ]
+  * debian/scripts/update-copyright:
+    - Update licenses_map for Qt 5.12.
+    - Don’t output filenames unless --verbose flag is given.
+    - Add license information to printed filenames.
+    - Rewrite canonicalize_author_name(), add more author rules.
+    - Factor out read_input().
+
+  [ Dmitry Shachnev ]
+  * debian/scripts/update-copyright:
+    - Use regular expressions for parsing license and copyright lines.
+  * Regenerate debian/copyright.
+  * Update libqt5gui5.symbols to add an alternative dependency on
+    libqt5gui5-gles for symbols that are present in both libraries.
+  * Expand debian/qt5-qmake.install to allow us to split that package,
+    and to track upstream file additions and deletions.
+  * Move /usr/lib/${DEB_HOST_MULTIARCH}/qt5/mkspecs/modules/qt_lib_*.pri
+    files from qt5-qmake to qtbase5-dev and qtbase5-private-dev.
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Wed, 09 Jan 2019 12:13:49 +0300
+
+qtbase-opensource-src (5.11.3+dfsg-2) unstable; urgency=medium
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Note that the previous upload fixes:
+    - CVE-2018-15518: “double free or corruption” in QXmlStreamReader
+    - CVE-2018-19873: QBmpHandler segfault on malformed BMP file
+    - CVE-2018-19870: Check for QImage allocation failure in qgifhandler
+
+  [ Simon Quigley ]
+  * Change my email to tsimonq2@debian.org now that I am a Debian Developer.
+  * Bump Standards-version to 4.3.0, no changes needed.
+
+  [ Dmitry Shachnev ]
+  * Use $(MAKE) instead of make in debian/rules for parallelization.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Wed, 26 Dec 2018 16:06:23 -0300
+
+qtbase-opensource-src (5.11.3+dfsg-1) experimental; urgency=medium
+
+  * Revert the switch of arm64 to OpenGL ES as a result of
+    <https://lists.debian.org/debian-devel/2018/11/msg00457.html>
+  * New upstream release.
+    - Bump Qt build dependencies.
+    - Bump qtbase-abi to 5-11-3.
+  * Fix typo in previous changelog entry.
+  * Delete dont_get_screen_rotation.diff, already applied upstream.
+  * Refresh patches.
+  * Delete ssl_max_version.diff. Applied upstream with some changes.
+  * Create and apply revert_remove_our_use_of_syscall_for-statx.patch. This is
+    needed for Qt to work with Stretch machines running testing/unstable
+    chroots but Stretch's kernel.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Wed, 05 Dec 2018 20:54:37 -0300
+
+qtbase-opensource-src (5.11.2+dfsg-8) experimental; urgency=medium
+
+  * Switch arm64 to use OpenGL ES instead of desktop OpenGL (Closes: #881333).
+    - Rename libqt5gui5 to libqt5gui5a.
+      - Add Breaks+Replaces against libqt5gui5 << 5.11.2+dfsg-8~. This
+        avoids co-installation of the library.
+      - Change all related dependencies to new binary name.
+      - Add a lintian override for package name does not match soname warning.
+    - Adjust arch qualifications for required packages.
+    - debian/rules: add arm64 to gles2_architectures.
+    - Rename debian/libqt5gui5 files to their libqt5gui5a counterparts,
+      modifying them when necessary.
+    - Update symbols files arch qualifications accordingly.
+  * Update symbols files with buildds' logs.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Tue, 20 Nov 2018 20:24:04 -0300
+
+qtbase-opensource-src (5.11.2+dfsg-7) unstable; urgency=medium
+
+  * Change the fix for #913499 to not break FindQHelpGenerator.cmake
+    that is shipped by extra-cmake-modules (closes: #914045).
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Mon, 19 Nov 2018 00:36:29 +0300
+
+qtbase-opensource-src (5.11.2+dfsg-6) unstable; urgency=medium
+
+  [ Dmitry Shachnev ]
+  * Stop patching mkspecs/qmodule.pri in override_dh_auto_configure.
+    The condition has changed to !host_build|!cross_compile in Qt 5.9,
+    which is always true for us.
+  * Strip -fdebug-prefix-map=${BUILDDIR} flag from generated qmodule.pri.
+    This flag was unwantedly leaking to builds of other Qt modules.
+    Thanks to Helmut Grohne for noticing it!
+  * Build corelib and gui without -O3 on ia64 as a workaround for GCC bug
+    (PR rtl-optimization/85412).
+  * Update symbols files with buildds’ logs (alpha and kfreebsd-i386).
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Backport remove_need_for_glXGetProcAddressARB.patch. This removes the
+    need for using dlopen() and thus libGL.so.1 should be used instead of
+    libGL.so (Closes: #913287).
+  * Include /usr/share/dpkg/pkg-info.mk and replace the call to
+    dpkg-parsechangelog with DEB_VERSION_UPTREAM. According to lintian this
+    should handle more corner cases.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Sat, 17 Nov 2018 19:24:49 -0300
+
+qtbase-opensource-src (5.11.2+dfsg-5) unstable; urgency=medium
+
+  * Add a patch to use qstrncpy instead of strlcpy on GNU/kFreeBSD
+    (kfreebsd_qstrncpy.diff).
+  * Add a patch to fix ambiguous definition of atime/mtime/ctime
+    on alpha, thanks Michael Cree (closes: #896658).
+  * debian/rules: Use qmake cross wrapper in Qt5CoreConfigExtras.cmake
+    (closes: #913499).
+
+ -- Dmitry Shachnev <mitya57@debian.org>  Mon, 12 Nov 2018 10:08:10 +0300
 
 qtbase-opensource-src (5.11.2+dfsg-4) unstable; urgency=medium
 

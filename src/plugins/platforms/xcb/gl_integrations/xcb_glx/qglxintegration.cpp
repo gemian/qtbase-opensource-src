@@ -626,43 +626,7 @@ void QGLXContext::swapBuffers(QPlatformSurface *surface)
 
 QFunctionPointer QGLXContext::getProcAddress(const char *procName)
 {
-#ifdef QT_STATIC
-    return glXGetProcAddressARB(reinterpret_cast<const GLubyte *>(procName));
-#else
-    typedef void *(*qt_glXGetProcAddressARB)(const GLubyte *);
-    static qt_glXGetProcAddressARB glXGetProcAddressARB = 0;
-    static bool resolved = false;
-
-    if (resolved && !glXGetProcAddressARB)
-        return 0;
-    if (!glXGetProcAddressARB) {
-        QList<QByteArray> glxExt = QByteArray(glXGetClientString(m_display, GLX_EXTENSIONS)).split(' ');
-        if (glxExt.contains("GLX_ARB_get_proc_address")) {
-#if QT_CONFIG(dlopen)
-            void *handle = dlopen(NULL, RTLD_LAZY);
-            if (handle) {
-                glXGetProcAddressARB = (qt_glXGetProcAddressARB) dlsym(handle, "glXGetProcAddressARB");
-                dlclose(handle);
-            }
-            if (!glXGetProcAddressARB)
-#endif
-            {
-#if QT_CONFIG(library)
-                extern const QString qt_gl_library_name();
-//                QLibrary lib(qt_gl_library_name());
-                QLibrary lib(QLatin1String("GL"));
-                if (!lib.load())
-                    lib.setFileNameAndVersion(QLatin1String("GL"), 1);
-                glXGetProcAddressARB = (qt_glXGetProcAddressARB) lib.resolve("glXGetProcAddressARB");
-#endif
-            }
-        }
-        resolved = true;
-    }
-    if (!glXGetProcAddressARB)
-        return 0;
-    return (void (*)())glXGetProcAddressARB(reinterpret_cast<const GLubyte *>(procName));
-#endif
+    return glXGetProcAddress(reinterpret_cast<const GLubyte *>(procName));
 }
 
 QSurfaceFormat QGLXContext::format() const

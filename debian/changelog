@@ -2,7 +2,7 @@ qtbase-opensource-src (5.11.3+gemian1) unstable; urgency=medium
 
   * Building for Gemian
 
- -- Adam Boardman <adamboardman@gmail.com>  Mon, 2 Nov 2029 00:20:03 +0000
+ -- Adam Boardman <adamboardman@gmail.com>  Mon, 2 Nov 2020 00:20:03 +0000
 
 qtbase-opensource-src (5.11.3+dfsg1-1+deb10u4) buster; urgency=medium
 

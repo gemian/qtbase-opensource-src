@@ -1021,6 +1021,7 @@ void QWidgetWindow::handleTabletEvent(QTabletEvent *event)
                         event->pressure(), event->xTilt(), event->yTilt(), event->tangentialPressure(),
                         event->rotation(), event->z(), event->modifiers(), event->uniqueId(), event->button(), event->buttons());
         ev.setTimestamp(event->timestamp());
+        ev.setAccepted(false);
         QGuiApplication::forwardEvent(widget, &ev, event);
         event->setAccepted(ev.isAccepted());
     }
